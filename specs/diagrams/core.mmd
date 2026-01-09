@@ -1,0 +1,94 @@
+graph TB
+  classDef entry fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000
+  classDef core fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000
+  classDef runtime fill:#fffde7,stroke:#f9a825,stroke-width:2px,color:#000
+  classDef infra fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
+  
+  subgraph ENTRY["👨‍💻 Entry Points"]
+    CLI[CLI Tool<br/>npm run discover]
+    DEV[Developer<br/>Unit Test]
+    IDE[IDE<br/>Debug Mode]
+  end
+  
+  subgraph CORE["🎯 p981-core (Business Logic)"]
+    LAUNCH[Core Launcher<br/>⚡ Direct Execution]
+    EXEC[Stage Executor]
+    
+    subgraph STAGE["📋 Stage Definitions"]
+      DISC[Discover Stage]
+      SYN[Synthesize Stage]
+    end
+    
+    subgraph DOMAIN["🔧 Domain Modules"]
+      MEDIA[p981-media<br/>Extract frames/clips]
+      STATE[p981-state<br/>Analyze timeline]
+      MOMENT[p981-moment<br/>Select moments]
+      ASSET[p981-asset<br/>Store results]
+      SYNTH[p981-synthesis<br/>Generate output]
+    end
+    
+    PORTS[🔌 Port Interfaces<br/>BlobStore / MetaStore / Cache]
+    ERR[Error Handler<br/>⚠️ Validation & Recovery]
+  end
+  
+  subgraph RUNTIME["⚙️ p981-runtime (Infrastructure)"]
+    ADAPTERS[Adapters<br/>Mock / Real Implementation]
+  end
+  
+  subgraph INFRA["🏗️ Infrastructure"]
+    OBJ[(Object Storage<br/>S3 / LocalFS)]
+    META[(Metadata DB<br/>Postgres / In-Memory)]
+    CACHE[(Cache Layer<br/>Redis / In-Memory)]
+  end
+  
+  %% Entry → Core
+  CLI -->|execute| LAUNCH
+  DEV -->|invoke| LAUNCH
+  IDE -->|debug| LAUNCH
+  
+  %% Core Execution Flow
+  LAUNCH -->|run stage| EXEC
+  EXEC -->|select| DISC
+  EXEC -->|select| SYN
+  EXEC -.catch errors.-> ERR
+  
+  %% Discover Stage Flow
+  DISC -->|1. extract media| MEDIA
+  MEDIA -->|2. analyze state| STATE
+  STATE -->|3. decide moments| MOMENT
+  MOMENT -->|4. extract assets| MEDIA
+  MEDIA -->|5. store| ASSET
+  MOMENT -->|6. store metadata| ASSET
+  
+  %% Synthesize Stage Flow
+  SYN -->|1. load moments| ASSET
+  ASSET -->|2. generate| SYNTH
+  SYNTH -->|3. save result| ASSET
+  
+  %% Error Flow
+  MEDIA -.validation error.-> ERR
+  STATE -.analysis error.-> ERR
+  MOMENT -.selection error.-> ERR
+  ASSET -.storage error.-> ERR
+  SYNTH -.generation error.-> ERR
+  
+  %% Port → Adapter → Infrastructure
+  PORTS -.implements.-> ADAPTERS
+  MEDIA -->|via ports| PORTS
+  STATE -->|via ports| PORTS
+  MOMENT -->|via ports| PORTS
+  ASSET -->|via ports| PORTS
+  SYNTH -->|via ports| PORTS
+  
+  ADAPTERS -->|read/write| OBJ
+  ADAPTERS -->|query/index| META
+  ADAPTERS -->|get/set| CACHE
+  
+  %% Annotations
+  note1[💡 For Testing:<br/>Use mock adapters<br/>No external dependencies]
+  note2[💡 For Development:<br/>Use local infrastructure<br/>Fast iteration]
+  
+  class CLI,DEV,IDE entry
+  class CORE,LAUNCH,EXEC,STAGE,DISC,SYN,DOMAIN,MEDIA,STATE,MOMENT,ASSET,SYNTH,PORTS,ERR core
+  class RUNTIME,ADAPTERS runtime
+  class INFRA,OBJ,META,CACHE infra

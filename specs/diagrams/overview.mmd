@@ -1,0 +1,86 @@
+graph TB
+  classDef entry fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#000
+  classDef core fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#000
+  classDef runtime fill:#fffde7,stroke:#f9a825,stroke-width:2px,color:#000
+  classDef infra fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
+
+  subgraph ENTRY["Entry Points"]
+    CLI[CLI Tool<br/>p981 discover]
+    DEV[Developer<br/>Unit Test]
+    IDE[IDE<br/>Debug Mode]
+  end
+
+  subgraph CORE["p981-core"]
+    LAUNCH[Core Launcher<br/>Direct Execution]
+    EXEC[Stage Executor]
+
+    subgraph STAGE["Stage Definitions"]
+      DISC[Discover Stage]
+      SYN[Synthesize Stage]
+    end
+
+    subgraph DOMAIN["Domain Modules"]
+      MEDIA[p981-media<br/>Extract frames clips]
+      STATE[p981-state<br/>Analyze timeline]
+      MOMENT[p981-moment<br/>Select moments]
+      ASSET[p981-asset<br/>Store results]
+      SYNTH[p981-synthesis<br/>Generate output]
+    end
+
+    PORTS[Port Interfaces<br/>BlobStore MetaStore Cache]
+    ERR[Error Mapping<br/>Validation Classification]
+  end
+
+  subgraph RUNTIME["p981-runtime"]
+    ADAPTERS[Adapters<br/>Mock Real]
+  end
+
+  subgraph INFRA["Infrastructure"]
+    OBJ[(Object Storage<br/>S3 Local)]
+    META[(Metadata DB<br/>Postgres Memory)]
+    CACHE[(Cache Layer<br/>Redis Memory)]
+  end
+
+  %% Entry to Core
+  CLI -->|execute| LAUNCH
+  DEV -->|invoke| LAUNCH
+  IDE -->|debug| LAUNCH
+
+  %% Core Execution
+  LAUNCH -->|run stage| EXEC
+  EXEC -->|select| DISC
+  EXEC -->|select| SYN
+  EXEC -.errors.-> ERR
+
+  %% Discover Stage
+  DISC -->|1 video_ref| MEDIA
+  DISC -->|2 video_ref or frame_ref| STATE
+  STATE -->|3 timeline_ref| MOMENT
+  MOMENT -->|4 extract_plan| MEDIA
+  MEDIA -->|5 assets| ASSET
+  MOMENT -->|6 moment_meta| ASSET
+
+  %% Synthesize Stage
+  SYN -->|1 input_refs| ASSET
+  ASSET -->|2 inputs| SYNTH
+  SYNTH -->|3 output_ref| ASSET
+
+  %% Domain to Ports
+  MEDIA -->|use| PORTS
+  STATE -->|use| PORTS
+  MOMENT -->|use| PORTS
+  ASSET -->|use| PORTS
+  SYNTH -->|use| PORTS
+
+  %% Adapters implement Ports
+  ADAPTERS -.implements.-> PORTS
+
+  %% Adapters to Infrastructure
+  ADAPTERS -->|read write| OBJ
+  ADAPTERS -->|query index| META
+  ADAPTERS -->|get set| CACHE
+
+  class CLI,DEV,IDE entry
+  class CORE,LAUNCH,EXEC,STAGE,DISC,SYN,DOMAIN,MEDIA,STATE,MOMENT,ASSET,SYNTH,PORTS,ERR core
+  class RUNTIME,ADAPTERS runtime
+  class INFRA,OBJ,META,CACHE infra
