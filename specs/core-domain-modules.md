@@ -12,6 +12,9 @@
 - 책임: 원본 비디오 접근 및 미디어 단위 추출만 수행
 - 비책임: 판단, 선택, 분석 로직 없음
 - 캐시: 동일 미디어 추출 요청 시 캐시 결과 반환 가능
+- video_ref 처리: 로컬 경로, file://, http(s)://, s3://, blob_ref (skeleton 기본)
+- 스켈레톤 출력: keyframe_pack=JPEG zip, moment_clip=MP4(H.264/AAC)
+- ObservationPort: 프레임 관측 이벤트 출력 (frame_index, timestamp_ms, avg_luma)
 
 ---
 
@@ -35,7 +38,7 @@
 ## p981-asset
 
 - 역할: 자산 및 히스토리 관리
-- 책임: 모든 중간/최종 산출물 저장 및 조회, 고객 Moment 히스토리 누적
+- 책임: 모든 중간/최종 산출물 저장 및 조회, 고객 Moment 히스토리 누적 (customer_id 제공 시)
 - 저장소: Object Storage(미디어), Metadata DB(메타/인덱스)
 - 인덱싱: customer_id, timestamp, style, quality_score 등 검색 최적화
 

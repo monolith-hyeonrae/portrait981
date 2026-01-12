@@ -18,8 +18,8 @@
 
 ### 입력
 
-- video_ref
-- customer_id
+- video_ref (로컬 경로, file://, http(s)://, s3://, blob_ref 허용)
+- customer_id (optional, 외부 엔트리포인트에서 소유자 바인딩 시 제공)
 
 ### 출력
 
@@ -27,7 +27,7 @@
 - keyframe_pack_refs
 - moment_clip_refs
 - moment_metadata_refs (TBD, 스켈레톤 단계에서는 임의 구조/빈 값 가능)
-- history_updated
+- history_updated (customer_id 제공 시에만 의미가 있음)
 
 ### 내부 흐름
 
@@ -37,7 +37,13 @@
 4. moment: 중복 제거 + 다양성 조건 반영하여 N개 선정
 5. moment → media: extraction_plan 생성 (time_range, keyframe_timestamps)
 6. media: keyframe_pack/clip 추출
-7. asset: 결과 저장 및 고객 히스토리 업데이트
+7. asset: 결과 저장 및 고객 히스토리 업데이트 (customer_id 제공 시)
+   - media는 ObservationPort로 프레임 관측 이벤트를 보낼 수 있다.
+
+### 스켈레톤 기본 포맷
+
+- keyframe_pack: JPEG 프레임 zip (최종 포맷 TBD)
+- moment_clip: MP4 (H.264/AAC, 재인코딩)
 
 ---
 

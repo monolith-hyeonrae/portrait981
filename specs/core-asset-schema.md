@@ -10,7 +10,7 @@ MVP 기준 Asset 최소 스키마와 moment_meta 필수 필드를 정의한다.
 
 - asset_ref (opaque id)
 - asset_type (자산 유형)
-- customer_id
+- customer_id (소유자 바인딩 전에는 optional)
 - created_at
 - source (video_ref 또는 upstream asset_ref)
 - blob_ref (파일 기반 자산일 때)
@@ -55,3 +55,8 @@ MVP 기준 Asset 최소 스키마와 moment_meta 필수 필드를 정의한다.
 
 - 원본 비디오는 7일 뒤 삭제되며 이후 단계는 원본에 의존하지 않는다.
 - time_range + clip + keyframe은 항상 저장하도록 한다.
+
+## 스켈레톤 기본 포맷
+
+- keyframe_pack: JPEG 프레임 zip (최종 포맷 TBD)
+- moment_clip: MP4 (H.264/AAC, 재인코딩)
