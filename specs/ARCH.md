@@ -31,7 +31,7 @@ Portrait981은
 
 - moment: 의미 있는 변화/피크가 나타나는 시간 구간(time window) + 대표 프레임
 - 결과물: Asset Bundle 기반 결과물 (MVP 필수는 cinematic mp4 1개)
-- 입력 경로 우선순위: CLI → REST/Job → Event Watcher
+- 입력 경로 우선순위(개발 단계): CLI → REST/Job → Event Watcher
 - Asset 최소 스키마: asset_ref/asset_type/customer_id/created_at/source/blob_ref/meta
 - MVP 범위: Discover 실작동 + Synthesize cinematic 산출
 
@@ -39,7 +39,7 @@ Portrait981은
 
 - moment 정의/선정: `specs/core-moment.md`
 - 결과물 및 스타일: `specs/core-output.md`
-- 실행 경로 우선순위: `specs/shared-entrypoints.md`
+- 실행 경로 우선순위: `specs/contracts-entrypoints.md`
 - Asset 최소 스키마: `specs/core-asset-schema.md`
 - Core MVP 범위: `specs/core-mvp-scope.md`
 - 도메인 모듈 책임: `specs/core-domain-modules.md`
@@ -47,11 +47,11 @@ Portrait981은
 - Runtime API: `specs/runtime-api.md`
 - Runtime 운영: `specs/runtime-ops.md`
 - 상태 타임라인: `specs/core-state-timeline.md`
-- 공통 규칙: `specs/shared-common-rules.md`
+- 공통 규칙: `specs/contracts-common-rules.md`
 - Synthesis 백엔드: `specs/core-synthesis-backend.md`
-- 포트/어댑터: `specs/shared-ports-and-adapters.md`
+- 포트/어댑터: `specs/contracts-ports-and-adapters.md`
 - Runtime 포트: `specs/runtime-ports.md`
-- 개발/배포: `specs/shared-dev-and-deploy.md`
+- 개발/배포: `specs/contracts-dev-and-deploy.md`
 
 ---
 

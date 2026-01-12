@@ -5,7 +5,7 @@ graph TB
   classDef infra fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
   
   subgraph ENTRY["👨‍💻 Entry Points"]
-    CLI[CLI Tool<br/>npm run discover]
+    CLI[CLI Tool<br/>uv run python -m p981.core.launcher discover]
     DEV[Developer<br/>Unit Test]
     IDE[IDE<br/>Debug Mode]
   end
@@ -27,7 +27,7 @@ graph TB
       SYNTH[p981-synthesis<br/>Generate output]
     end
     
-    PORTS[🔌 Port Interfaces<br/>BlobStore / MetaStore / Cache]
+    PORTS[🔌 Port Interfaces<br/>BlobStore / MetaStore / AssetIndex / Cache]
     ERR[Error Handler<br/>⚠️ Validation & Recovery]
   end
   
@@ -73,7 +73,7 @@ graph TB
   SYNTH -.generation error.-> ERR
   
   %% Port → Adapter → Infrastructure
-  PORTS -.implements.-> ADAPTERS
+  ADAPTERS -.implements.-> PORTS
   MEDIA -->|via ports| PORTS
   STATE -->|via ports| PORTS
   MOMENT -->|via ports| PORTS

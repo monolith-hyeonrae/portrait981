@@ -9,6 +9,7 @@
 ## 공통 규칙
 
 - API는 blob을 직접 반환하지 않고 asset_ref만 반환한다.
+- metadata 스키마/노출 방식은 추후 정의하며, 스켈레톤 단계에서는 임의 필드가 임시로 포함될 수 있다.
 - POST 요청은 Job을 생성하고 202 Accepted로 응답한다.
 - status 값은 아래 enum으로 고정한다.
   - PENDING | RUNNING | SUCCEEDED | FAILED | CANCELED
@@ -57,6 +58,7 @@
 - base: moment_ref 필요
 - closeup/fullbody: base_portrait_ref 필요
 - cinematic: closeup_image_ref + fullbody_image_ref 필요
+- 필수 외 필드의 검증/무시 정책은 추후 정의하며, 스켈레톤 단계에서는 무시할 수 있다.
 
 ### Response (202)
 

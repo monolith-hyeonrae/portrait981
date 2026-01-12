@@ -13,6 +13,7 @@
   - Moment Clip
   - Moment Metadata
 - 이 자산이 있으면 원본 비디오 없이도 Stage 2를 재수행할 수 있어야 한다.
+- Moment Metadata의 스키마/저장 형식은 추후 정의하며, 스켈레톤 단계에서는 임의 구조를 허용한다.
 
 ---
 
@@ -27,6 +28,7 @@
 
 - Stage 간 데이터 전달은 asset_ref + metadata 기반으로만 수행한다.
 - 모듈 간 전달은 blob 자체가 아니라 asset_ref를 사용한다.
+- metadata의 세부 스키마와 전달 방식은 추후 정의하며, 스켈레톤 단계에서는 임의 필드를 허용한다.
 
 ---
 

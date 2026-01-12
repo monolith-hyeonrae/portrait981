@@ -27,7 +27,7 @@ graph TB
       SYNTH[p981-synthesis<br/>Generate output]
     end
 
-    PORTS[Port Interfaces<br/>BlobStore MetaStore Cache]
+    PORTS[Port Interfaces<br/>BlobStore MetaStore AssetIndex Cache]
     ERR[Error Mapping<br/>Validation Classification]
   end
 
@@ -38,6 +38,7 @@ graph TB
   subgraph INFRA["Infrastructure"]
     OBJ[(Object Storage<br/>S3 Local)]
     META[(Metadata DB<br/>Postgres Memory)]
+    INDEX[(Asset Index<br/>VectorDB None)]
     CACHE[(Cache Layer<br/>Redis Memory)]
   end
 
@@ -77,7 +78,8 @@ graph TB
 
   %% Adapters to Infrastructure
   ADAPTERS -->|read write| OBJ
-  ADAPTERS -->|query index| META
+  ADAPTERS -->|meta| META
+  ADAPTERS -->|index| INDEX
   ADAPTERS -->|get set| CACHE
 
   class CLI,DEV,IDE entry

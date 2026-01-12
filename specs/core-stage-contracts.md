@@ -10,6 +10,7 @@
 
 - Stage 간 데이터 전달은 asset_ref 기반으로만 이루어진다.
 - 원본 비디오는 Discover 단계에서만 접근한다.
+- metadata 세부 스키마/전달 방식은 추후 정의하며, 스켈레톤 단계에서는 임의 metadata 리스트를 허용한다.
 
 ---
 
@@ -25,6 +26,7 @@
 - moment_refs
 - keyframe_pack_refs
 - moment_clip_refs
+- moment_metadata_refs (TBD, 스켈레톤 단계에서는 임의 구조/빈 값 가능)
 - history_updated
 
 ### 내부 흐름

@@ -34,6 +34,7 @@ graph TB
   subgraph INFRA["Infrastructure"]
     OBJ[Object Storage]
     META[Metadata DB]
+    INDEX[Asset Index]
     CACHE[Cache Layer]
     OBS[Observability]
   end
@@ -59,6 +60,7 @@ graph TB
   PORTS -->|implemented by| ADAPTERS
   ADAPTERS -->|blob| OBJ
   ADAPTERS -->|meta| META
+  ADAPTERS -->|index| INDEX
   ADAPTERS -->|cache| CACHE
   ADAPTERS -->|obs| OBS
   

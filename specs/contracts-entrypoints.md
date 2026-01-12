@@ -12,6 +12,8 @@
 2. MVP 2: REST API + JobStore + Worker
 3. MVP 3: Event Watcher (S3 등) → Discover 자동 트리거
 
+- 위 순서는 개발 단계 우선순위이며, 런타임 요청 경합 우선순위 규칙은 별도 정의한다.
+
 ---
 
 ## 실행 트리거
