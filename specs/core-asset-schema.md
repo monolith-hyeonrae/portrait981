@@ -10,7 +10,7 @@ MVP 기준 Asset 최소 스키마와 moment_meta 필수 필드를 정의한다.
 
 - asset_ref (opaque id)
 - asset_type (자산 유형)
-- customer_id (소유자 바인딩 전에는 optional)
+- member_id (소유자 바인딩 전에는 optional)
 - created_at
 - source (video_ref 또는 upstream asset_ref)
 - blob_ref (파일 기반 자산일 때)
@@ -41,6 +41,8 @@ MVP 기준 Asset 최소 스키마와 moment_meta 필수 필드를 정의한다.
 - diversity_key (다양성 그룹핑용)
 - keyframe_pack_ref
 - moment_clip_ref
+
+moment_meta는 moment 자산 meta에 포함되며 스켈레톤 단계에서는 별도 moment_metadata 자산을 두지 않는다.
 
 ---
 

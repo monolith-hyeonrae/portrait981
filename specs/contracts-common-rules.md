@@ -11,9 +11,9 @@
 - Stage 1(DISCOVER) 종료 시 아래 자산을 반드시 보존한다.
   - Keyframe Pack
   - Moment Clip
-  - Moment Metadata
+  - Moment Meta (moment 자산 meta에 포함)
 - 이 자산이 있으면 원본 비디오 없이도 Stage 2를 재수행할 수 있어야 한다.
-- Moment Metadata의 스키마/저장 형식은 추후 정의하며, 스켈레톤 단계에서는 임의 구조를 허용한다.
+- Moment Meta의 스키마/저장 형식은 추후 정의하며, 스켈레톤 단계에서는 임의 구조를 허용한다.
 
 ---
 
@@ -37,7 +37,7 @@
 - 하나의 비디오에서 여러 Moment가 발견될 수 있다.
 - 최종 저장되는 Moment는 중복되지 않으며 다양성을 만족해야 한다.
 - 중복 판별은 동일 비디오 + 고객 히스토리 전체 기준으로 수행된다.
-- customer_id가 없는 Discover에서는 비디오 기준 중복만 적용하며 고객 히스토리 반영은 엔트리포인트에서 처리한다.
+- member_id가 없는 Discover에서는 비디오 기준 중복만 적용하며 고객 히스토리 반영은 엔트리포인트에서 처리한다.
 
 ---
 

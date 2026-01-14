@@ -20,14 +20,14 @@ graph TB
     end
     
     subgraph DOMAIN["🔧 Domain Modules"]
-      MEDIA[p981-media<br/>Extract frames/clips]
+      MEDIA[p981-media<br/>Prepare handle + extract frames/clips]
       STATE[p981-state<br/>Analyze timeline]
       MOMENT[p981-moment<br/>Select moments]
       ASSET[p981-asset<br/>Store results]
       SYNTH[p981-synthesis<br/>Generate output]
     end
     
-    PORTS[🔌 Port Interfaces<br/>BlobStore / MetaStore / AssetIndex / Cache]
+    PORTS[🔌 Port Interfaces<br/>BlobStore / MetaStore / AssetIndex / Cache / ObservationPort]
     ERR[Error Handler<br/>⚠️ Validation & Recovery]
   end
   
@@ -53,12 +53,14 @@ graph TB
   EXEC -.catch errors.-> ERR
   
   %% Discover Stage Flow
-  DISC -->|1. extract media| MEDIA
-  MEDIA -->|2. analyze state| STATE
-  STATE -->|3. decide moments| MOMENT
-  MOMENT -->|4. extract assets| MEDIA
-  MEDIA -->|5. store| ASSET
-  MOMENT -->|6. store metadata| ASSET
+  DISC -->|1. prepare media_handle| MEDIA
+  MEDIA -->|media_handle| DISC
+  DISC -->|"2. frame_source (fps/segment)"| STATE
+  STATE -->|3. state_timeline_ref| MOMENT
+  MOMENT -->|4. extraction_plan| DISC
+  DISC -->|5. extract keyframes/clips| MEDIA
+  MEDIA -->|6. store assets| ASSET
+  MOMENT -->|7. store moment meta| ASSET
   
   %% Synthesize Stage Flow
   SYN -->|1. load moments| ASSET

@@ -1,3 +1,5 @@
+"""도메인 기본 구현체 모음."""
+
 from .inmemory import (
     InMemoryAssetService,
     InMemoryMediaService,

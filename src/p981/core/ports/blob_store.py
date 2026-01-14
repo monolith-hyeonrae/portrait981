@@ -1,3 +1,5 @@
+"""미디어 blob 저장/조회 포트를 정의한다."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -7,10 +9,10 @@ from ..types import AssetRef
 
 class BlobStore(Protocol):
     def put(self, blob: bytes) -> AssetRef:
-        """Store raw bytes and return a blob_ref."""
+        """바이너리를 저장하고 blob_ref를 반환한다."""
 
     def get(self, blob_ref: AssetRef) -> bytes:
-        """Load raw bytes by blob_ref."""
+        """blob_ref로 바이너리를 조회한다."""
 
 
 class StubBlobStore:

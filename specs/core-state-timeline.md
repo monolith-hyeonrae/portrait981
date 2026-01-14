@@ -6,6 +6,15 @@
 
 ---
 
+## 입력
+
+- stage가 전달하는 media_handle 또는 frame_source
+- sampling fps/구간은 stage(또는 state 요구)에서 결정한다.
+- state는 제공된 frame_source를 소비하며 원본 video_ref를 직접 읽지 않는다.
+- 모든 points는 media_handle의 video time(ms) 기준이며, 다른 fps 결과와 결합할 때는 timestamp_ms로 정합한다.
+
+---
+
 ## 출력
 
 - state_timeline_ref (asset)

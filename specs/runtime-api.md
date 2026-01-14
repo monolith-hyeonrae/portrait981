@@ -24,9 +24,11 @@
 ```
 {
   "video_ref": "string",
-  "customer_id": "string"
+  "member_id": "string"
 }
 ```
+
+- member_id는 optional이며, 누락 시 고객 히스토리 기반 중복 제거/누적을 생략할 수 있다.
 
 ### Response (202)
 
@@ -88,12 +90,22 @@
 
 ```
 {
-  "moment_refs": ["string"],
-  "keyframe_pack_refs": ["string"],
-  "moment_clip_refs": ["string"],
+  "moment_pack": {
+    "moments": [
+      {
+        "moment_ref": "string",
+        "moment_clip_ref": "string",
+        "keyframe_pack_ref": "string",
+        "moment_meta": {}
+      }
+    ]
+  },
   "history_updated": true
 }
 ```
+
+- member_id가 없는 요청은 history_updated가 false로 유지될 수 있다.
+- moment_meta 스키마는 `specs/core-asset-schema.md`를 따른다.
 
 #### SYNTHESIZE 결과 예시
 
@@ -108,7 +120,7 @@
 
 ## GET /api/v1/jobs
 
-- 필터링 지원: customer_id, job_type, status
+- 필터링 지원: member_id, job_type, status
 - 상세 필터는 구현 전에 확정한다.
 
 ---

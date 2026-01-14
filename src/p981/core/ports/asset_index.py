@@ -1,21 +1,23 @@
+"""자산 검색/중복 판별을 위한 인덱스 포트를 정의한다."""
+
 from __future__ import annotations
 
 from typing import Protocol
 
-from ..types import AssetRef, CustomerId
+from ..types import AssetRef, MemberId
 
 
 class AssetIndex(Protocol):
     def index(self, asset_ref: AssetRef, meta: dict[str, object]) -> None:
-        """Index asset metadata for search/dedupe."""
+        """검색/중복 판별을 위해 자산 메타를 인덱싱한다."""
 
-    def search(self, customer_id: CustomerId, query: dict[str, object]) -> list[AssetRef]:
-        """Search assets by query for a customer."""
+    def search(self, member_id: MemberId, query: dict[str, object]) -> list[AssetRef]:
+        """멤버 기준으로 자산을 검색한다."""
 
 
 class StubAssetIndex:
     def index(self, asset_ref: AssetRef, meta: dict[str, object]) -> None:
         raise NotImplementedError("AssetIndex.index is not implemented")
 
-    def search(self, customer_id: CustomerId, query: dict[str, object]) -> list[AssetRef]:
+    def search(self, member_id: MemberId, query: dict[str, object]) -> list[AssetRef]:
         raise NotImplementedError("AssetIndex.search is not implemented")

@@ -1,3 +1,11 @@
+"""p981-core 스테이지를 CLI로 실행하는 엔트리포인트.
+
+흐름:
+1) CLI 인자 파싱 및 로깅 설정
+2) wiring을 통해 옵저버/실행기 생성
+3) discover/synthesize 실행 후 결과 JSON 출력
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -6,60 +14,17 @@ from dataclasses import asdict
 
 from loguru import logger
 
-from .domain.impl import (
-    FFmpegMediaService,
-    InMemoryAssetService,
-    InMemoryMediaService,
-    InMemoryMomentService,
-    InMemoryStateService,
-    InMemorySynthesisService,
-)
-from .executor import StageExecutor
-from .ports import (
-    InMemoryAssetIndex,
-    InMemoryBlobStore,
-    InMemoryMetaStore,
-    LoguruObservationPort,
-    MultiObservationPort,
-    NoopObservationPort,
-    ObservationPort,
-    PixeltableObservationPort,
-    RerunObservationPort,
-)
-from .stage import DiscoverStageDeps, SimpleDiscoverStage, SimpleSynthesizeStage, SynthesizeStageDeps
 from .common import LoguruProgressSink, configure_logging
-from .types import DiscoverInput, SynthesizeInput
+from .stage.discover import DiscoverInput
+from .stage.synthesize import SynthesizeInput
+from .wiring import build_executor, build_observer
 
 
-def build_executor(mode: str, observer: ObservationPort) -> StageExecutor:
-    blob_store = InMemoryBlobStore()
-    meta_store = InMemoryMetaStore()
-    asset_index = InMemoryAssetIndex()
+def _build_parser() -> argparse.ArgumentParser:
+    """스테이지 실행용 CLI 플래그와 서브커맨드를 정의한다."""
 
-    asset_service = InMemoryAssetService(meta_store=meta_store, asset_index=asset_index)
-    if mode == "stub":
-        media_service = InMemoryMediaService(blob_store=blob_store, observer=observer)
-    else:
-        media_service = FFmpegMediaService(blob_store=blob_store, observer=observer)
-    state_service = InMemoryStateService(meta_store=meta_store)
-    moment_service = InMemoryMomentService()
-    synthesis_service = InMemorySynthesisService(blob_store=blob_store)
+    # 메인 파서
 
-    discover_stage = SimpleDiscoverStage(
-        DiscoverStageDeps(
-            media=media_service,
-            state=state_service,
-            moment=moment_service,
-            asset=asset_service,
-        )
-    )
-    synthesize_stage = SimpleSynthesizeStage(
-        SynthesizeStageDeps(asset=asset_service, synthesis=synthesis_service)
-    )
-    return StageExecutor(discover_stage=discover_stage, synthesize_stage=synthesize_stage)
-
-
-def main() -> None:
     parser = argparse.ArgumentParser(prog="p981.core.launcher")
     parser.add_argument(
         "--mode",
@@ -70,15 +35,25 @@ def main() -> None:
     parser.add_argument(
         "--observer",
         action="append",
-        help="Observation adapter (noop/log/pixeltable/rerun). Can be repeated or comma-separated.",
+        help="Observation adapter (noop/log/frames/rerun). Can be repeated or comma-separated.",
     )
+
+    # 서브커맨드
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # discover 명령
     discover_parser = subparsers.add_parser("discover")
     discover_parser.add_argument("--video-ref", required=True)
-    discover_parser.add_argument("--customer-id")
+    discover_parser.add_argument(
+        "--member-id",
+        "--customer-id",
+        dest="member_id",
+        help="Member identifier used for history-aware dedupe (optional).",
+    )
     discover_parser.add_argument("--progress", action="store_true")
 
+    # synthesize 명령
     synthesize_parser = subparsers.add_parser("synthesize")
     synthesize_parser.add_argument(
         "--style", required=True, choices=["base", "closeup", "fullbody", "cinematic"]
@@ -89,28 +64,81 @@ def main() -> None:
     synthesize_parser.add_argument("--closeup-image-ref")
     synthesize_parser.add_argument("--fullbody-image-ref")
 
+    return parser
+
+
+def _build_progress_sink(args: argparse.Namespace) -> LoguruProgressSink | None:
+    """요청 시(또는 debug) 진행률 출력 핸들러를 만든다."""
+
+    if args.progress or args.mode == "debug":
+        return LoguruProgressSink()
+    return None
+
+
+def _validate_synthesize_args(args: argparse.Namespace) -> None:
+    """스타일별 필수 입력을 검증한다."""
+
+    if args.style == "base" and not args.moment_ref:
+        raise SystemExit("--moment-ref is required for style=base")
+
+    if args.style in {"closeup", "fullbody"} and not args.base_portrait_ref:
+        raise SystemExit("--base-portrait-ref is required for closeup/fullbody")
+
+    if args.style == "cinematic" and (not args.closeup_image_ref or not args.fullbody_image_ref):
+        raise SystemExit("--closeup-image-ref and --fullbody-image-ref are required for cinematic")
+
+
+def _parse_observers(values: list[str] | None) -> list[str]:
+    """반복/쉼표 구분 옵션을 평탄화해 리스트로 만든다."""
+
+    if not values:
+        return []
+    selected: list[str] = []
+    for item in values:
+        if not item:
+            continue
+        selected.extend([part.strip() for part in item.split(",") if part.strip()])
+    return selected
+
+
+def main() -> None:
+    """CLI 인자를 파싱하고 의존성을 조립한 뒤 선택된 스테이지를 실행한다."""
+
+    # arguments
+    parser = _build_parser()
     args = parser.parse_args()
+
+    # mode setting
     log_level = "DEBUG" if args.mode == "debug" else "INFO"
     configure_logging(level=log_level)
+
     if args.mode == "prod":
         logger.warning("prod mode uses in-memory stores in the skeleton implementation.")
-    observer = _build_observer(_parse_observers(args.observer), args.mode)
-    executor = build_executor(args.mode, observer)
 
-    progress = LoguruProgressSink() if args.progress or args.mode == "debug" else None
+    # observer setting
+    observer = build_observer(_parse_observers(args.observer), args.mode)
+    executor = build_executor(args.mode, observer)
+    progress = _build_progress_sink(args)
+
+    # 커맨드 디스패치.
     if args.command == "discover":
+
         logger.info(
-            "p981-core discover start | mode={} | video_ref={} | customer_id={}",
+            "p981-core discover start | mode={} | video_ref={} | member_id={}",
             args.mode,
             args.video_ref,
-            args.customer_id or "none",
+            args.member_id or "none",
         )
+
         output = executor.run_discover(
-            DiscoverInput(video_ref=args.video_ref, customer_id=args.customer_id),
+            DiscoverInput(video_ref=args.video_ref, member_id=args.member_id),
             progress=progress,
         )
-    else:
+
+    elif args.command == "synthesize":
+
         _validate_synthesize_args(args)
+
         output = executor.run_synthesize(
             SynthesizeInput(
                 style=args.style,
@@ -122,49 +150,12 @@ def main() -> None:
             progress=progress,
         )
 
+    else:
+        logger.warning("Unknown command: %s", args.command)
+        return
+
+    print(f"\n{args.command.upper()} Stage Output:")
     print(json.dumps(asdict(output), indent=2, sort_keys=True))
-
-
-def _validate_synthesize_args(args: argparse.Namespace) -> None:
-    if args.style == "base" and not args.moment_ref:
-        raise SystemExit("--moment-ref is required for style=base")
-    if args.style in {"closeup", "fullbody"} and not args.base_portrait_ref:
-        raise SystemExit("--base-portrait-ref is required for closeup/fullbody")
-    if args.style == "cinematic" and (not args.closeup_image_ref or not args.fullbody_image_ref):
-        raise SystemExit("--closeup-image-ref and --fullbody-image-ref are required for cinematic")
-
-
-def _parse_observers(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-    selected: list[str] = []
-    for item in values:
-        if not item:
-            continue
-        selected.extend([part.strip() for part in item.split(",") if part.strip()])
-    return selected
-
-
-def _build_observer(selected: list[str], mode: str) -> ObservationPort:
-    if not selected:
-        if mode == "debug":
-            return LoguruObservationPort()
-        return NoopObservationPort()
-    ports: list[ObservationPort] = []
-    for name in selected:
-        if name == "log":
-            ports.append(LoguruObservationPort())
-        elif name == "pixeltable":
-            ports.append(PixeltableObservationPort())
-        elif name == "rerun":
-            ports.append(RerunObservationPort())
-        elif name == "noop":
-            ports.append(NoopObservationPort())
-        else:
-            ports.append(NoopObservationPort())
-    if len(ports) == 1:
-        return ports[0]
-    return MultiObservationPort(ports)
 
 
 if __name__ == "__main__":

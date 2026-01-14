@@ -32,7 +32,7 @@ Portrait981은
 - moment: 의미 있는 변화/피크가 나타나는 시간 구간(time window) + 대표 프레임
 - 결과물: Asset Bundle 기반 결과물 (MVP 필수는 cinematic mp4 1개)
 - 입력 경로 우선순위(개발 단계): CLI → REST/Job → Event Watcher
-- Asset 최소 스키마: asset_ref/asset_type/customer_id/created_at/source/blob_ref/meta
+- Asset 최소 스키마: asset_ref/asset_type/member_id(optional)/created_at/source/blob_ref/meta
 - MVP 범위: Discover 실작동 + Synthesize cinematic 산출
 
 ## 상세 문서

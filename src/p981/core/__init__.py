@@ -1,1 +1,1 @@
-"""Core domain and stage definitions for Portrait981."""
+"""Portrait981 코어 도메인과 스테이지 정의."""

@@ -1,33 +1,35 @@
+"""자산 저장/조회 및 히스토리 관리 도메인 인터페이스를 정의한다."""
+
 from __future__ import annotations
 
 from typing import Protocol, Sequence
 
-from ..types import AssetRef, CustomerId
+from ..types import AssetRef, MemberId
 
 
 class AssetService(Protocol):
     def save_asset(
         self,
         asset_type: str,
-        customer_id: CustomerId | None,
+        member_id: MemberId | None,
         source_ref: str,
         blob_ref: AssetRef | None,
         meta: dict[str, object],
     ) -> AssetRef:
-        """Persist an asset record and return its asset_ref."""
+        """자산 레코드를 저장하고 asset_ref를 반환한다."""
 
     def get_asset_meta(self, asset_ref: AssetRef) -> dict[str, object]:
-        """Load metadata for an asset."""
+        """자산 메타데이터를 조회한다."""
 
-    def update_history(self, customer_id: CustomerId, moment_refs: Sequence[AssetRef]) -> bool:
-        """Update customer history and report whether it changed."""
+    def update_history(self, member_id: MemberId, moment_refs: Sequence[AssetRef]) -> bool:
+        """멤버 히스토리를 갱신하고 변경 여부를 반환한다."""
 
 
 class StubAssetService:
     def save_asset(
         self,
         asset_type: str,
-        customer_id: CustomerId | None,
+        member_id: MemberId | None,
         source_ref: str,
         blob_ref: AssetRef | None,
         meta: dict[str, object],
@@ -37,5 +39,5 @@ class StubAssetService:
     def get_asset_meta(self, asset_ref: AssetRef) -> dict[str, object]:
         raise NotImplementedError("AssetService.get_asset_meta is not implemented")
 
-    def update_history(self, customer_id: CustomerId, moment_refs: Sequence[AssetRef]) -> bool:
+    def update_history(self, member_id: MemberId, moment_refs: Sequence[AssetRef]) -> bool:
         raise NotImplementedError("AssetService.update_history is not implemented")

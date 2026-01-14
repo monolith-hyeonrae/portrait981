@@ -1,3 +1,5 @@
+"""관측 이벤트를 외부로 내보내는 ObservationPort 어댑터들."""
+
 from __future__ import annotations
 
 from typing import Protocol, _GenericAlias
@@ -9,7 +11,7 @@ from ..common import ObservationEvent
 
 class ObservationPort(Protocol):
     def emit(self, event: ObservationEvent) -> None:
-        """Handle observation events from core domains."""
+        """코어 도메인에서 발생한 관측 이벤트를 처리한다."""
 
 
 class NoopObservationPort:
@@ -33,6 +35,8 @@ class LoguruObservationPort:
 
 
 class _WarningObservationPort:
+    """미구현 어댑터에 대해 1회 경고를 출력한다."""
+
     def __init__(self, name: str) -> None:
         self._name = name
         self._warned = False
@@ -50,7 +54,8 @@ class PixeltableObservationPort:
         self._table = self._get_or_create_table()
 
     def emit(self, event: ObservationEvent) -> None:
-        row = self._event_to_row(event)
+        payload = dict(event.payload)
+        row = self._event_to_row(event, payload)
         self._table.insert([row])
 
     def _load_pixeltable(self):
@@ -61,6 +66,7 @@ class PixeltableObservationPort:
         return pxt
 
     def _resolve_type(self, names: list[str], default: object) -> object:
+        # pixeltable 버전 차이를 흡수한다.
         for name in names:
             attr = getattr(self._pxt, name, None)
             if attr is None:
@@ -81,6 +87,7 @@ class PixeltableObservationPort:
         opt_string_t = self._optional(string_t)
         opt_int_t = self._optional(int_t)
         opt_float_t = self._optional(float_t)
+
         return {
             "kind": string_t,
             "video_ref": opt_string_t,
@@ -103,8 +110,7 @@ class PixeltableObservationPort:
             )
         raise RuntimeError("Unsupported pixeltable API; missing create_table/get_table")
 
-    def _event_to_row(self, event: ObservationEvent) -> dict[str, object]:
-        payload = dict(event.payload)
+    def _event_to_row(self, event: ObservationEvent, payload: dict[str, object]) -> dict[str, object]:
         tags = event.tags or {}
         timestamp_ms = event.timestamp_ms
         if timestamp_ms is None:
@@ -139,6 +145,7 @@ class MultiObservationPort:
         self._ports = ports
 
     def emit(self, event: ObservationEvent) -> None:
+                # 관측 어댑터에 최대한 전달하고 실패는 경고만 남긴다.
         for port in self._ports:
             try:
                 port.emit(event)

@@ -1,3 +1,5 @@
+"""관측 이벤트 데이터 구조를 정의한다."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

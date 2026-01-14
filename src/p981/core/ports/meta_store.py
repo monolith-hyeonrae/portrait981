@@ -1,3 +1,5 @@
+"""자산 메타데이터 저장/조회 포트를 정의한다."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -7,10 +9,10 @@ from ..types import AssetRef
 
 class MetaStore(Protocol):
     def save(self, asset_ref: AssetRef, meta: dict[str, object]) -> None:
-        """Persist metadata for an asset."""
+        """자산 메타데이터를 저장한다."""
 
     def load(self, asset_ref: AssetRef) -> dict[str, object]:
-        """Load metadata for an asset."""
+        """자산 메타데이터를 조회한다."""
 
 
 class StubMetaStore:

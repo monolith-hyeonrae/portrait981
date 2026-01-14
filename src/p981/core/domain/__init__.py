@@ -1,3 +1,5 @@
+"""도메인 서비스와 구현체를 내보낸다."""
+
 from .asset import AssetService, StubAssetService
 from .impl import (
     FFmpegMediaService,

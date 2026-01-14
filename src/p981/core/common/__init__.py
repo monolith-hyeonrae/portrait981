@@ -1,3 +1,5 @@
+"""공통 유틸리티와 타입을 내보낸다."""
+
 from .errors import StageError, StageValidationError
 from .logging import LoguruProgressSink, configure_logging
 from .observation import ObservationEvent

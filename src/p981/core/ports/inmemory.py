@@ -1,6 +1,6 @@
-from __future__ import annotations
+"""단일 프로세스 스켈레톤 실행용 인메모리 포트 구현체."""
 
-"""In-memory ports for single-process skeleton runs."""
+from __future__ import annotations
 
 from uuid import uuid4
 
@@ -8,7 +8,7 @@ from .asset_index import AssetIndex
 from .blob_store import BlobStore
 from .cache import Cache
 from .meta_store import MetaStore
-from ..types import AssetRef, CustomerId
+from ..types import AssetRef, MemberId
 
 
 class InMemoryBlobStore(BlobStore):
@@ -37,15 +37,15 @@ class InMemoryMetaStore(MetaStore):
 
 class InMemoryAssetIndex(AssetIndex):
     def __init__(self) -> None:
-        self._by_customer: dict[CustomerId, list[AssetRef]] = {}
+        self._by_member: dict[MemberId, list[AssetRef]] = {}
 
     def index(self, asset_ref: AssetRef, meta: dict[str, object]) -> None:
-        customer_id = meta.get("customer_id")
-        if isinstance(customer_id, str):
-            self._by_customer.setdefault(customer_id, []).append(asset_ref)
+        member_id = meta.get("member_id")
+        if isinstance(member_id, str):
+            self._by_member.setdefault(member_id, []).append(asset_ref)
 
-    def search(self, customer_id: CustomerId, query: dict[str, object]) -> list[AssetRef]:
-        return list(self._by_customer.get(customer_id, []))
+    def search(self, member_id: MemberId, query: dict[str, object]) -> list[AssetRef]:
+        return list(self._by_member.get(member_id, []))
 
 
 class InMemoryCache(Cache):

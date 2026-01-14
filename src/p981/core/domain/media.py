@@ -1,27 +1,51 @@
+"""미디어 도메인 서비스 인터페이스를 정의한다."""
+
 from __future__ import annotations
 
 from typing import Protocol, Sequence
 
-from ..types import AssetRef, TimeRange, VideoRef
+from ..types import AssetRef, FrameSource, MediaHandle, TimeRange, VideoRef
 
 
 class MediaService(Protocol):
-    def register_video(self, video_ref: VideoRef) -> AssetRef:
-        """Prepare access to a raw video and return a handle."""
+    def register_video(self, video_ref: VideoRef) -> MediaHandle:
+        """원본 비디오 접근을 준비하고 media_handle을 반환한다."""
 
-    def extract_keyframes(self, video_ref: VideoRef, timestamps_ms: Sequence[int]) -> AssetRef:
-        """Extract keyframes and return a keyframe_pack_ref."""
+    def open_frame_source(
+        self,
+        media_handle: MediaHandle,
+        fps: int,
+        time_range: TimeRange | None = None,
+        max_frames: int | None = None,
+    ) -> FrameSource:
+        """요청 fps/구간에 대한 frame_source를 제공한다."""
 
-    def extract_clip(self, video_ref: VideoRef, time_range: TimeRange) -> AssetRef:
-        """Extract a clip and return a moment_clip_ref."""
+    def extract_keyframes(
+        self, media_handle: MediaHandle, timestamps_ms: Sequence[int]
+    ) -> AssetRef:
+        """키프레임을 추출해 keyframe_pack_ref를 반환한다."""
+
+    def extract_clip(self, media_handle: MediaHandle, time_range: TimeRange) -> AssetRef:
+        """클립을 추출해 moment_clip_ref를 반환한다."""
 
 
 class StubMediaService:
-    def register_video(self, video_ref: VideoRef) -> AssetRef:
+    def register_video(self, video_ref: VideoRef) -> MediaHandle:
         raise NotImplementedError("MediaService.register_video is not implemented")
 
-    def extract_keyframes(self, video_ref: VideoRef, timestamps_ms: Sequence[int]) -> AssetRef:
+    def open_frame_source(
+        self,
+        media_handle: MediaHandle,
+        fps: int,
+        time_range: TimeRange | None = None,
+        max_frames: int | None = None,
+    ) -> FrameSource:
+        raise NotImplementedError("MediaService.open_frame_source is not implemented")
+
+    def extract_keyframes(
+        self, media_handle: MediaHandle, timestamps_ms: Sequence[int]
+    ) -> AssetRef:
         raise NotImplementedError("MediaService.extract_keyframes is not implemented")
 
-    def extract_clip(self, video_ref: VideoRef, time_range: TimeRange) -> AssetRef:
+    def extract_clip(self, media_handle: MediaHandle, time_range: TimeRange) -> AssetRef:
         raise NotImplementedError("MediaService.extract_clip is not implemented")

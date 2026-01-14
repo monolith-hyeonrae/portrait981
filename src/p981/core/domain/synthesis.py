@@ -1,3 +1,5 @@
+"""합성 도메인 서비스 인터페이스를 정의한다."""
+
 from __future__ import annotations
 
 from typing import Protocol
@@ -7,16 +9,16 @@ from ..types import AssetRef
 
 class SynthesisService(Protocol):
     def synthesize_base(self, keyframe_pack_ref: AssetRef) -> AssetRef:
-        """Generate base_portrait_ref from keyframe_pack_ref."""
+        """keyframe_pack_ref로 base_portrait_ref를 생성한다."""
 
     def synthesize_closeup(self, base_portrait_ref: AssetRef) -> AssetRef:
-        """Generate closeup_image_ref from base_portrait_ref."""
+        """base_portrait_ref로 closeup_image_ref를 생성한다."""
 
     def synthesize_fullbody(self, base_portrait_ref: AssetRef) -> AssetRef:
-        """Generate fullbody_image_ref from base_portrait_ref."""
+        """base_portrait_ref로 fullbody_image_ref를 생성한다."""
 
     def synthesize_cinematic(self, closeup_image_ref: AssetRef, fullbody_image_ref: AssetRef) -> AssetRef:
-        """Generate cinematic_video_ref from closeup + fullbody."""
+        """closeup + fullbody로 cinematic_video_ref를 생성한다."""
 
 
 class StubSynthesisService:
