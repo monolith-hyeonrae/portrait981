@@ -7,13 +7,15 @@ graph TB
   subgraph ENTRY["Entry Points / Clients"]
     CLI[CLI Tool]
     API[API Clients]
+    GUI[GUI Clients]
     EVT[Event Sources]
   end
 
   subgraph SYSTEM["Portrait981 System"]
+    CORE_APP[p981-core<br/>Core App]
     CORE[p981-core<br/>Stages + Domain Logic]
     RUNTIME[p981-runtime<br/>API + Jobs + Workers]
-    ADAPTERS[Adapters / Ports]
+    BACKENDS[Backends / Protocols]
   end
 
   subgraph INFRA["Infrastructure"]
@@ -24,20 +26,21 @@ graph TB
     OBS[(Observability)]
   end
 
-  CLI -->|dev execute| CORE
+  CLI -->|dev execute| CORE_APP
   API -->|request| RUNTIME
   EVT -->|event| RUNTIME
-  RUNTIME -->|execute| CORE
-  CORE -->|via ports| ADAPTERS
-  ADAPTERS -->|blob| OBJ
-  ADAPTERS -->|meta| META
-  ADAPTERS -->|index| INDEX
+  RUNTIME -->|execute| CORE_APP
+  CORE_APP -->|run| CORE
+  CORE -->|via protocols| BACKENDS
+  BACKENDS -->|blob| OBJ
+  BACKENDS -->|meta| META
+  BACKENDS -->|index| INDEX
   RUNTIME -->|job state| JOB
   RUNTIME -->|metrics/logs| OBS
-  ADAPTERS -->|obs| OBS
+  BACKENDS -->|obs| OBS
 
-  class CLI,API,EVT entry
-  class CORE core
+  class CLI,API,GUI,EVT entry
+  class CORE,CORE_APP core
   class RUNTIME runtime
-  class ADAPTERS runtime
+  class BACKENDS runtime
   class INFRA,OBJ,META,INDEX,JOB,OBS infra

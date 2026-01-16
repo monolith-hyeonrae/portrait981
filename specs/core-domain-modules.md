@@ -6,6 +6,14 @@
 
 ---
 
+## DDD 레이어 정리
+
+- Domain: 순수 모델/정책/알고리즘 (외부 의존 없음)
+- Application: 서비스 인터페이스 및 stage/executor 워크플로 (`core/application`)
+- Infra: 외부 의존 구현체 (`core/infra`)
+
+---
+
 ## p981-media
 
 - 역할: 미디어 등록 및 프레임/클립 추출
@@ -17,7 +25,7 @@
 - frame_source: media_handle에서 요청 fps/구간에 대한 지연 생성 스트림
 - 샘플링 정책: stage/도메인 요구가 결정, media가 실행
 - 스켈레톤 출력: keyframe_pack=JPEG zip, moment_clip=MP4(H.264/AAC)
-- ObservationPort: 프레임 관측 이벤트 출력 (frame_index, timestamp_ms, avg_luma)
+- ObserverProtocol: 프레임 관측 이벤트 출력 (frame_index, timestamp_ms, avg_luma)
 
 ---
 
@@ -57,7 +65,7 @@
 - 구현 방식:
   - 가능한 단계는 코드 모듈로 구현한다.
   - 부족한 단계는 ComfyUI 백엔드 호출로 대체한다.
-  - 외부 호출은 adapter/port를 통해 추상화한다.
+  - 외부 호출은 backend/protocol을 통해 추상화한다.
 
 ---
 

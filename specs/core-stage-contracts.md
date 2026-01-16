@@ -56,7 +56,7 @@ moment_pack은 Discover 응답용 구조이며 저장은 moment 자산 단위로
 5. moment → stage: extraction_plan 생성 (time_range, keyframe_timestamps)
 6. stage → media: keyframe_pack/clip 추출 (media_handle 기반)
 7. asset: 결과 저장 (moment meta에 clip/keyframe/meta 포함)
-   - media는 ObservationPort로 프레임 관측 이벤트를 보낼 수 있다.
+   - media는 ObserverProtocol로 프레임 관측 이벤트를 보낼 수 있다.
 8. asset: 고객 히스토리 갱신 (member_id 제공 시)
 
 ### 스켈레톤 기본 포맷

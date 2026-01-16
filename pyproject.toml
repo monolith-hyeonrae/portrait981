@@ -7,8 +7,13 @@ requires-python = ">=3.11.9"
 dependencies = [
     "boto3>=1.42.25",
     "loguru>=0.7.3",
+    "opencv-python>=4.12.0.88",
     "pixeltable>=0.5.10",
 ]
+
+[project.scripts]
+p981-core = "p981.core.cli:main"
+p981-run = "p981.runtime.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

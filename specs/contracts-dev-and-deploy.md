@@ -16,7 +16,9 @@
 ## 개발 실행 예시
 
 - core 단독 실행(개발/검증)
-  - `uv run python -m p981.core.launcher --mode dev --observer log --observer frames discover --video-ref ...`
+  - `uv run python -m p981.core.cli --mode dev --observer log --observer frames discover --video-ref ...`
+  - `uv run python -m p981.core.cli --mode dev --observer opencv discover --video-ref ...`
+  - `uv run python -m p981.runtime.cli run`
 - runtime API
   - `uv run uvicorn p981.runtime.api.main:app --host 0.0.0.0 --port 8000`
 - worker

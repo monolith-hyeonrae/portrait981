@@ -5,13 +5,17 @@ graph TB
   classDef infra fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#000
   
   subgraph ENTRY["👨‍💻 Entry Points"]
-    CLI[CLI Tool<br/>uv run python -m p981.core.launcher discover]
+    CLI[CLI Invocation<br/>uv run python -m p981.core.cli discover]
+    API[API Caller<br/>Runtime or Service]
+    GUI[GUI Client<br/>Desktop / Web]
+    RUNTIME_MOD[Runtime Module<br/>Job/Worker]
     DEV[Developer<br/>Unit Test]
     IDE[IDE<br/>Debug Mode]
   end
   
   subgraph CORE["🎯 p981-core (Business Logic)"]
-    LAUNCH[Core Launcher<br/>⚡ Direct Execution]
+    LAUNCH[CLI Module<br/>⚡ CLI Wrapper]
+    APP[Core App<br/>Shared Entry]
     EXEC[Stage Executor]
     
     subgraph STAGE["📋 Stage Definitions"]
@@ -19,20 +23,22 @@ graph TB
       SYN[Synthesize Stage]
     end
     
-    subgraph DOMAIN["🔧 Domain Modules"]
+    subgraph SERVICES["🧰 Application Services"]
       MEDIA[p981-media<br/>Prepare handle + extract frames/clips]
       STATE[p981-state<br/>Analyze timeline]
       MOMENT[p981-moment<br/>Select moments]
       ASSET[p981-asset<br/>Store results]
       SYNTH[p981-synthesis<br/>Generate output]
     end
+
+    DOM[Domain Models<br/>Policies / Types]
     
-    PORTS[🔌 Port Interfaces<br/>BlobStore / MetaStore / AssetIndex / Cache / ObservationPort]
+    PROTOCOLS[🔌 Protocol Interfaces<br/>BlobStore / MetaStore / AssetIndex / Cache / ObserverProtocol]
     ERR[Error Handler<br/>⚠️ Validation & Recovery]
   end
   
-  subgraph RUNTIME["⚙️ p981-runtime (Infrastructure)"]
-    ADAPTERS[Adapters<br/>Mock / Real Implementation]
+  subgraph RUNTIME["🧱 Core Infra (Backends)"]
+    BACKENDS[Backends<br/>Mock / Real Implementation]
   end
   
   subgraph INFRA["🏗️ Infrastructure"]
@@ -42,12 +48,16 @@ graph TB
   end
   
   %% Entry → Core
-  CLI -->|execute| LAUNCH
-  DEV -->|invoke| LAUNCH
-  IDE -->|debug| LAUNCH
+  CLI -->|invoke| LAUNCH
+  API -->|invoke| APP
+  GUI -->|invoke| APP
+  RUNTIME_MOD -->|invoke| APP
+  DEV -->|invoke| APP
+  IDE -->|debug| APP
   
   %% Core Execution Flow
-  LAUNCH -->|run stage| EXEC
+  LAUNCH -->|build app| APP
+  APP -->|run stage| EXEC
   EXEC -->|select| DISC
   EXEC -->|select| SYN
   EXEC -.catch errors.-> ERR
@@ -74,23 +84,23 @@ graph TB
   ASSET -.storage error.-> ERR
   SYNTH -.generation error.-> ERR
   
-  %% Port → Adapter → Infrastructure
-  ADAPTERS -.implements.-> PORTS
-  MEDIA -->|via ports| PORTS
-  STATE -->|via ports| PORTS
-  MOMENT -->|via ports| PORTS
-  ASSET -->|via ports| PORTS
-  SYNTH -->|via ports| PORTS
-  
-  ADAPTERS -->|read/write| OBJ
-  ADAPTERS -->|query/index| META
-  ADAPTERS -->|get/set| CACHE
+  %% Protocol → Backend → Infrastructure
+  BACKENDS -.implements.-> PROTOCOLS
+  MEDIA -->|via protocols| PROTOCOLS
+  STATE -->|via protocols| PROTOCOLS
+  MOMENT -->|via protocols| PROTOCOLS
+  ASSET -->|via protocols| PROTOCOLS
+  SYNTH -->|via protocols| PROTOCOLS
+
+  BACKENDS -->|read/write| OBJ
+  BACKENDS -->|query/index| META
+  BACKENDS -->|get/set| CACHE
   
   %% Annotations
-  note1[💡 For Testing:<br/>Use mock adapters<br/>No external dependencies]
+  note1[💡 For Testing:<br/>Use mock backends<br/>No external dependencies]
   note2[💡 For Development:<br/>Use local infrastructure<br/>Fast iteration]
   
-  class CLI,DEV,IDE entry
-  class CORE,LAUNCH,EXEC,STAGE,DISC,SYN,DOMAIN,MEDIA,STATE,MOMENT,ASSET,SYNTH,PORTS,ERR core
-  class RUNTIME,ADAPTERS runtime
+  class CLI,API,GUI,RUNTIME_MOD,DEV,IDE entry
+  class CORE,LAUNCH,APP,EXEC,STAGE,DISC,SYN,SERVICES,MEDIA,STATE,MOMENT,ASSET,SYNTH,PROTOCOLS,DOM,ERR core
+  class RUNTIME,BACKENDS runtime
   class INFRA,OBJ,META,CACHE infra

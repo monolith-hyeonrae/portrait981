@@ -49,8 +49,8 @@ Portrait981은
 - 상태 타임라인: `specs/core-state-timeline.md`
 - 공통 규칙: `specs/contracts-common-rules.md`
 - Synthesis 백엔드: `specs/core-synthesis-backend.md`
-- 포트/어댑터: `specs/contracts-ports-and-adapters.md`
-- Runtime 포트: `specs/runtime-ports.md`
+- 프로토콜/백엔드: `specs/contracts-ports-and-adapters.md`
+- Runtime 프로토콜: `specs/runtime-ports.md`
 - 개발/배포: `specs/contracts-dev-and-deploy.md`
 
 ---
@@ -64,7 +64,7 @@ Portrait981은
 - 비즈니스 로직의 중심
 - Stage 정의와 Domain 로직을 포함
 - 외부 시스템에 직접 의존하지 않음
-- Mock Adapter를 통해 단독 실행 가능
+- Mock Backend를 통해 단독 실행 가능
 
 ### p981-runtime
 
@@ -77,19 +77,19 @@ Portrait981은
 
 ## Core 개념 구성
 
-Core는 다음 개념으로 구성된다.
+Core는 다음 계층으로 구성된다.
 
-- Stage  
-  작업의 구성과 순서를 정의
+- Application  
+  유스케이스/워크플로 실행 (stage, executor, service 인터페이스)
 
 - Domain  
-  실제 처리 로직을 담당
+  순수 모델/정책/알고리즘 (외부 의존 없음)
 
-- Executor  
-  Stage 실행의 단일 진입점
+- Infra  
+  외부 의존 구현 (FFmpeg/DB/API 등)
 
-- Ports  
-  외부 시스템과의 추상 인터페이스
+- Protocols  
+  Application이 요구하는 외부 계약(포트)
 
 ---
 
