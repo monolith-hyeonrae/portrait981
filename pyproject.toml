@@ -1,0 +1,28 @@
+[tool.uv.workspace]
+members = [
+    "libs/visualbase",
+    "libs/visualpath/core",
+    "libs/visualpath/isolation",
+    "libs/visualpath/cli",
+    "libs/visualpath/pathway",
+    "apps/facemoment/core",
+    "apps/facemoment/extractors/face-detect",
+    "apps/facemoment/extractors/expression",
+    "apps/facemoment/extractors/face",
+    "apps/facemoment/extractors/pose",
+    "apps/facemoment/extractors/gesture",
+]
+
+# Local development only: block CPU onnxruntime to prevent GPU .so overwrites.
+# In production VenvWorker, each extractor package installs in its own venv,
+# so this override is unnecessary (package isolation resolves the conflict).
+[tool.uv]
+dev-dependencies = [
+    "facemoment[local,dev]",
+]
+override-dependencies = [
+    "onnxruntime ; sys_platform == 'never'",
+]
+
+[tool.uv.sources]
+facemoment = { workspace = true }

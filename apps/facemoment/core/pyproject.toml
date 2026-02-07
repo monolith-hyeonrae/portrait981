@@ -1,0 +1,74 @@
+[project]
+name = "facemoment"
+version = "0.1.0"
+description = "Face moment detection and highlight clip extraction for 981park"
+requires-python = ">=3.10"
+dependencies = [
+    "visualbase",
+    "visualpath[isolation]",
+    "numpy>=1.24.0",
+    "opencv-python>=4.8.0",
+]
+
+[project.optional-dependencies]
+# === Extractor packages (each with independent dependencies) ===
+# In production, each VenvWorker installs only its sub-package:
+#   uv pip install facemoment-face-detect   → onnxruntime-gpu
+#   uv pip install facemoment-expression    → onnxruntime (CPU) — no conflict!
+face-detect = ["facemoment-face-detect"]
+expression = ["facemoment-expression"]
+face = ["facemoment-face"]              # Legacy composite (detect + expression)
+pose = ["facemoment-pose"]
+gesture = ["facemoment-gesture"]
+
+# === Local development ===
+# For running everything in a single environment.
+# The workspace root override-dependencies blocks CPU onnxruntime.
+local = [
+    "facemoment[face,pose,gesture]",
+    "pyzmq>=25.0.0",
+    "pyqt6>=6.10.2",
+    "supervision>=0.19.0",
+    "pathway>=0.8.0",
+]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+facemoment = "facemoment.cli:main"
+
+# Register core extractors and fusions as plugins for visualpath.
+# ML extractors are registered by their sub-packages (facemoment-face-detect, etc.)
+[project.entry-points."visualpath.extractors"]
+face_classifier = "facemoment.moment_detector.extractors.face_classifier:FaceClassifierExtractor"
+quality = "facemoment.moment_detector.extractors.quality:QualityExtractor"
+dummy = "facemoment.moment_detector.extractors.dummy:DummyExtractor"
+
+[project.entry-points."visualpath.fusions"]
+highlight = "facemoment.moment_detector.fusion.highlight:HighlightFusion"
+dummy = "facemoment.moment_detector.fusion.dummy:DummyFusion"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/facemoment"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.uv.sources]
+visualbase = { workspace = true }
+visualpath = { workspace = true }
+visualpath-isolation = { workspace = true }
+facemoment-face-detect = { workspace = true }
+facemoment-expression = { workspace = true }
+facemoment-face = { workspace = true }
+facemoment-pose = { workspace = true }
+facemoment-gesture = { workspace = true }
