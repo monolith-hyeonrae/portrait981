@@ -1,5 +1,7 @@
 """HSEmotion backend for fast expression analysis."""
 
+import contextlib
+import io
 from typing import List, Optional
 import logging
 
@@ -72,7 +74,9 @@ class HSEmotionBackend:
         try:
             from hsemotion_onnx.facial_emotions import HSEmotionRecognizer
 
-            self._model = HSEmotionRecognizer(model_name=self._model_name)
+            # [5] redirect_stdout — see facemoment/cli/utils.py module docstring
+            with contextlib.redirect_stdout(io.StringIO()):
+                self._model = HSEmotionRecognizer(model_name=self._model_name)
             self._initialized = True
             logger.info(f"HSEmotion backend initialized (model={self._model_name})")
 

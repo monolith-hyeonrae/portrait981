@@ -62,6 +62,20 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class WorkerInfo:
+    """Public worker status information for observability.
+
+    Attributes:
+        isolation_level: Isolation level name ("INLINE", "THREAD", "PROCESS", "VENV").
+        pid: Worker process PID (0 = not yet started).
+        venv_path: Virtual environment path ("" = same venv).
+    """
+    isolation_level: str
+    pid: int
+    venv_path: str
+
+
+@dataclass
 class WorkerResult:
     """Result from a worker processing a frame.
 
@@ -108,6 +122,12 @@ class BaseWorker(ABC):
     @abstractmethod
     def is_running(self) -> bool:
         """Check if the worker is running."""
+        ...
+
+    @property
+    @abstractmethod
+    def worker_info(self) -> WorkerInfo:
+        """Return public worker status information for observability."""
         ...
 
 
@@ -160,6 +180,10 @@ class InlineWorker(BaseWorker):
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def worker_info(self) -> WorkerInfo:
+        return WorkerInfo(isolation_level="INLINE", pid=os.getpid(), venv_path="")
 
 
 class ThreadWorker(BaseWorker):
@@ -245,6 +269,10 @@ class ThreadWorker(BaseWorker):
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def worker_info(self) -> WorkerInfo:
+        return WorkerInfo(isolation_level="THREAD", pid=os.getpid(), venv_path="")
 
 
 def _check_zmq_available() -> bool:
@@ -616,6 +644,11 @@ class VenvWorker(BaseWorker):
         """Check if the worker is running."""
         return self._running
 
+    @property
+    def worker_info(self) -> WorkerInfo:
+        pid = self._process.pid if self._process else 0
+        return WorkerInfo(isolation_level="VENV", pid=pid, venv_path=self._venv_path)
+
     def get_subprocess_output(self) -> tuple[str, str]:
         """Get stdout and stderr from the subprocess.
 
@@ -707,6 +740,11 @@ class ProcessWorker(BaseWorker):
     def is_running(self) -> bool:
         """Check if the worker is running."""
         return self._delegate.is_running
+
+    @property
+    def worker_info(self) -> WorkerInfo:
+        info = self._delegate.worker_info
+        return WorkerInfo(isolation_level="PROCESS", pid=info.pid, venv_path=info.venv_path)
 
 
 class WorkerLauncher:

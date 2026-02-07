@@ -14,6 +14,7 @@ from facemoment.cli.utils import (
     detect_distributed_mode,
     create_video_writer,
     score_frame,
+    BOLD, DIM, ITALIC, RESET,
 )
 
 
@@ -45,17 +46,12 @@ def run_debug(args):
     # Check if distributed mode is requested
     distributed = detect_distributed_mode(args)
 
-    if distributed:
-        session = DistributedDebugSession(
-            args, selected, show_window,
-            config_path=getattr(args, 'config', None),
-            venv_face=getattr(args, 'venv_face', None),
-            venv_pose=getattr(args, 'venv_pose', None),
-            venv_gesture=getattr(args, 'venv_gesture', None),
-        )
-    else:
-        session = PathwayDebugSession(args, selected, show_window)
-
+    session = PathwayDebugSession(
+        args, selected, show_window,
+        venv_face=getattr(args, 'venv_face', None) if distributed else None,
+        venv_pose=getattr(args, 'venv_pose', None) if distributed else None,
+        venv_gesture=getattr(args, 'venv_gesture', None) if distributed else None,
+    )
     session.run()
 
 
@@ -135,13 +131,12 @@ class DebugSession:
 
         # ROI info
         roi_pct = f"{int(self.roi[0]*100)}%-{int(self.roi[2]*100)}% x {int(self.roi[1]*100)}%-{int(self.roi[3]*100)}%"
-        print(f"ROI: {roi_pct}")
-
-        print("-" * 50)
-        print("Controls: [q] quit, [r] reset, [space] pause")
-        print("Layers:   [1] face [2] pose [3] ROI [4] stats")
-        print("          [5] timeline [6] trigger [7] fusion [8] frame info")
-        print("-" * 50)
+        print(f"  {DIM}ROI: {roi_pct}{RESET}")
+        print()
+        print(f"{BOLD}Controls{RESET}  {DIM}[q] quit  [r] reset  [space] pause{RESET}")
+        print(f"{BOLD}Layers{RESET}    {DIM}[1] face  [2] pose  [3] ROI  [4] stats{RESET}")
+        print(f"          {DIM}[5] timeline  [6] trigger  [7] fusion  [8] frame info{RESET}")
+        print()
 
         # Profile backend info
         if self.profile_mode:
@@ -155,14 +150,19 @@ class DebugSession:
 
     def _print_header(self):
         """Print session header."""
-        print(f"Debug: {self.args.path}")
-        print(f"Frames: {self.source.frame_count}, FPS: {self.source.fps:.1f}")
-        print(f"Extractors: {', '.join(self.selected)}")
-        print(f"Backend: {self.backend_label.lower()}")
-        print(f"Window: {'enabled' if self.show_window else 'disabled'}")
+        print(f"{BOLD}Debug{RESET}  {self.args.path}")
+        parts = [
+            f"{self.source.frame_count} frames",
+            f"{self.source.fps:.1f} fps",
+            (f"{', '.join(self.selected)} extractors" if len(self.selected) > 1
+             else f"{self.selected[0]} extractor"),
+        ]
+        print(f"  {DIM}{' · '.join(parts)}{RESET}")
+        meta = [f"backend: {self.backend_label.lower()}"]
+        meta.append(f"window: {'enabled' if self.show_window else 'disabled'}")
         if self.profile_mode:
-            print(f"Profile: enabled")
-        print("-" * 50)
+            meta.append("profile: enabled")
+        print(f"  {DIM}{' · '.join(meta)}{RESET}")
 
     def _print_backend_info(self):
         """Print backend info in profile mode. Override in subclasses."""
@@ -219,7 +219,7 @@ class DebugSession:
                 )
             elif self.frame_count % 100 == 0:
                 print(
-                    f"\rFrame {self.frame_count}/{self.source.frame_count}",
+                    f"\r{DIM}Frame {self.frame_count}/{self.source.frame_count}{RESET}",
                     end="", flush=True,
                 )
 
@@ -278,7 +278,7 @@ class DebugSession:
 
         cleanup_observability(self.hub, self.file_sink)
 
-        print(f"Processed {self.frame_count} frames")
+        print(f"{DIM}Processed {self.frame_count} frames{RESET}")
 
     def _teardown_pipeline(self):
         """Override: cleanup pipeline-specific resources."""
@@ -302,13 +302,21 @@ class PathwayDebugSession(DebugSession):
     stuttering in the visualization, but uses the real streaming pipeline.
     """
 
-    def __init__(self, args, selected, show_window):
+    def __init__(self, args, selected, show_window, *,
+                 venv_face=None, venv_pose=None, venv_gesture=None):
         super().__init__(args, selected, show_window)
         self.backend_label = "PATHWAY"
         self.pipeline = None
         self.monitor = None
         self._use_pathway = False
         self._force_pathway = getattr(args, 'backend', None) == 'pathway'
+        self._venv_paths = {}
+        if venv_face:
+            self._venv_paths["face"] = venv_face
+        if venv_pose:
+            self._venv_paths["pose"] = venv_pose
+        if venv_gesture:
+            self._venv_paths["gesture"] = venv_gesture
 
     def _setup_pipeline(self):
         from facemoment.pipeline.pathway_pipeline import FacemomentPipeline, PATHWAY_AVAILABLE
@@ -333,10 +341,14 @@ class PathwayDebugSession(DebugSession):
             if not extractor_names:
                 extractor_names = ['dummy']
 
+        distributed = detect_distributed_mode(self.args)
+
         self.pipeline = FacemomentPipeline(
             extractors=extractor_names,
             fusion_config={"cooldown_sec": 2.0, "main_only": True},
             auto_inject_classifier=True,
+            venv_paths=self._venv_paths,
+            distributed=distributed,
         )
         self.pipeline.initialize()
 
@@ -369,20 +381,28 @@ class PathwayDebugSession(DebugSession):
         # Print extractor status
         initialized_names = {ext.name for ext in self.pipeline.extractors}
         worker_names = set(self.pipeline.workers.keys())
-        print("Extractors:")
+        origins = _get_extractor_origins()
+        print(f"{BOLD}Extractors{RESET}")
         for name in extractor_names:
+            origin = origins.get(name, "")
             if name in worker_names:
-                print(f"  [+] {name}: enabled (subprocess)")
+                worker = self.pipeline.workers[name]
+                info = worker.worker_info
+                level = info.isolation_level.lower()
+                pid_str = f"  pid={info.pid}" if info.pid else ""
+                venv_str = f"  venv={info.venv_path}" if level == "venv" and info.venv_path else ""
+                print(f"  {name:<18}{origin:<6}{DIM}enabled  {level}{pid_str}{venv_str}{RESET}")
             elif name in initialized_names:
-                print(f"  [+] {name}: enabled")
+                print(f"  {name:<18}{origin:<6}{DIM}enabled  inline{RESET}")
             else:
-                print(f"  [-] {name}: failed to load")
+                print(f"  {name:<18}{origin:<6}failed to load")
 
         if 'face' in extractor_names:
+            origin = origins.get('face_classifier', 'core')
             if 'face_classifier' in initialized_names:
-                print(f"  [+] face_classifier: enabled (auto-injected)")
+                print(f"  {'face_classifier':<18}{origin:<6}{DIM}enabled  auto-injected{RESET}")
             else:
-                print(f"  [-] face_classifier: failed to load")
+                print(f"  {'face_classifier':<18}{origin:<6}failed to load")
 
         if not self.pipeline.extractors and not self.pipeline.workers:
             print("Error: No extractors available")
@@ -391,7 +411,7 @@ class PathwayDebugSession(DebugSession):
             sys.exit(1)
 
         if self.pipeline.fusion:
-            print(f"  [+] fusion: HighlightFusion (main_only=True)")
+            print(f"  {'fusion':<18}{'core':<6}{DIM}HighlightFusion  main_only{RESET}")
 
         self.monitor = PathwayMonitor(hub=self.hub, target_fps=self.args.fps)
 
@@ -536,233 +556,80 @@ class PathwayDebugSession(DebugSession):
 
 
 # ---------------------------------------------------------------------------
-# DistributedDebugSession
-# ---------------------------------------------------------------------------
-
-class DistributedDebugSession(DebugSession):
-    """Debug session using PipelineOrchestrator (distributed mode)."""
-
-    def __init__(
-        self, args, selected, show_window, *,
-        config_path=None, venv_face=None, venv_pose=None, venv_gesture=None,
-    ):
-        super().__init__(args, selected, show_window)
-        self.backend_label = "DISTRIBUTED"
-        self.config_path = config_path
-        self.venv_face = venv_face
-        self.venv_pose = venv_pose
-        self.venv_gesture = venv_gesture
-        self.orchestrator = None
-        self.temp_clip_dir = None
-        self.trigger_count = 0
-
-    def _print_header(self):
-        print(f"Debug: {self.args.path}")
-        print(f"Mode: DISTRIBUTED")
-        print("-" * 50)
-
-    def _setup_pipeline(self):
-        import tempfile
-        from facemoment.pipeline import (
-            PipelineOrchestrator,
-            PipelineConfig,
-            ExtractorConfig,
-            FusionConfig,
-        )
-
-        self.temp_clip_dir = tempfile.mkdtemp(prefix="facemoment_debug_")
-
-        if self.config_path:
-            print(f"Loading config from: {self.config_path}")
-            config = PipelineConfig.from_yaml(self.config_path)
-            config.clip_output_dir = self.temp_clip_dir
-            config.fps = int(self.args.fps)
-        else:
-            include_face = 'face' in self.selected or 'all' in self.selected
-            include_pose = 'pose' in self.selected or 'all' in self.selected
-            include_gesture = 'gesture' in self.selected or 'all' in self.selected
-            include_quality = 'quality' in self.selected or 'all' in self.selected
-
-            extractors = []
-            if include_face:
-                extractors.append(ExtractorConfig(name="face", venv_path=self.venv_face))
-            if include_pose:
-                extractors.append(ExtractorConfig(name="pose", venv_path=self.venv_pose))
-            if include_gesture and self.venv_gesture:
-                extractors.append(ExtractorConfig(name="gesture", venv_path=self.venv_gesture))
-            if include_quality:
-                extractors.append(ExtractorConfig(name="quality"))
-            if not extractors:
-                extractors.append(ExtractorConfig(name="dummy"))
-
-            config = PipelineConfig(
-                extractors=extractors,
-                fusion=FusionConfig(cooldown_sec=2.0),
-                clip_output_dir=self.temp_clip_dir,
-                fps=int(self.args.fps),
-            )
-
-        print("Extractors:")
-        for ext_config in config.extractors:
-            isolation = ext_config.effective_isolation.name
-            venv = ext_config.venv_path or "(current)"
-            print(f"  {ext_config.name}: {isolation} [{venv}]")
-
-        print(f"Fusion: {config.fusion.name} (cooldown={config.fusion.cooldown_sec}s)")
-
-        self.orchestrator = PipelineOrchestrator.from_config(config)
-
-    def _loop(self):
-        """Override loop to use orchestrator.run_stream()."""
-        import cv2
-
-        try:
-            for frame, observations, fusion_result in self.orchestrator.run_stream(
-                str(self.args.path), fps=int(self.args.fps)
-            ):
-                self.frame_count += 1
-
-                obs_dict = {obs.source: obs for obs in observations}
-
-                if fusion_result and fusion_result.should_trigger:
-                    self.trigger_count += 1
-                    event_time_sec = (
-                        fusion_result.trigger.event_time_ns / 1e9
-                        if fusion_result.trigger and fusion_result.trigger.event_time_ns
-                        else 0
-                    )
-                    print(
-                        f"\n  TRIGGER #{self.trigger_count}: {fusion_result.trigger_reason} "
-                        f"(score={fusion_result.trigger_score:.2f}, t={event_time_sec:.2f}s)"
-                    )
-
-                is_gate_open = False
-                in_cooldown = False
-                if fusion_result:
-                    in_cooldown = not fusion_result.should_trigger and fusion_result.trigger is None
-
-                # Frame scoring
-                obs_dict["face"] = obs_dict.get("face") or obs_dict.get("merged") or obs_dict.get("dummy")
-                score_result = score_frame(self.scorer, obs_dict)
-
-                debug_image = self.visualizer.create_debug_view(
-                    frame,
-                    face_obs=obs_dict.get("face"),
-                    pose_obs=obs_dict.get("pose"),
-                    gesture_obs=obs_dict.get("gesture"),
-                    quality_obs=obs_dict.get("quality"),
-                    fusion_result=fusion_result,
-                    is_gate_open=is_gate_open,
-                    in_cooldown=in_cooldown,
-                    backend_label="DISTRIBUTED",
-                    score_result=score_result,
-                )
-
-                if self.args.output and not self.writer_initialized:
-                    dh, dw = debug_image.shape[:2]
-                    self.writer = create_video_writer(self.args.output, self.args.fps, dw, dh)
-                    self.writer_initialized = True
-
-                if self.writer:
-                    self.writer.write(debug_image)
-
-                if self.show_window:
-                    cv2.imshow("Debug (Distributed)", debug_image)
-                    key = cv2.waitKey(1) & 0xFF
-                    if key == ord("q"):
-                        break
-                    elif key == ord(" "):
-                        cv2.waitKey(0)
-                    elif ord("1") <= key <= ord("8"):
-                        self._toggle_layer(key - ord("0"))
-
-                if self.frame_count % 100 == 0:
-                    print(f"\rFrame {self.frame_count}...", end="", flush=True)
-
-            print()
-
-        except KeyboardInterrupt:
-            print("\nInterrupted by user")
-        except Exception as e:
-            print(f"\nError during processing: {e}")
-            import traceback
-            traceback.print_exc()
-
-    def _process_frame(self, frame):
-        # Not used — _loop() is overridden
-        pass
-
-    def _teardown_pipeline(self):
-        import shutil
-        if self.temp_clip_dir:
-            try:
-                shutil.rmtree(self.temp_clip_dir)
-            except Exception:
-                pass
-
-    def _print_summary(self):
-        if self.orchestrator:
-            stats = self.orchestrator.get_stats()
-            print("-" * 50)
-            print(f"Debug session complete")
-            print(f"  Frames processed: {stats.frames_processed}")
-            print(f"  Triggers fired: {stats.triggers_fired}")
-            if stats.worker_stats:
-                print("\nWorker statistics:")
-                for name, ws in stats.worker_stats.items():
-                    if ws["frames"] > 0:
-                        avg_ms = ws["total_ms"] / ws["frames"]
-                        print(f"  {name}: {ws['frames']} frames, avg {avg_ms:.1f}ms, errors: {ws['errors']}")
-
-
-# ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
+def _get_extractor_origins() -> dict:
+    """Resolve extractor package origins from entry points.
+
+    Returns:
+        Dict mapping extractor name to origin label ("vpx" or "core").
+    """
+    try:
+        from visualpath.plugin import discover_extractors
+        ep_map = discover_extractors()
+    except ImportError:
+        return {}
+    origins = {}
+    for name, ep in ep_map.items():
+        module_path = ep.value.split(":")[0]
+        origins[name] = "vpx" if module_path.startswith("vpx.") else "core"
+    return origins
+
 
 def _print_pathway_summary(summary: dict) -> None:
     """Print Pathway pipeline session summary to console."""
     if not summary or summary.get("total_frames", 0) == 0:
         return
 
-    sep = "=" * 50
     print()
-    print(sep)
-    print("Pathway Pipeline Summary")
-    print(sep)
-    print(f"  Duration:      {summary['wall_time_sec']:.1f}s ({summary['total_frames']} frames)")
+    print(f"{BOLD}Summary{RESET}")
     eff_fps = summary["effective_fps"]
     target = summary.get("target_fps", 0)
     ratio_str = f" / {target:.0f}" if target > 0 else ""
-    print(f"  Effective FPS: {eff_fps:.1f}{ratio_str}")
-    print(f"  Triggers:      {summary['total_triggers']}")
+    parts = [
+        f"{summary['wall_time_sec']:.1f}s",
+        f"{summary['total_frames']} frames",
+        f"{eff_fps:.1f}{ratio_str} fps",
+        f"{summary['total_triggers']} triggers",
+    ]
+    print(f"  {DIM}{' · '.join(parts)}{RESET}")
 
     ext_stats = summary.get("extractor_stats", {})
+    fusion_avg = summary.get("fusion_avg_ms", 0)
+
     if ext_stats:
+        # Find bottleneck
+        slowest = max(ext_stats, key=lambda k: ext_stats[k].get("avg_ms", 0))
+        total_avg = sum(s.get("avg_ms", 0) for s in ext_stats.values()) + fusion_avg
+
+        # Table header
         print()
-        print("  Extractor Performance:")
-        print(f"  {'Extractor':<14} {'Avg ms':>8} {'P95 ms':>8} {'Max ms':>8} {'Errors':>8}")
-        print("  " + "-" * 48)
-        for name, stats in ext_stats.items():
+        print(f"  {DIM}{'Extractor':<18} {'Avg':>7} {'P95':>7} {'Max':>7} {'Errors':>7}{RESET}")
+
+        # Sort by avg_ms descending (bottleneck first)
+        sorted_stats = sorted(
+            ext_stats.items(),
+            key=lambda x: x[1].get("avg_ms", 0),
+            reverse=True,
+        )
+        for name, stats in sorted_stats:
             avg = stats.get("avg_ms", 0)
             p95 = stats.get("p95_ms", 0)
             mx = stats.get("max_ms", 0)
             errs = int(stats.get("errors", 0))
-            print(f"  {name:<14} {avg:>8.1f} {p95:>8.1f} {mx:>8.1f} {errs:>8}")
+            suffix = ""
+            if name == slowest and total_avg > 0:
+                pct = avg / total_avg * 100
+                suffix = f"  {DIM}{ITALIC}\u2190 bottleneck {pct:.0f}%{RESET}"
+            print(f"  {name:<18} {avg:>7.1f} {p95:>7.1f} {mx:>7.1f} {errs:>7}{suffix}")
 
-    fusion_avg = summary.get("fusion_avg_ms", 0)
-    if fusion_avg > 0:
-        print(f"  {'fusion':<14} {fusion_avg:>8.1f}")
+        if fusion_avg > 0:
+            print(f"  {'fusion':<18} {fusion_avg:>7.1f}")
 
-    if ext_stats:
-        slowest = max(ext_stats, key=lambda k: ext_stats[k].get("avg_ms", 0))
-        total_avg = sum(s.get("avg_ms", 0) for s in ext_stats.values()) + fusion_avg
-        if total_avg > 0:
-            pct = ext_stats[slowest].get("avg_ms", 0) / total_avg * 100
-            print(f"\n  Bottleneck: {slowest} ({pct:.0f}% of frame time)")
-
+    print()
     gate_pct = summary.get("gate_open_pct", 0)
-    print(f"  Gate: open {gate_pct:.0f}% of frames")
-    print(sep)
+    print(f"  {DIM}gate: open {gate_pct:.0f}% of frames{RESET}")
 
 
 def _build_report_data(

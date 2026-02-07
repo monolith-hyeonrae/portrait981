@@ -56,6 +56,8 @@ class FacemomentPipeline:
         fusion_config: Optional[Dict] = None,
         window_ns: int = 100_000_000,
         auto_inject_classifier: bool = True,
+        venv_paths: Optional[Dict[str, str]] = None,
+        distributed: bool = False,
     ):
         warnings.warn(
             "FacemomentPipeline is deprecated. Use facemoment.main.run() instead. "
@@ -67,6 +69,8 @@ class FacemomentPipeline:
         self._fusion_config = fusion_config or {}
         self._window_ns = window_ns
         self._auto_inject_classifier = auto_inject_classifier
+        self._venv_paths = venv_paths or {}
+        self._distributed = distributed
         self._extractors = []
         self._workers: Dict[str, object] = {}
         self._fusion = None
@@ -159,8 +163,33 @@ class FacemomentPipeline:
         # Detect CUDA conflicts
         isolated = _detect_cuda_conflicts(names)
 
+        # --distributed: force all vpx extractors into subprocess
+        if self._distributed:
+            from visualpath.plugin import discover_extractors
+            ep_map = discover_extractors()
+            for name in names:
+                if name in ep_map:
+                    module_path = ep_map[name].value.split(":")[0]
+                    if module_path.startswith("vpx."):
+                        isolated.add(name)
+
         extractors = []
         for name in names:
+            # 1) venv path specified → VenvWorker (regardless of CUDA conflict)
+            if name in self._venv_paths:
+                try:
+                    from visualpath.process.launcher import VenvWorker
+                    worker = VenvWorker(
+                        extractor_name=name,
+                        venv_path=self._venv_paths[name],
+                    )
+                    self._workers[name] = worker
+                    logger.info("Extractor '%s' will run in venv '%s'", name, self._venv_paths[name])
+                except Exception as exc:
+                    logger.warning("Failed to create VenvWorker for '%s': %s", name, exc)
+                continue
+
+            # 2) CUDA conflict → ProcessWorker
             if name in isolated:
                 # Create subprocess worker for isolated extractors
                 try:

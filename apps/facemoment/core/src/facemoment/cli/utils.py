@@ -1,39 +1,169 @@
-"""CLI utility functions and compatibility layer."""
+"""CLI utility functions and compatibility layer.
 
+Third-party log noise suppression
+==================================
+
+CLI 실행 시 서드파티 라이브러리의 C++ stdout/stderr 출력과 내부 로거의
+과도한 INFO 메시지를 억제한다. 모든 억제는 -v (verbose) 플래그로 해제 가능.
+
+조치 전체 목록:
+
+1. 환경변수 (suppress_thirdparty_noise)                          ← 이 파일
+   - QT_LOGGING_RULES, QT_QPA_PLATFORM  : Qt debug/wayland 경고
+   - OPENCV_LOG_LEVEL=ERROR              : OpenCV 내부 로그
+   - TF_CPP_MIN_LOG_LEVEL=2              : TF Lite C++ INFO 억제
+   - GLOG_minloglevel=2                  : abseil/MediaPipe C++ INFO 억제
+   - ORT_LOG_LEVEL=ERROR                 : ONNX Runtime C++ 로그
+
+2. Python warnings 필터 (suppress_thirdparty_noise)              ← 이 파일
+   - FutureWarning from skimage          : insightface face_align 사용
+   - FutureWarning from insightface      : 내부 deprecation
+
+3. fd-level stderr 필터 (StderrFilter)                           ← 이 파일
+   C++ 라이브러리는 fd 2에 직접 write하므로 os.dup2+pipe로 가로챈다.
+   - QFontDatabase: / Qt no longer ships fonts  : OpenCV Qt 폰트 경고
+   - XDG_SESSION_TYPE=wayland / qt.qpa.         : Qt 플랫폼 경고
+   - Created TensorFlow Lite                    : TF Lite delegate 메시지
+   - inference_feedback_manager                 : MediaPipe C++ warning
+   - landmark_projection_calculator             : MediaPipe C++ warning
+   - Applied providers:                         : ONNX Runtime provider 목록
+   - absl::InitializeLog()                      : abseil 시작 배너
+
+4. Python 로거 레벨 조정 (configure_log_levels)                  ← 이 파일
+   비-verbose 모드에서 INFO → WARNING 승격:
+   - vpx.*                                : extractor init/cleanup 메시지
+   - facemoment.main                      : CUDA conflict 등 내부 로그
+   - facemoment.moment_detector.extractors: classifier init/cleanup
+   - facemoment.pipeline.pathway_pipeline : debug header 중복
+   - visualpath.process.launcher          : worker 시작/handshake
+   - visualbase.sources.decoder           : NVDEC/VAAPI 선택 로그
+
+5. stdout 리다이렉트 (개별 백엔드 파일)
+   insightface/onnxruntime/hsemotion 초기화 시 print() 억제:
+   - vpx/face-detect/.../insightface.py   : FaceAnalysis()+prepare()
+     + ort.set_default_logger_severity(3)   (ONNX Python 로거 ERROR만)
+     + contextlib.redirect_stdout           (find model, set det-size, Applied providers)
+   - vpx/expression/.../hsemotion.py      : HSEmotionRecognizer()
+     + contextlib.redirect_stdout           (ONNX provider 출력)
+
+6. 로그 레벨 변경 (개별 소스 파일)
+   - visualbase/sources/decoder.py        : NVDEC/VAAPI 성공 로그 INFO→DEBUG
+   - vpx/face-detect/.../insightface.py   : Available ONNX providers INFO→DEBUG
+"""
+
+import logging
 import os
 import sys
+import warnings
+
+# ANSI formatting (disabled when stdout is not a terminal)
+_TTY = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+BOLD = "\033[1m" if _TTY else ""
+DIM = "\033[2m" if _TTY else ""
+ITALIC = "\033[3m" if _TTY else ""
+RESET = "\033[0m" if _TTY else ""
 
 
-def suppress_qt_warnings():
-    """Suppress Qt and OpenCV warnings for cleaner CLI output."""
+def suppress_thirdparty_noise():
+    """Suppress third-party C++/stdout/stderr noise for cleaner CLI output.
+
+    See module docstring for full suppression inventory.
+    """
+    # [1] 환경변수 — C++ 라이브러리 로그 레벨
     os.environ.setdefault("QT_LOGGING_RULES", "*.debug=false;qt.qpa.*=false")
     if os.environ.get("XDG_SESSION_TYPE") == "wayland":
         os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
     os.environ.setdefault("OPENCV_LOG_LEVEL", "ERROR")
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    os.environ.setdefault("GLOG_minloglevel", "2")
+    os.environ.setdefault("ORT_LOG_LEVEL", "ERROR")
+
+    # [2] Python warnings 필터
+    warnings.filterwarnings("ignore", category=FutureWarning, module="skimage")
+    warnings.filterwarnings("ignore", category=FutureWarning, module="insightface")
+
+
+# Backwards-compatible alias
+suppress_qt_warnings = suppress_thirdparty_noise
+
+
+def configure_log_levels():
+    """Adjust internal logger levels to reduce INFO noise.
+
+    Call after logging.basicConfig(). See module docstring [4] for full list.
+    Non-verbose 모드에서만 적용. -v 시 logging.DEBUG로 모든 메시지 노출.
+    """
+    for name in (
+        "vpx",
+        "facemoment.main",
+        "facemoment.moment_detector.extractors",
+        "facemoment.pipeline.pathway_pipeline",
+        "visualpath.process.launcher",
+        "visualbase.sources.decoder",
+    ):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 class StderrFilter:
-    """Filter stderr to suppress Qt/OpenCV warnings."""
+    """Filter native C++ stderr at the file descriptor level.
 
+    C++ 라이브러리는 Python sys.stderr를 우회하여 fd 2에 직접 write한다.
+    os.dup2 + pipe + reader thread로 fd 2를 가로채 패턴 매칭 필터링.
+    See module docstring [3] for pattern inventory.
+    """
+
+    # [3] fd-level stderr 필터 패턴
     SUPPRESS_PATTERNS = (
-        "QFontDatabase:",
+        "QFontDatabase:",                   # OpenCV Qt 폰트 경고
         "Note that Qt no longer ships fonts",
-        "XDG_SESSION_TYPE=wayland",
+        "XDG_SESSION_TYPE=wayland",         # Qt 플랫폼 경고
         "qt.qpa.",
+        "Created TensorFlow Lite",          # TF Lite delegate
+        "inference_feedback_manager",       # MediaPipe C++
+        "landmark_projection_calculator",   # MediaPipe C++
+        "Applied providers:",               # ONNX Runtime
+        "absl::InitializeLog()",            # abseil 시작 배너
     )
 
-    def __init__(self, stream):
-        self._stream = stream
+    def install(self):
+        """Replace fd 2 with a filtered pipe."""
+        import threading
 
-    def write(self, text):
-        if not any(p in text for p in self.SUPPRESS_PATTERNS):
-            self._stream.write(text)
+        try:
+            sys.stderr.flush()
+            self._original_fd = os.dup(2)
+            pipe_r, pipe_w = os.pipe()
+            os.dup2(pipe_w, 2)
+            os.close(pipe_w)
+            sys.stderr = open(2, "w", closefd=False)
+            threading.Thread(
+                target=self._reader, args=(pipe_r,), daemon=True
+            ).start()
+        except OSError:
+            pass  # fallback: no fd-level filtering (e.g. redirected stderr)
 
-    def flush(self):
-        self._stream.flush()
-
-    def __getattr__(self, name):
-        return getattr(self._stream, name)
+    def _reader(self, pipe_r):
+        """Read lines from pipe, suppress matching patterns, forward the rest."""
+        try:
+            buf = b""
+            while True:
+                chunk = os.read(pipe_r, 8192)
+                if not chunk:
+                    break
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    text = line.decode("utf-8", errors="replace")
+                    if not any(p in text for p in self.SUPPRESS_PATTERNS):
+                        os.write(self._original_fd, line + b"\n")
+            if buf:
+                text = buf.decode("utf-8", errors="replace")
+                if not any(p in text for p in self.SUPPRESS_PATTERNS):
+                    os.write(self._original_fd, buf)
+        except OSError:
+            pass
+        finally:
+            os.close(pipe_r)
 
 
 class VideoSourceInfo:

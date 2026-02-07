@@ -1,5 +1,7 @@
 """InsightFace SCRFD backend for face detection."""
 
+import contextlib
+import io
 from typing import List, Optional
 import logging
 
@@ -51,9 +53,12 @@ class InsightFaceSCRFD:
             from insightface.app import FaceAnalysis
             import onnxruntime as ort
 
+            # [5] stdout 억제 — see facemoment/cli/utils.py module docstring
+            ort.set_default_logger_severity(3)  # ONNX Python 로거 ERROR only
+
             # Check available ONNX providers
             available_providers = ort.get_available_providers()
-            logger.info(f"Available ONNX providers: {available_providers}")
+            logger.debug(f"Available ONNX providers: {available_providers}")
 
             # Parse device (insightface uses ctx_id: 0 for GPU, -1 for CPU)
             if device.startswith("cuda"):
@@ -72,11 +77,13 @@ class InsightFaceSCRFD:
 
             self._device = device
 
-            self._app = FaceAnalysis(
-                name=self._model_name,
-                providers=providers,
-            )
-            self._app.prepare(ctx_id=ctx_id, det_size=self._det_size)
+            # [5] redirect_stdout — find model, set det-size, Applied providers
+            with contextlib.redirect_stdout(io.StringIO()):
+                self._app = FaceAnalysis(
+                    name=self._model_name,
+                    providers=providers,
+                )
+                self._app.prepare(ctx_id=ctx_id, det_size=self._det_size)
             self._initialized = True
             logger.info(f"InsightFace SCRFD initialized (provider={self._actual_provider})")
 

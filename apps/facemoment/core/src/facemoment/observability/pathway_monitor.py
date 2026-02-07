@@ -176,6 +176,7 @@ class PathwayMonitor:
         name: str,
         obs: Any = None,
         sub_timings: Optional[Dict[str, float]] = None,
+        elapsed_ms: Optional[float] = None,
     ) -> None:
         """Finish timing an extractor.
 
@@ -183,8 +184,11 @@ class PathwayMonitor:
             name: Extractor name.
             obs: Observation result (None if extractor failed/produced nothing).
             sub_timings: Optional sub-component timings from the extractor.
+            elapsed_ms: Pre-computed elapsed time in ms. If provided, skips
+                begin_extractor timing. Used for parallel worker results.
         """
-        elapsed_ms = (time.perf_counter_ns() - self._extractor_start_ns) / 1_000_000
+        if elapsed_ms is None:
+            elapsed_ms = (time.perf_counter_ns() - self._extractor_start_ns) / 1_000_000
         self._extractor_timings[name] = elapsed_ms
 
         if obs is not None:

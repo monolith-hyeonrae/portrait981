@@ -140,7 +140,7 @@ def configure_capture(
         if check_nvdec_available():
             cap = _create_nvdec_capture(path)
             if cap.isOpened():
-                logger.info(f"Using NVDEC hardware decoder for {path}")
+                logger.debug(f"Using NVDEC hardware decoder for {path}")
                 return cap, "nvdec"
             cap.release()
         logger.debug("NVDEC not available, falling back to CPU")
@@ -150,7 +150,7 @@ def configure_capture(
         if check_vaapi_available():
             cap = _create_vaapi_capture(path)
             if cap.isOpened():
-                logger.info(f"Using VA-API hardware decoder for {path}")
+                logger.debug(f"Using VA-API hardware decoder for {path}")
                 return cap, "vaapi"
             cap.release()
         logger.debug("VA-API not available, falling back to CPU")

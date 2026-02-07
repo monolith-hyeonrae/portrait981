@@ -163,6 +163,7 @@ class SessionStartRecord(TraceRecord):
     extractors: List[str] = field(default_factory=list)
     config: Dict[str, Any] = field(default_factory=dict)
     trace_level: str = ""
+    isolation_config: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -208,6 +209,24 @@ class FrameExtractRecord(TraceRecord):
     processing_ms: float = 0.0
 
 
+# =============================================================================
+# Worker Records
+# =============================================================================
+
+
+@dataclass
+class WorkerStartRecord(TraceRecord):
+    """Record emitted when an isolated worker module starts."""
+    record_type: str = field(default="worker_start", init=False)
+    min_level: TraceLevel = field(default=TraceLevel.MINIMAL, repr=False)
+
+    module_name: str = ""
+    isolation_level: str = ""   # "INLINE", "THREAD", "PROCESS", "VENV"
+    pid: int = 0                # worker process PID
+    venv_path: str = ""         # venv path (empty = same venv)
+    ipc_address: str = ""       # ZMQ IPC address (empty if inline/thread)
+
+
 __all__ = [
     "TraceRecord",
     "TimingRecord",
@@ -217,4 +236,5 @@ __all__ = [
     "SessionStartRecord",
     "SessionEndRecord",
     "FrameExtractRecord",
+    "WorkerStartRecord",
 ]

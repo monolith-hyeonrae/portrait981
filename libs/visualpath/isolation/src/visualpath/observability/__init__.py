@@ -236,6 +236,8 @@ class ObservabilityHub:
 from visualpath.observability.records import TraceRecord
 from visualpath.observability.sinks import FileSink, ConsoleSink, MemorySink, NullSink
 
+from visualpath.observability.records import WorkerStartRecord
+
 __all__ = [
     # Core
     "TraceLevel",
@@ -243,6 +245,7 @@ __all__ = [
     "ObservabilityHub",
     # Records
     "TraceRecord",
+    "WorkerStartRecord",
     # Sinks
     "FileSink",
     "ConsoleSink",

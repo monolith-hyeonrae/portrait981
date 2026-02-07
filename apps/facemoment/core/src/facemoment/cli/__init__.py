@@ -4,11 +4,11 @@ import sys
 import argparse
 import logging
 
-from facemoment.cli.utils import suppress_qt_warnings, StderrFilter
+from facemoment.cli.utils import suppress_thirdparty_noise, configure_log_levels, StderrFilter
 
-# Apply Qt warning suppression early
-suppress_qt_warnings()
-sys.stderr = StderrFilter(sys.stderr)
+# Apply third-party noise suppression early
+suppress_thirdparty_noise()
+StderrFilter().install()
 
 
 def _add_distributed_args(parser):
@@ -167,6 +167,7 @@ Examples:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
+        configure_log_levels()
 
     from facemoment.cli import commands
 

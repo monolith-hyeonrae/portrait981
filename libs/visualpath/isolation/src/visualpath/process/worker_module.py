@@ -62,9 +62,24 @@ class WorkerModule(Module):
         return self._name
 
     def initialize(self) -> None:
-        """Start the worker."""
+        """Start the worker and emit observability record."""
         if not self._worker.is_running:
             self._worker.start()
+        # Emit observability record
+        try:
+            from visualpath.observability import ObservabilityHub
+            hub = ObservabilityHub.get_instance()
+            if hub.enabled:
+                from visualpath.observability.records import WorkerStartRecord
+                info = self._worker.worker_info
+                hub.emit(WorkerStartRecord(
+                    module_name=self._name,
+                    isolation_level=info.isolation_level,
+                    pid=info.pid,
+                    venv_path=info.venv_path,
+                ))
+        except Exception:
+            pass  # observability failure should not block execution
 
     def cleanup(self) -> None:
         """Stop the worker."""

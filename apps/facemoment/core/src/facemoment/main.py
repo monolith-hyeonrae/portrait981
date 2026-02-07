@@ -170,21 +170,16 @@ def build_graph(modules, *, isolation=None, on_trigger=None):
     return graph
 
 
-def _get_backend(backend, *, has_isolation):
+def _get_backend(backend):
     """Select the appropriate backend.
 
     Args:
         backend: Requested backend name.
-        has_isolation: Whether isolation is needed.
 
     Returns:
         ExecutionBackend instance.
     """
     from visualpath.runner import get_backend
-
-    if has_isolation:
-        # Isolation requires WorkerBackend to wrap modules
-        return get_backend("worker")
 
     return get_backend(backend)
 
@@ -238,7 +233,7 @@ def run(
     graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
 
     # 5. Select backend (WorkerBackend if isolation needed)
-    engine = _get_backend(backend, has_isolation=isolation_config is not None)
+    engine = _get_backend(backend)
 
     # 6. Open video source
     vb, source, stream = create_video_stream(str(video), fps=fps)

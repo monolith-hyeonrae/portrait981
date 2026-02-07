@@ -18,8 +18,61 @@ Plus facemoment-specific additions:
 - Fusion update with classifier observation
 """
 
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+
+def _run_workers_parallel(frame, workers, deps, observations, monitor):
+    """Run subprocess workers in parallel and collect results.
+
+    Workers are independent vpx extractors (no inter-dependencies).
+    Each worker.process() blocks on ZMQ I/O, so threading provides
+    true parallelism here.  Results populate *deps* and *observations*
+    so that subsequent inline extractors can use them.
+
+    PathwayMonitor is NOT thread-safe, so all monitor calls happen
+    in the main thread after futures complete.  Pre-computed
+    ``elapsed_ms`` from WorkerResult is passed to ``end_extractor``
+    to preserve accurate per-worker timing.
+    """
+    def _call(item):
+        name, worker = item
+        try:
+            return name, worker.process(frame, deps=deps)
+        except Exception as exc:
+            logger.warning("Worker '%s' raised: %s", name, exc)
+            return name, None
+
+    with ThreadPoolExecutor(max_workers=len(workers)) as pool:
+        futures = {pool.submit(_call, item): item[0] for item in workers.items()}
+        results = {}
+        for future in as_completed(futures):
+            name = futures[future]
+            results[name] = future.result()[1]
+
+    # Record results in main thread (monitor is not thread-safe)
+    for name in workers:
+        result = results.get(name)
+        if result is None:
+            if monitor is not None:
+                monitor.end_extractor(name, None, elapsed_ms=0.0)
+            continue
+
+        if result.error:
+            logger.warning("Worker '%s' error: %s", name, result.error)
+
+        if result.observation:
+            observations[name] = result.observation
+            deps[name] = result.observation
+
+        if monitor is not None:
+            monitor.end_extractor(
+                name, result.observation, elapsed_ms=result.timing_ms,
+            )
 
 
 @dataclass
@@ -69,7 +122,14 @@ def process_frame(
     deps: Dict[str, Any] = {}
     classifier_obs = None
 
-    # --- Inline extractors (deps accumulated) ---
+    # --- Phase 1: Subprocess workers (before inline, in parallel) ---
+    # Workers run first so their results are available as deps for
+    # inline extractors (e.g. face_classifier depends on face).
+    # Independent workers run in parallel via ThreadPoolExecutor.
+    if workers:
+        _run_workers_parallel(frame, workers, deps, observations, monitor)
+
+    # --- Phase 2: Inline extractors (deps accumulated) ---
     for ext in extractors:
         try:
             extractor_deps = None
@@ -104,21 +164,6 @@ def process_frame(
         except Exception:
             if monitor is not None:
                 monitor.end_extractor(ext.name, None)
-
-    # --- Subprocess workers ---
-    for name, worker in workers.items():
-        try:
-            if monitor is not None:
-                monitor.begin_extractor(name)
-            result = worker.process(frame, deps=deps)
-            if result.observation:
-                observations[name] = result.observation
-                deps[name] = result.observation
-            if monitor is not None:
-                monitor.end_extractor(name, result.observation)
-        except Exception:
-            if monitor is not None:
-                monitor.end_extractor(name, None)
 
     if classifier_obs and monitor is not None:
         monitor.record_classifier(classifier_obs)

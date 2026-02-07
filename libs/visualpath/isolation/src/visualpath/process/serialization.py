@@ -5,10 +5,44 @@ used by both the worker subprocess and the launcher (main process).
 """
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from visualpath.core.extractor import Observation
 
+
+# ---------------------------------------------------------------------------
+# AttrDict: transparent dict→attribute bridge for deserialized data
+# ---------------------------------------------------------------------------
+
+class _AttrDict(dict):
+    """Dict subclass providing attribute access for deserialized JSON data.
+
+    After ZMQ round-trip, dataclass objects (``FaceObservation``,
+    ``FaceDetectOutput``, …) become plain dicts.  Code written for
+    those objects uses attribute access (``face.bbox``, ``data.faces``).
+    Wrapping dicts in ``_AttrDict`` makes both ``d.key`` and ``d["key"]``
+    work transparently, so the rest of the codebase requires no changes.
+    """
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+
+def _wrap_value(value: Any) -> Any:
+    """Recursively wrap dicts as ``_AttrDict`` for attribute access."""
+    if isinstance(value, dict):
+        return _AttrDict({k: _wrap_value(v) for k, v in value.items()})
+    if isinstance(value, list):
+        return [_wrap_value(item) for item in value]
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Serialize helpers
+# ---------------------------------------------------------------------------
 
 def serialize_value(value: Any) -> Any:
     """Recursively serialize a value for JSON transmission.
@@ -58,7 +92,7 @@ def serialize_observation(obs: Optional[Any]) -> Optional[Dict[str, Any]]:
     """Serialize an Observation for ZMQ transmission.
 
     Works with any object that has the standard Observation attributes
-    (source, frame_id, t_ns, signals, metadata, timing, data).
+    (source, frame_id, t_ns, signals, metadata, timing, data, faces).
 
     Args:
         obs: Observation to serialize.
@@ -81,11 +115,20 @@ def serialize_observation(obs: Optional[Any]) -> Optional[Dict[str, Any]]:
     if hasattr(obs, "data") and obs.data is not None:
         result["data"] = serialize_value(obs.data)
 
+    # faces field (extractors-base Observation has this, core does not)
+    faces = getattr(obs, "faces", [])
+    if faces:
+        result["faces"] = serialize_value(faces)
+
     return result
 
 
 def deserialize_observation(data: Optional[Dict[str, Any]]) -> Optional[Observation]:
     """Deserialize an Observation from a ZMQ message dict.
+
+    Nested dicts are wrapped in ``_AttrDict`` so that attribute access
+    (``obs.data.faces``, ``face.bbox``) works the same as on the
+    original typed objects.
 
     Args:
         data: Dict containing serialized observation data.
@@ -96,15 +139,27 @@ def deserialize_observation(data: Optional[Dict[str, Any]]) -> Optional[Observat
     if data is None:
         return None
 
-    return Observation(
+    # Wrap data so nested attribute access works (e.g. obs.data.faces[0].bbox)
+    obs_data = data.get("data")
+    if obs_data is not None:
+        obs_data = _wrap_value(obs_data)
+
+    obs = Observation(
         source=data["source"],
         frame_id=data["frame_id"],
         t_ns=data["t_ns"],
         signals=data.get("signals", {}),
-        data=data.get("data"),
+        data=obs_data,
         metadata=data.get("metadata", {}),
         timing=data.get("timing"),
     )
+
+    # Attach faces (extractors-base Observation declares this field;
+    # core Observation does not, but Python allows extra attributes).
+    faces_raw = data.get("faces", [])
+    obs.faces = [_wrap_value(f) for f in faces_raw] if faces_raw else []
+
+    return obs
 
 
 __all__ = [
