@@ -4,7 +4,7 @@ from typing import List
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.base import Observation
+from visualpath.extractors.base import Observation
 
 
 def merge_observations(observations: List[Observation], frame: Frame) -> Observation:

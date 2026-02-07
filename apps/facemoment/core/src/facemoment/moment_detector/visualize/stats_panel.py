@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 from facemoment.moment_detector.scoring.frame_scorer import ScoreResult
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,

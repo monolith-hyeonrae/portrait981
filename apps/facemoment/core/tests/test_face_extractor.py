@@ -6,8 +6,8 @@ import pytest
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.face import FaceExtractor
-from facemoment.moment_detector.extractors.backends.base import (
+from vpx.face import FaceExtractor
+from visualpath.extractors.backends.base import (
     DetectedFace,
     FaceExpression,
 )

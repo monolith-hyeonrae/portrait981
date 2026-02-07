@@ -20,7 +20,7 @@ import numpy as np
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.base import Observation
+from visualpath.extractors.base import Observation
 from facemoment.moment_detector.scoring.frame_scorer import ScoreResult
 from facemoment.moment_detector.visualize.layout import LayoutManager
 from facemoment.moment_detector.visualize.video_panel import VideoPanel

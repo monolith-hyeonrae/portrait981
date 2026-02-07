@@ -2,7 +2,7 @@
 
 import pytest
 
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 from facemoment.moment_detector.fusion.highlight import HighlightFusion
 
 

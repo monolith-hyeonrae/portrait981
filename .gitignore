@@ -1,7 +1,38 @@
+# Python
 __pycache__/
 *.pyc
-.venv/
+*.pyo
 *.egg-info/
 dist/
 build/
+
+# venv
+.venv/
+venv-*/
+
+# uv
+uv.lock
+
+# Testing
 .pytest_cache/
+.coverage
+htmlcov/
+
+# ML models
+*.pt
+*.onnx
+*.pth
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs & outputs
+*.log
+clips/

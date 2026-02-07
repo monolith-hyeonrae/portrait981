@@ -69,7 +69,7 @@ def run_benchmark(args):
     # Benchmark Face Detection
     print("\n[Face Detection - InsightFace SCRFD]")
     try:
-        from facemoment.moment_detector.extractors.backends.face_backends import InsightFaceSCRFD
+        from vpx.face_detect.backends.insightface import InsightFaceSCRFD
 
         face_backend = InsightFaceSCRFD()
         face_backend.initialize(args.device)
@@ -100,7 +100,7 @@ def run_benchmark(args):
     expression_backend_name = args.expression_backend
     if expression_backend_name == "auto":
         try:
-            from facemoment.moment_detector.extractors.backends.face_backends import HSEmotionBackend
+            from vpx.expression.backends.hsemotion import HSEmotionBackend
             expression_backend_name = "hsemotion"
         except ImportError:
             expression_backend_name = "pyfeat"
@@ -108,7 +108,7 @@ def run_benchmark(args):
     if expression_backend_name == "hsemotion":
         print("\n[Expression - HSEmotion (fast)]")
         try:
-            from facemoment.moment_detector.extractors.backends.face_backends import HSEmotionBackend
+            from vpx.expression.backends.hsemotion import HSEmotionBackend
 
             expr_backend = HSEmotionBackend()
             expr_backend.initialize(args.device)
@@ -143,7 +143,7 @@ def run_benchmark(args):
     elif expression_backend_name == "pyfeat":
         print("\n[Expression - PyFeat (accurate, slow)]")
         try:
-            from facemoment.moment_detector.extractors.backends.face_backends import PyFeatBackend
+            from vpx.expression.backends.pyfeat import PyFeatBackend
 
             expr_backend = PyFeatBackend()
             expr_backend.initialize(args.device)
@@ -183,7 +183,7 @@ def run_benchmark(args):
     if not args.skip_pose:
         print("\n[Pose - YOLO-Pose]")
         try:
-            from facemoment.moment_detector.extractors.backends.pose_backends import YOLOPoseBackend
+            from vpx.pose.backends.yolo_pose import YOLOPoseBackend
 
             pose_backend = YOLOPoseBackend()
             pose_backend.initialize(args.device)

@@ -56,6 +56,7 @@ from facemoment.pipeline.pathway_pipeline import (
     PATHWAY_AVAILABLE,
 )
 from facemoment.pipeline.utils import merge_observations
+from facemoment.pipeline.frame_processor import process_frame, FrameResult
 
 # Re-export ClipResult for convenience
 from visualbase import ClipResult
@@ -74,6 +75,9 @@ __all__ = [
     "PATHWAY_AVAILABLE",
     # Utilities
     "merge_observations",
+    # Frame processing
+    "process_frame",
+    "FrameResult",
     # Results
     "ClipResult",
 ]

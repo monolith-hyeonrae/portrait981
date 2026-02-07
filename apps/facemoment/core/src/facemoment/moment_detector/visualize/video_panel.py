@@ -12,9 +12,9 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
-from facemoment.moment_detector.extractors.types import KeypointIndex, HandLandmarkIndex
-from facemoment.moment_detector.extractors.outputs import PoseOutput, GestureOutput
+from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.extractors.types import KeypointIndex, HandLandmarkIndex
+from visualpath.extractors.outputs import PoseOutput, GestureOutput
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,
     COLOR_WHITE_BGR,

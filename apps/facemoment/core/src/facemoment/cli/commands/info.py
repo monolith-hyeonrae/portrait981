@@ -83,7 +83,7 @@ def _check_face_extractor(verbose: bool = False):
     # Detection backend (InsightFace)
     try:
         import insightface
-        from facemoment.moment_detector.extractors.backends.face_backends import InsightFaceSCRFD
+        from vpx.face_detect.backends.insightface import InsightFaceSCRFD
         status["detection"] = f"InsightFace SCRFD (v{insightface.__version__})"
     except ImportError as e:
         status["detection"] = f"NOT AVAILABLE (insightface not installed)"
@@ -92,12 +92,12 @@ def _check_face_extractor(verbose: bool = False):
 
     # Expression backend (HSEmotion or PyFeat)
     try:
-        from facemoment.moment_detector.extractors.backends.face_backends import HSEmotionBackend
+        from vpx.expression.backends.hsemotion import HSEmotionBackend
         import hsemotion_onnx
         status["expression"] = "HSEmotion (fast)"
     except ImportError:
         try:
-            from facemoment.moment_detector.extractors.backends.face_backends import PyFeatBackend
+            from vpx.expression.backends.pyfeat import PyFeatBackend
             status["expression"] = "PyFeat (accurate, slow)"
         except ImportError:
             status["expression"] = "NOT AVAILABLE (install hsemotion-onnx or py-feat)"
@@ -113,7 +113,7 @@ def _check_pose_extractor(verbose: bool = False):
     """Check PoseExtractor availability."""
     try:
         import ultralytics
-        from facemoment.moment_detector.extractors.backends.pose_backends import YOLOPoseBackend
+        from vpx.pose.backends.yolo_pose import YOLOPoseBackend
         print(f"  [+] PoseExtractor")
         print(f"        Backend: YOLO-Pose (ultralytics v{ultralytics.__version__})")
     except ImportError:
@@ -324,7 +324,7 @@ def _build_facemoment_flow_graph():
     availability = {}
     availability["quality"] = True  # always available
     try:
-        from facemoment.moment_detector.extractors.face_detect import FaceDetectionExtractor  # noqa: F401
+        from vpx.face_detect import FaceDetectionExtractor  # noqa: F401
         availability["face_detect"] = True
     except ImportError:
         availability["face_detect"] = False
@@ -334,17 +334,17 @@ def _build_facemoment_flow_graph():
     except ImportError:
         availability["face_classifier"] = False
     try:
-        from facemoment.moment_detector.extractors.expression import ExpressionExtractor  # noqa: F401
+        from vpx.expression import ExpressionExtractor  # noqa: F401
         availability["expression"] = True
     except ImportError:
         availability["expression"] = False
     try:
-        from facemoment.moment_detector.extractors.pose import PoseExtractor  # noqa: F401
+        from vpx.pose import PoseExtractor  # noqa: F401
         availability["pose"] = True
     except ImportError:
         availability["pose"] = False
     try:
-        from facemoment.moment_detector.extractors.gesture import GestureExtractor  # noqa: F401
+        from vpx.gesture import GestureExtractor  # noqa: F401
         availability["gesture"] = True
     except ImportError:
         availability["gesture"] = False
@@ -489,27 +489,27 @@ def _print_processing_steps():
             return cls._STEPS
         # Try get_processing_steps (decorator-based)
         try:
-            from facemoment.moment_detector.extractors.base import get_processing_steps
+            from visualpath.extractors.base import get_processing_steps
             return get_processing_steps(cls)
         except Exception:
             return []
 
     # Composite Face extractor (legacy)
     try:
-        from facemoment.moment_detector.extractors.face import FaceExtractor
+        from vpx.face import FaceExtractor
         extractors_info.append(("FaceExtractor", "face", _get_steps(FaceExtractor)))
     except (ImportError, AttributeError) as e:
         extractors_info.append(("FaceExtractor", "face", f"NOT AVAILABLE: {e}"))
 
     # Split Face extractors
     try:
-        from facemoment.moment_detector.extractors.face_detect import FaceDetectionExtractor
+        from vpx.face_detect import FaceDetectionExtractor
         extractors_info.append(("FaceDetectionExtractor", "face_detect", _get_steps(FaceDetectionExtractor)))
     except (ImportError, AttributeError) as e:
         extractors_info.append(("FaceDetectionExtractor", "face_detect", f"NOT AVAILABLE: {e}"))
 
     try:
-        from facemoment.moment_detector.extractors.expression import ExpressionExtractor
+        from vpx.expression import ExpressionExtractor
         extractors_info.append(("ExpressionExtractor", "expression", _get_steps(ExpressionExtractor)))
     except (ImportError, AttributeError) as e:
         extractors_info.append(("ExpressionExtractor", "expression", f"NOT AVAILABLE: {e}"))
@@ -522,14 +522,14 @@ def _print_processing_steps():
 
     # PoseExtractor
     try:
-        from facemoment.moment_detector.extractors.pose import PoseExtractor
+        from vpx.pose import PoseExtractor
         extractors_info.append(("PoseExtractor", "pose", _get_steps(PoseExtractor)))
     except (ImportError, AttributeError) as e:
         extractors_info.append(("PoseExtractor", "pose", f"NOT AVAILABLE: {e}"))
 
     # GestureExtractor
     try:
-        from facemoment.moment_detector.extractors.gesture import GestureExtractor
+        from vpx.gesture import GestureExtractor
         extractors_info.append(("GestureExtractor", "gesture", _get_steps(GestureExtractor)))
     except (ImportError, AttributeError) as e:
         extractors_info.append(("GestureExtractor", "gesture", f"NOT AVAILABLE: {e}"))

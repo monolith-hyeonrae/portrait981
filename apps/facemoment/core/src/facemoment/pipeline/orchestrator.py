@@ -1,43 +1,18 @@
 """PipelineOrchestrator - A-B*-C-A distributed pipeline orchestration.
 
-This module provides the main orchestrator for running the facemoment
-pipeline in distributed mode, with each extractor potentially running
-in its own virtual environment.
+.. deprecated::
+    PipelineOrchestrator is deprecated. Use ``facemoment.main.run()`` instead,
+    which routes all execution through FlowGraph → Backend.execute().
 
-Architecture:
-    A: Video Input (visualbase)
-       │
-       │ Frame
-       ▼
-    B* Extractors (VenvWorker/InlineWorker)
-       ┌─────────┐  ┌─────────┐  ┌───────────┐
-       │  face   │  │  pose   │  │  gesture  │
-       │[venv-1] │  │[venv-2] │  │ [venv-3]  │
-       └────┬────┘  └────┬────┘  └─────┬─────┘
-            └────────────┴─────────────┘
-                         │ Observations
-                         ▼
-    C: HighlightFusion
-       - Gate check → Trigger detection
-       │
-       │ Trigger
-       ▼
-    A: Clip Output (visualbase.trigger())
+    Worker isolation is now handled transparently by WorkerBackend via
+    ModuleSpec.isolation configuration.
 
-Example:
-    >>> from facemoment.pipeline import PipelineOrchestrator, ExtractorConfig
-    >>>
-    >>> configs = [
-    ...     ExtractorConfig(name="face", venv_path="/opt/venv-face"),
-    ...     ExtractorConfig(name="pose", venv_path="/opt/venv-pose"),
-    ... ]
-    >>>
-    >>> orchestrator = PipelineOrchestrator(extractor_configs=configs)
-    >>> clips = orchestrator.run("video.mp4", fps=10)
+This module is retained for backwards compatibility.
 """
 
 import logging
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -54,23 +29,14 @@ from visualpath.plugin import create_extractor, load_fusion
 
 from facemoment.pipeline.config import ExtractorConfig, FusionConfig, PipelineConfig
 from facemoment.moment_detector.fusion.base import BaseFusion
-from facemoment.moment_detector.extractors.base import Observation
+from visualpath.extractors.base import Observation
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PipelineStats:
-    """Statistics from a pipeline run.
-
-    Attributes:
-        frames_processed: Total frames processed.
-        triggers_fired: Number of triggers fired.
-        clips_extracted: Number of clips successfully extracted.
-        processing_time_sec: Total processing time in seconds.
-        avg_frame_time_ms: Average time per frame in milliseconds.
-        worker_stats: Per-worker statistics.
-    """
+    """Statistics from a pipeline run."""
 
     frames_processed: int = 0
     triggers_fired: int = 0
@@ -87,30 +53,12 @@ class PipelineStats:
 class PipelineOrchestrator:
     """Orchestrates the A-B*-C-A distributed pipeline.
 
-    Manages the complete facemoment processing pipeline:
-    - A: Video input via visualbase
-    - B*: Multiple extractors running in parallel (potentially in separate venvs)
-    - C: Fusion module for trigger decisions
-    - A: Clip extraction via visualbase
+    .. deprecated::
+        Use ``facemoment.main.run()`` instead. All execution now goes through
+        FlowGraph → Backend.execute() with isolation handled by WorkerBackend.
 
-    Args:
-        extractor_configs: List of ExtractorConfig for each extractor.
-        fusion: Optional pre-configured fusion instance. If None, uses HighlightFusion.
-        fusion_config: Optional FusionConfig for creating fusion. Ignored if fusion is provided.
-        clip_output_dir: Directory for extracted clips.
-
-    Example:
-        >>> orchestrator = PipelineOrchestrator(
-        ...     extractor_configs=[
-        ...         ExtractorConfig(name="face", venv_path="/opt/venv-face"),
-        ...         ExtractorConfig(name="pose"),  # inline
-        ...     ],
-        ...     clip_output_dir=Path("./clips"),
-        ... )
-        >>>
-        >>> clips = orchestrator.run("video.mp4", fps=10)
-        >>> for clip in clips:
-        ...     print(f"Extracted: {clip.output_path}")
+    This class is retained for backwards compatibility. Internally it
+    delegates to the unified FlowGraph execution path where possible.
     """
 
     def __init__(
@@ -121,6 +69,13 @@ class PipelineOrchestrator:
         clip_output_dir: Optional[Path] = None,
         backend: str = "pathway",
     ):
+        warnings.warn(
+            "PipelineOrchestrator is deprecated. Use facemoment.main.run() instead. "
+            "All execution now goes through FlowGraph → Backend.execute().",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         if not extractor_configs:
             raise ValueError("At least one extractor config is required")
 
@@ -130,29 +85,19 @@ class PipelineOrchestrator:
         self._clip_output_dir = Path(clip_output_dir) if clip_output_dir else Path("./clips")
         self._backend = backend
 
-        # Workers (created on start)
         self._workers: Dict[str, BaseWorker] = {}
         self._vb: Optional[VisualBase] = None
         self._initialized = False
 
-        # Callbacks
         self._on_frame: Optional[Callable[[Frame], None]] = None
         self._on_observations: Optional[Callable[[List[Observation]], None]] = None
         self._on_trigger: Optional[Callable[[Trigger, Observation], None]] = None
 
-        # Stats
         self._stats = PipelineStats()
 
     @classmethod
     def from_config(cls, config: PipelineConfig) -> "PipelineOrchestrator":
-        """Create orchestrator from a PipelineConfig.
-
-        Args:
-            config: Complete pipeline configuration.
-
-        Returns:
-            Configured PipelineOrchestrator.
-        """
+        """Create orchestrator from a PipelineConfig."""
         return cls(
             extractor_configs=config.extractors,
             fusion_config=config.fusion,
@@ -165,7 +110,6 @@ class PipelineOrchestrator:
         if self._fusion is not None:
             return self._fusion
 
-        # Try to load from entry points
         try:
             FusionClass = load_fusion(self._fusion_config.name)
             kwargs = {
@@ -174,125 +118,11 @@ class PipelineOrchestrator:
             }
             return FusionClass(**kwargs)
         except (KeyError, ImportError):
-            # Fall back to importing directly
             from facemoment.moment_detector.fusion import HighlightFusion
             return HighlightFusion(
                 cooldown_sec=self._fusion_config.cooldown_sec,
                 **self._fusion_config.kwargs,
             )
-
-    def _create_workers(self) -> None:
-        """Create worker instances for each extractor."""
-        for config in self._extractor_configs:
-            isolation = config.effective_isolation
-
-            # For INLINE/THREAD, we need to load the extractor
-            extractor = None
-            if isolation in (IsolationLevel.INLINE, IsolationLevel.THREAD):
-                try:
-                    extractor = create_extractor(config.name, **config.kwargs)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to create extractor '{config.name}': {e}. "
-                        f"Skipping this extractor."
-                    )
-                    continue
-
-            worker = WorkerLauncher.create(
-                level=isolation,
-                extractor=extractor,
-                venv_path=config.venv_path,
-                extractor_name=config.name,
-            )
-
-            self._workers[config.name] = worker
-            logger.info(
-                f"Created worker for '{config.name}' with isolation={isolation.name}"
-            )
-
-    def _start_workers(self) -> None:
-        """Start all worker instances.
-
-        Workers that fail to start are removed from the workers dict.
-        Raises if no workers start successfully.
-        """
-        failed_workers = []
-
-        for name, worker in list(self._workers.items()):
-            try:
-                worker.start()
-                logger.info(f"Started worker: {name}")
-            except Exception as e:
-                logger.warning(f"Failed to start worker '{name}': {e}. Skipping.")
-                failed_workers.append(name)
-
-        # Remove failed workers
-        for name in failed_workers:
-            del self._workers[name]
-
-        if not self._workers:
-            raise RuntimeError(
-                f"No workers started successfully. Failed workers: {failed_workers}"
-            )
-
-    def _stop_workers(self) -> None:
-        """Stop all worker instances."""
-        for name, worker in self._workers.items():
-            try:
-                worker.stop()
-                logger.info(f"Stopped worker: {name}")
-            except Exception as e:
-                logger.warning(f"Error stopping worker '{name}': {e}")
-
-    def _process_frame(self, frame: Frame) -> List[Observation]:
-        """Process a frame through all workers.
-
-        Accumulates deps from each worker's result and passes them to
-        subsequent workers that declare dependencies via extractor.depends.
-
-        Args:
-            frame: Frame to process.
-
-        Returns:
-            List of observations from all workers.
-        """
-        observations = []
-        deps: Dict[str, Observation] = {}
-
-        for name, worker in self._workers.items():
-            result = worker.process(frame, deps=deps)
-
-            # Track timing stats
-            if name not in self._stats.worker_stats:
-                self._stats.worker_stats[name] = {
-                    "frames": 0,
-                    "total_ms": 0.0,
-                    "errors": 0,
-                }
-
-            stats = self._stats.worker_stats[name]
-            stats["frames"] += 1
-            stats["total_ms"] += result.timing_ms
-
-            if result.error:
-                stats["errors"] += 1
-                logger.warning(f"Worker '{name}' error: {result.error}")
-            elif result.observation is not None:
-                observations.append(result.observation)
-                deps[name] = result.observation
-
-        return observations
-
-    def _merge_observations(
-        self, observations: List[Observation], frame: Frame
-    ) -> Observation:
-        """Merge multiple observations into a single observation for fusion.
-
-        Delegates to the shared merge_observations utility which also
-        propagates main_face_id from face_classifier to merged signals.
-        """
-        from facemoment.pipeline.utils import merge_observations
-        return merge_observations(observations, frame)
 
     def run(
         self,
@@ -302,224 +132,92 @@ class PipelineOrchestrator:
     ) -> List[ClipResult]:
         """Run the complete pipeline on a video file.
 
-        Uses Pathway backend if configured and available, otherwise falls back
-        to worker-based execution.
-
-        Args:
-            video_path: Path to the input video file.
-            fps: Analysis frame rate (default: 10).
-            resolution: Analysis resolution (default: original).
-
-        Returns:
-            List of ClipResult for each extracted clip.
-
-        Example:
-            >>> clips = orchestrator.run("video.mp4", fps=10)
-            >>> print(f"Extracted {len(clips)} clips")
+        Delegates to the unified FlowGraph → Backend execution path.
         """
-        # Check if we should use Pathway backend
-        from facemoment.pipeline.pathway_pipeline import PATHWAY_AVAILABLE
-
-        if self._backend == "pathway":
-            if PATHWAY_AVAILABLE:
-                return self._run_pathway(video_path, fps, resolution)
-            else:
-                logger.info("Pathway not available, falling back to worker-based execution")
-
-        # Fall back to worker-based execution
-        return self._run_workers(video_path, fps, resolution)
-
-    def _run_pathway(
-        self,
-        video_path: str,
-        fps: int = 10,
-        resolution: Optional[Tuple[int, int]] = None,
-    ) -> List[ClipResult]:
-        """Run pipeline using Pathway backend.
-
-        Args:
-            video_path: Path to the input video file.
-            fps: Analysis frame rate.
-            resolution: Analysis resolution.
-
-        Returns:
-            List of ClipResult for each extracted clip.
-        """
-        from facemoment.pipeline.pathway_pipeline import FacemomentPipeline
+        from facemoment.main import (
+            build_modules,
+            build_graph,
+            _build_isolation_config,
+            _get_backend,
+        )
+        from visualpath.core.isolation import IsolationConfig, IsolationLevel as IL
 
         clips: List[ClipResult] = []
         start_time = time.time()
-
-        # Reset stats
         self._stats = PipelineStats()
 
-        # Create pipeline
+        # Build modules from extractor configs
         extractor_names = [c.name for c in self._extractor_configs]
-        pipeline = FacemomentPipeline(
-            extractors=extractor_names,
-            fusion_config={
-                "cooldown_sec": self._fusion_config.cooldown_sec,
-                "main_only": True,
-                **self._fusion_config.kwargs,
-            },
+        modules = build_modules(
+            extractor_names,
+            cooldown=self._fusion_config.cooldown_sec,
         )
 
+        # Build isolation config from extractor configs
+        overrides = {}
+        venv_paths = {}
+        for config in self._extractor_configs:
+            if config.effective_isolation > IL.INLINE:
+                overrides[config.name] = config.effective_isolation
+            if config.venv_path:
+                venv_paths[config.name] = config.venv_path
+
+        isolation_config = None
+        if overrides:
+            isolation_config = IsolationConfig(
+                default_level=IL.INLINE,
+                overrides=overrides,
+                venv_paths=venv_paths,
+            )
+
+        # If no explicit isolation, fall back to CUDA conflict detection
+        if isolation_config is None:
+            isolation_config = _build_isolation_config(extractor_names)
+
+        # Build graph
+        triggers = []
+
+        def on_trigger_internal(data):
+            for result in data.results:
+                if result.should_trigger and result.trigger:
+                    trigger = result.trigger
+                    triggers.append(trigger)
+                    self._stats.triggers_fired += 1
+
+                    if self._on_trigger:
+                        self._on_trigger(trigger, result)
+
+        graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger_internal)
+
+        # Select backend
+        engine = _get_backend(
+            self._backend,
+            has_isolation=isolation_config is not None,
+        )
+
+        # Open video and execute
+        self._clip_output_dir.mkdir(parents=True, exist_ok=True)
+        self._vb = VisualBase(clip_output_dir=self._clip_output_dir)
+        self._vb.connect(FileSource(video_path))
+
         try:
-            # Connect to video source
-            self._clip_output_dir.mkdir(parents=True, exist_ok=True)
-            self._vb = VisualBase(clip_output_dir=self._clip_output_dir)
-            self._vb.connect(FileSource(video_path))
+            frames = self._vb.get_stream(fps=fps, resolution=resolution)
+            pipeline_result = engine.execute(frames, graph)
+            self._stats.frames_processed = pipeline_result.frame_count
 
-            # Collect frames
-            frames = []
-            for frame in self._vb.get_stream(fps=fps, resolution=resolution):
-                frames.append(frame)
-                if self._on_frame:
-                    self._on_frame(frame)
-            self._stats.frames_processed = len(frames)
-
-            # Track triggers
-            triggers = []
-
-            def on_trigger(trigger):
-                triggers.append(trigger)
-                self._stats.triggers_fired += 1
-
-                # Callback
-                if self._on_trigger:
-                    # Create Observation with trigger info for callback
-                    obs = Observation(
-                        source="pathway",
-                        frame_id=0,
-                        t_ns=trigger.event_time_ns,
-                        signals={
-                            "should_trigger": True,
-                            "trigger_score": trigger.score,
-                            "trigger_reason": trigger.label,
-                        },
-                        metadata={"trigger": trigger},
-                    )
-                    self._on_trigger(trigger, obs)
-
-                # Extract clip
+            # Extract clips from triggers
+            for trigger in triggers:
                 clip_result = self._vb.trigger(trigger)
                 clips.append(clip_result)
-
                 if clip_result.success:
                     self._stats.clips_extracted += 1
 
-            # Run pipeline
-            pipeline.run(frames, on_trigger=on_trigger)
-
             self._vb.disconnect()
-
-        except ImportError as e:
-            # Pathway not installed, fall back to workers
-            logger.info(f"Pathway not available: {e}, falling back to worker-based execution")
+        except Exception:
             if self._vb:
                 self._vb.disconnect()
-            return self._run_workers(video_path, fps, resolution)
-        except Exception as e:
-            # Pathway execution failed (schema issues, etc.), fall back to workers
-            logger.warning(f"Pathway execution failed: {e}, falling back to worker-based execution")
-            if self._vb:
-                self._vb.disconnect()
-            return self._run_workers(video_path, fps, resolution)
+            raise
 
-        # Calculate final stats
-        elapsed = time.time() - start_time
-        self._stats.processing_time_sec = elapsed
-        if self._stats.frames_processed > 0:
-            self._stats.avg_frame_time_ms = (elapsed * 1000) / self._stats.frames_processed
-
-        return clips
-
-    def _run_workers(
-        self,
-        video_path: str,
-        fps: int = 10,
-        resolution: Optional[Tuple[int, int]] = None,
-    ) -> List[ClipResult]:
-        """Run pipeline using worker-based execution.
-
-        Args:
-            video_path: Path to the input video file.
-            fps: Analysis frame rate.
-            resolution: Analysis resolution.
-
-        Returns:
-            List of ClipResult for each extracted clip.
-        """
-        clips: List[ClipResult] = []
-        start_time = time.time()
-
-        # Reset stats
-        self._stats = PipelineStats()
-
-        # Create fusion
-        fusion = self._create_fusion()
-        fusion.reset()
-
-        # Create and start workers
-        self._create_workers()
-        self._start_workers()
-        self._initialized = True
-
-        try:
-            # Connect to video source
-            self._clip_output_dir.mkdir(parents=True, exist_ok=True)
-            self._vb = VisualBase(clip_output_dir=self._clip_output_dir)
-            self._vb.connect(FileSource(video_path))
-
-            # Process frames
-            for frame in self._vb.get_stream(fps=fps, resolution=resolution):
-                self._stats.frames_processed += 1
-
-                # Callback
-                if self._on_frame:
-                    self._on_frame(frame)
-
-                # Process through all workers
-                observations = self._process_frame(frame)
-
-                # Callback
-                if self._on_observations:
-                    self._on_observations(observations)
-
-                # Skip if no observations
-                if not observations:
-                    continue
-
-                # Merge observations for fusion
-                merged_obs = self._merge_observations(observations, frame)
-
-                # Feed to fusion
-                result = fusion.update(merged_obs)
-
-                if result.should_trigger and result.trigger is not None:
-                    self._stats.triggers_fired += 1
-
-                    # Callback
-                    if self._on_trigger:
-                        self._on_trigger(result.trigger, result)
-
-                    # Extract clip
-                    clip_result = self._vb.trigger(result.trigger)
-                    clips.append(clip_result)
-
-                    if clip_result.success:
-                        self._stats.clips_extracted += 1
-
-            # Disconnect from video source
-            self._vb.disconnect()
-
-        finally:
-            # Stop workers
-            self._stop_workers()
-            self._workers.clear()
-            self._initialized = False
-
-        # Calculate final stats
         elapsed = time.time() - start_time
         self._stats.processing_time_sec = elapsed
         if self._stats.frames_processed > 0:
@@ -533,117 +231,45 @@ class PipelineOrchestrator:
         fps: int = 10,
         resolution: Optional[Tuple[int, int]] = None,
     ) -> Iterator[Tuple[Frame, List[Observation], Optional[Observation]]]:
-        """Run pipeline as a stream, yielding results for each frame.
+        """Run pipeline as a stream.
 
-        Useful for real-time visualization and debugging.
-
-        Args:
-            video_path: Path to the input video file.
-            fps: Analysis frame rate.
-            resolution: Analysis resolution.
-
-        Yields:
-            Tuple of (frame, observations, fusion_result).
-            fusion_result is None if no trigger evaluation was performed.
-
-        Example:
-            >>> for frame, observations, result in orchestrator.run_stream("video.mp4"):
-            ...     if result and result.should_trigger:
-            ...         print(f"Trigger at frame {frame.frame_id}!")
+        .. deprecated::
+            Streaming mode is not supported in the unified path.
+            Use ``facemoment.main.run()`` for batch processing.
         """
-        # Reset stats
-        self._stats = PipelineStats()
-
-        # Create fusion
-        fusion = self._create_fusion()
-        fusion.reset()
-
-        # Create and start workers
-        self._create_workers()
-        self._start_workers()
-        self._initialized = True
-
-        try:
-            # Connect to video source
-            self._clip_output_dir.mkdir(parents=True, exist_ok=True)
-            self._vb = VisualBase(clip_output_dir=self._clip_output_dir)
-            self._vb.connect(FileSource(video_path))
-
-            for frame in self._vb.get_stream(fps=fps, resolution=resolution):
-                self._stats.frames_processed += 1
-
-                # Process through all workers
-                observations = self._process_frame(frame)
-
-                fusion_result = None
-                if observations:
-                    # Merge and feed to fusion
-                    merged_obs = self._merge_observations(observations, frame)
-                    fusion_result = fusion.update(merged_obs)
-
-                    if fusion_result.should_trigger and fusion_result.trigger:
-                        self._stats.triggers_fired += 1
-                        # Extract clip in background
-                        clip_result = self._vb.trigger(fusion_result.trigger)
-                        if clip_result.success:
-                            self._stats.clips_extracted += 1
-
-                yield frame, observations, fusion_result
-
-            self._vb.disconnect()
-
-        finally:
-            self._stop_workers()
-            self._workers.clear()
-            self._initialized = False
+        warnings.warn(
+            "PipelineOrchestrator.run_stream() is deprecated and may not "
+            "work correctly. Use facemoment.main.run() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Yield nothing — streaming not supported via FlowGraph path
+        return iter([])
 
     def set_on_frame(self, callback: Callable[[Frame], None]) -> None:
-        """Set callback for each processed frame.
-
-        Args:
-            callback: Function called with each frame.
-        """
         self._on_frame = callback
 
     def set_on_observations(
         self, callback: Callable[[List[Observation]], None]
     ) -> None:
-        """Set callback for observations from each frame.
-
-        Args:
-            callback: Function called with list of observations.
-        """
         self._on_observations = callback
 
     def set_on_trigger(
         self, callback: Callable[[Trigger, Observation], None]
     ) -> None:
-        """Set callback for each trigger event.
-
-        Args:
-            callback: Function called with trigger and observation result.
-        """
         self._on_trigger = callback
 
     def get_stats(self) -> PipelineStats:
-        """Get processing statistics.
-
-        Returns:
-            PipelineStats with processing metrics.
-        """
         return self._stats
 
     @property
     def is_initialized(self) -> bool:
-        """Check if the orchestrator is initialized."""
         return self._initialized
 
     @property
     def worker_names(self) -> List[str]:
-        """Get names of active workers."""
         return list(self._workers.keys())
 
     @property
     def clip_output_dir(self) -> Path:
-        """Get the clip output directory."""
         return self._clip_output_dir

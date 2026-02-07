@@ -1,0 +1,23 @@
+[project]
+name = "vpx-face"
+version = "0.1.0"
+description = "Composite face extractor (detect + expression)"
+requires-python = ">=3.10"
+dependencies = [
+    "vpx-face-detect",
+    "vpx-expression",
+]
+
+[project.entry-points."visualpath.extractors"]
+face = "vpx.face:FaceExtractor"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vpx"]
+
+[tool.uv.sources]
+vpx-face-detect = { workspace = true }
+vpx-expression = { workspace = true }

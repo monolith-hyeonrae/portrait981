@@ -10,6 +10,7 @@ from visualpath.flow.node import FlowNode
 from visualpath.flow.specs import ModuleSpec, NodeSpec
 
 if TYPE_CHECKING:
+    from visualpath.core.isolation import IsolationConfig
     from visualpath.core.module import Module
 
 
@@ -29,6 +30,7 @@ class PathNode(FlowNode):
         modules: Optional[List["Module"]] = None,
         parallel: bool = False,
         join_window_ns: int = 100_000_000,
+        isolation: Optional["IsolationConfig"] = None,
     ):
         """Initialize a PathNode.
 
@@ -37,6 +39,7 @@ class PathNode(FlowNode):
             modules: List of unified modules (analyzers and triggers).
             parallel: Whether independent modules can run in parallel.
             join_window_ns: Window for auto-joining parallel branches.
+            isolation: Optional isolation configuration for module execution.
 
         Raises:
             ValueError: If neither 'name' nor 'modules' is provided.
@@ -55,6 +58,7 @@ class PathNode(FlowNode):
 
         self._parallel = parallel
         self._join_window_ns = join_window_ns
+        self._isolation = isolation
 
     @property
     def name(self) -> str:
@@ -72,6 +76,7 @@ class PathNode(FlowNode):
             modules=self._modules,
             parallel=self._parallel,
             join_window_ns=self._join_window_ns,
+            isolation=self._isolation,
         )
 
     def initialize(self) -> None:

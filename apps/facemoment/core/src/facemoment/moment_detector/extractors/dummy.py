@@ -5,7 +5,7 @@ from typing import Optional
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.base import (
+from visualpath.extractors.base import (
     Module,
     Observation,
     FaceObservation,

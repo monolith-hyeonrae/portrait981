@@ -17,16 +17,17 @@ resolution-markers = [
 [manifest]
 members = [
     "facemoment",
-    "facemoment-expression",
-    "facemoment-face",
-    "facemoment-face-detect",
-    "facemoment-gesture",
-    "facemoment-pose",
     "visualbase",
     "visualpath",
     "visualpath-cli",
+    "visualpath-extractors-base",
     "visualpath-isolation",
     "visualpath-pathway",
+    "vpx-expression",
+    "vpx-face",
+    "vpx-face-detect",
+    "vpx-gesture",
+    "vpx-pose",
 ]
 overrides = [{ name = "onnxruntime", marker = "sys_platform == 'never'" }]
 
@@ -1070,6 +1071,7 @@ dependencies = [
     { name = "opencv-python" },
     { name = "visualbase" },
     { name = "visualpath", extra = ["isolation"] },
+    { name = "visualpath-extractors-base" },
 ]
 
 [package.optional-dependencies]
@@ -1077,38 +1079,33 @@ dev = [
     { name = "pytest" },
 ]
 expression = [
-    { name = "facemoment-expression" },
+    { name = "vpx-expression" },
 ]
 face = [
-    { name = "facemoment-face" },
+    { name = "vpx-face" },
 ]
 face-detect = [
-    { name = "facemoment-face-detect" },
+    { name = "vpx-face-detect" },
 ]
 gesture = [
-    { name = "facemoment-gesture" },
+    { name = "vpx-gesture" },
 ]
 local = [
-    { name = "facemoment-face" },
-    { name = "facemoment-gesture" },
-    { name = "facemoment-pose" },
     { name = "pathway" },
     { name = "pyqt6" },
     { name = "pyzmq" },
     { name = "supervision" },
+    { name = "vpx-face" },
+    { name = "vpx-gesture" },
+    { name = "vpx-pose" },
 ]
 pose = [
-    { name = "facemoment-pose" },
+    { name = "vpx-pose" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "facemoment", extras = ["face", "pose", "gesture"], marker = "extra == 'local'", editable = "apps/facemoment/core" },
-    { name = "facemoment-expression", marker = "extra == 'expression'", editable = "apps/facemoment/extractors/expression" },
-    { name = "facemoment-face", marker = "extra == 'face'", editable = "apps/facemoment/extractors/face" },
-    { name = "facemoment-face-detect", marker = "extra == 'face-detect'", editable = "apps/facemoment/extractors/face-detect" },
-    { name = "facemoment-gesture", marker = "extra == 'gesture'", editable = "apps/facemoment/extractors/gesture" },
-    { name = "facemoment-pose", marker = "extra == 'pose'", editable = "apps/facemoment/extractors/pose" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
     { name = "pathway", marker = "extra == 'local'", specifier = ">=0.8.0" },
@@ -1118,87 +1115,14 @@ requires-dist = [
     { name = "supervision", marker = "extra == 'local'", specifier = ">=0.19.0" },
     { name = "visualbase", editable = "libs/visualbase" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
+    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+    { name = "vpx-expression", marker = "extra == 'expression'", editable = "libs/vpx/expression" },
+    { name = "vpx-face", marker = "extra == 'face'", editable = "libs/vpx/face" },
+    { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/face-detect" },
+    { name = "vpx-gesture", marker = "extra == 'gesture'", editable = "libs/vpx/gesture" },
+    { name = "vpx-pose", marker = "extra == 'pose'", editable = "libs/vpx/pose" },
 ]
 provides-extras = ["face-detect", "expression", "face", "pose", "gesture", "local", "dev"]
-
-[[package]]
-name = "facemoment-expression"
-version = "0.1.0"
-source = { editable = "apps/facemoment/extractors/expression" }
-dependencies = [
-    { name = "facemoment" },
-    { name = "hsemotion-onnx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "facemoment", editable = "apps/facemoment/core" },
-    { name = "hsemotion-onnx", specifier = ">=0.3" },
-]
-
-[[package]]
-name = "facemoment-face"
-version = "0.1.0"
-source = { editable = "apps/facemoment/extractors/face" }
-dependencies = [
-    { name = "facemoment-expression" },
-    { name = "facemoment-face-detect" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "facemoment-expression", editable = "apps/facemoment/extractors/expression" },
-    { name = "facemoment-face-detect", editable = "apps/facemoment/extractors/face-detect" },
-]
-
-[[package]]
-name = "facemoment-face-detect"
-version = "0.1.0"
-source = { editable = "apps/facemoment/extractors/face-detect" }
-dependencies = [
-    { name = "facemoment" },
-    { name = "insightface" },
-    { name = "ml-dtypes" },
-    { name = "onnxruntime-gpu" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "facemoment", editable = "apps/facemoment/core" },
-    { name = "insightface", specifier = ">=0.7.3" },
-    { name = "ml-dtypes", specifier = ">=0.5.0" },
-    { name = "onnxruntime-gpu", specifier = ">=1.16.0" },
-]
-
-[[package]]
-name = "facemoment-gesture"
-version = "0.1.0"
-source = { editable = "apps/facemoment/extractors/gesture" }
-dependencies = [
-    { name = "facemoment" },
-    { name = "mediapipe" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "facemoment", editable = "apps/facemoment/core" },
-    { name = "mediapipe", specifier = ">=0.10.32" },
-]
-
-[[package]]
-name = "facemoment-pose"
-version = "0.1.0"
-source = { editable = "apps/facemoment/extractors/pose" }
-dependencies = [
-    { name = "facemoment" },
-    { name = "ultralytics" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "facemoment", editable = "apps/facemoment/core" },
-    { name = "ultralytics", specifier = ">=8.0.0" },
-]
 
 [[package]]
 name = "fastapi"
@@ -3041,12 +2965,12 @@ name = "onnxruntime"
 version = "1.24.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "flatbuffers" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "packaging" },
-    { name = "protobuf" },
-    { name = "sympy" },
+    { name = "flatbuffers", marker = "sys_platform != 'win32'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' and sys_platform != 'win32'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' and sys_platform != 'win32'" },
+    { name = "packaging", marker = "sys_platform != 'win32'" },
+    { name = "protobuf", marker = "sys_platform != 'win32'" },
+    { name = "sympy", marker = "sys_platform != 'win32'" },
 ]
 
 [[package]]
@@ -5710,6 +5634,22 @@ requires-dist = [
 ]
 
 [[package]]
+name = "visualpath-extractors-base"
+version = "0.1.0"
+source = { editable = "libs/visualpath/extractors/base" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "visualpath" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "visualpath", editable = "libs/visualpath/core" },
+]
+
+[[package]]
 name = "visualpath-isolation"
 version = "0.1.0"
 source = { editable = "libs/visualpath/isolation" }
@@ -5754,6 +5694,85 @@ requires-dist = [
     { name = "pathway", specifier = ">=0.8.0" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
+]
+
+[[package]]
+name = "vpx-expression"
+version = "0.1.0"
+source = { editable = "libs/vpx/expression" }
+dependencies = [
+    { name = "hsemotion-onnx" },
+    { name = "visualpath-extractors-base" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hsemotion-onnx", specifier = ">=0.3" },
+    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+]
+
+[[package]]
+name = "vpx-face"
+version = "0.1.0"
+source = { editable = "libs/vpx/face" }
+dependencies = [
+    { name = "vpx-expression" },
+    { name = "vpx-face-detect" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "vpx-expression", editable = "libs/vpx/expression" },
+    { name = "vpx-face-detect", editable = "libs/vpx/face-detect" },
+]
+
+[[package]]
+name = "vpx-face-detect"
+version = "0.1.0"
+source = { editable = "libs/vpx/face-detect" }
+dependencies = [
+    { name = "insightface" },
+    { name = "ml-dtypes" },
+    { name = "onnxruntime-gpu" },
+    { name = "visualpath-extractors-base" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "insightface", specifier = ">=0.7.3" },
+    { name = "ml-dtypes", specifier = ">=0.5.0" },
+    { name = "onnxruntime-gpu", specifier = ">=1.16.0" },
+    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+]
+
+[[package]]
+name = "vpx-gesture"
+version = "0.1.0"
+source = { editable = "libs/vpx/gesture" }
+dependencies = [
+    { name = "mediapipe" },
+    { name = "visualpath-extractors-base" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mediapipe", specifier = ">=0.10.32" },
+    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+]
+
+[[package]]
+name = "vpx-pose"
+version = "0.1.0"
+source = { editable = "libs/vpx/pose" }
+dependencies = [
+    { name = "ultralytics" },
+    { name = "visualpath-extractors-base" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ultralytics", specifier = ">=8.0.0" },
+    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
 ]
 
 [[package]]

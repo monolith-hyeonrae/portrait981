@@ -3,17 +3,31 @@
     >>> import facemoment as fm
     >>> result = fm.run("video.mp4")
     >>> print(f"Found {len(result.triggers)} highlights")
+
+All execution goes through a single path:
+    fm.run() → build_graph(isolation_config) → Backend.execute()
 """
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence, Union
+from typing import Callable, Dict, List, Optional, Sequence, Set, Union
 
 from visualbase import Trigger
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_FPS = 10
 DEFAULT_COOLDOWN = 2.0
 DEFAULT_BACKEND = 'pathway'
+
+# CUDA conflict groups: extractors sharing the same CUDA runtime binding.
+# If extractors from 2+ groups are active, the minority group must run in
+# a subprocess to avoid symbol conflicts (e.g. onnxruntime-gpu vs torch).
+_CUDA_GROUPS: Dict[str, Set[str]] = {
+    "onnxruntime": {"face", "face_detect", "expression"},
+    "torch": {"pose"},
+}
 
 
 @dataclass
@@ -54,10 +68,125 @@ def build_modules(extractors=None, *, cooldown=2.0, main_only=True):
     return names + [fusion]
 
 
-def _needs_cuda_isolation(extractor_names):
-    """Check if the extractor combination requires CUDA subprocess isolation."""
-    from facemoment.pipeline.pathway_pipeline import FacemomentPipeline
-    return bool(FacemomentPipeline._detect_cuda_conflicts(extractor_names))
+def _build_isolation_config(extractor_names):
+    """Build IsolationConfig based on CUDA conflict detection.
+
+    When extractors from 2+ CUDA groups are active (e.g. onnxruntime-gpu
+    for face + torch for pose), the minority group is configured for
+    PROCESS isolation.
+
+    Args:
+        extractor_names: List of extractor names.
+
+    Returns:
+        IsolationConfig if isolation is needed, None otherwise.
+    """
+    from visualpath.core.isolation import IsolationConfig, IsolationLevel
+
+    conflicts = _detect_cuda_conflicts(extractor_names)
+    if not conflicts:
+        return None
+
+    return IsolationConfig(
+        default_level=IsolationLevel.INLINE,
+        overrides={name: IsolationLevel.PROCESS for name in conflicts},
+    )
+
+
+def _detect_cuda_conflicts(names):
+    """Detect CUDA conflicts among active extractors.
+
+    When extractors from 2+ CUDA groups are active, the minority
+    group is returned for subprocess isolation.
+
+    Returns empty set if pyzmq is unavailable (falls back to ordering).
+
+    Args:
+        names: List of extractor names to check.
+
+    Returns:
+        Set of extractor names that should run in a subprocess.
+    """
+    try:
+        import zmq  # noqa: F401
+    except ImportError:
+        logger.debug("pyzmq not available, skipping CUDA conflict detection")
+        return set()
+
+    # Map each extractor to its CUDA group
+    active_groups: Dict[str, List[str]] = {}
+    for name in names:
+        for group, members in _CUDA_GROUPS.items():
+            if name in members:
+                active_groups.setdefault(group, []).append(name)
+                break
+
+    if len(active_groups) < 2:
+        return set()
+
+    # Isolate the smallest group (fewest extractors).
+    # On tie, prefer isolating "torch" so onnxruntime stays in-process.
+    _ISOLATE_PREFERENCE = {"torch": 0, "onnxruntime": 1}
+    minority_group = min(
+        active_groups,
+        key=lambda g: (len(active_groups[g]), _ISOLATE_PREFERENCE.get(g, 99)),
+    )
+    isolated = set(active_groups[minority_group])
+    logger.info(
+        "CUDA conflict detected: groups %s. Isolating %s extractors %s to subprocess.",
+        list(active_groups.keys()), minority_group, isolated,
+    )
+    return isolated
+
+
+def build_graph(modules, *, isolation=None, on_trigger=None):
+    """Build a FlowGraph with optional isolation configuration.
+
+    Args:
+        modules: List of module names (str) or Module instances.
+        isolation: Optional IsolationConfig for module execution.
+        on_trigger: Optional callback for trigger events.
+
+    Returns:
+        FlowGraph configured for the pipeline.
+    """
+    from visualpath.flow.graph import FlowGraph
+    from visualpath.flow.nodes.source import SourceNode
+    from visualpath.flow.nodes.path import PathNode
+    from visualpath.runner import resolve_modules
+
+    module_instances = resolve_modules(modules)
+
+    graph = FlowGraph(entry_node="source")
+    graph.add_node(SourceNode(name="source"))
+    graph.add_node(PathNode(
+        name="pipeline",
+        modules=module_instances,
+        isolation=isolation,
+    ))
+    graph.add_edge("source", "pipeline")
+    if on_trigger:
+        graph.on_trigger(on_trigger)
+    return graph
+
+
+def _get_backend(backend, *, has_isolation):
+    """Select the appropriate backend.
+
+    Args:
+        backend: Requested backend name.
+        has_isolation: Whether isolation is needed.
+
+    Returns:
+        ExecutionBackend instance.
+    """
+    from visualpath.runner import get_backend
+
+    if has_isolation:
+        # Isolation requires WorkerBackend to wrap modules
+        return get_backend("worker")
+
+    return get_backend(backend)
 
 
 def run(
@@ -72,6 +201,9 @@ def run(
 ) -> Result:
     """Process a video and return results.
 
+    All execution goes through a single path:
+        run() → build_graph(isolation) → Backend.execute()
+
     Args:
         video: Path to video file.
         extractors: Extractor names ["face", "pose", "gesture", "quality"].
@@ -79,7 +211,7 @@ def run(
         output_dir: Directory for extracted clips. None = no clips.
         fps: Frames per second to process.
         cooldown: Seconds between triggers.
-        backend: Execution backend ("pathway" or "simple").
+        backend: Execution backend ("pathway", "simple", or "worker").
         on_trigger: Callback when a trigger fires.
 
     Returns:
@@ -91,43 +223,33 @@ def run(
         >>> result = fm.run("video.mp4", extractors=["face", "pose"])
         >>> result = fm.run("video.mp4", backend="pathway")
     """
-    # Build extractor name list for conflict check
-    extractor_names = list(extractors) if extractors else ["face", "pose", "gesture"]
-
-    # CUDA conflict → FacemomentPipeline (ProcessWorker 격리 필요)
-    if _needs_cuda_isolation(extractor_names):
-        return _run_with_pipeline(video, extractor_names, fps=fps, cooldown=cooldown,
-                                  output_dir=output_dir, on_trigger=on_trigger)
-
-    # No conflict → FlowGraph + backend.execute() (깔끔한 3계층)
-    return _run_with_flowgraph(video, extractor_names, fps=fps, cooldown=cooldown,
-                               backend=backend, output_dir=output_dir, on_trigger=on_trigger)
-
-
-def _run_with_flowgraph(video, extractor_names, *, fps, cooldown, backend, output_dir, on_trigger):
-    """FlowGraph + backend.execute() 경로 (CUDA 충돌 없을 때)."""
-    from visualpath.flow.graph import FlowGraph
-    from visualpath.runner import resolve_modules, get_backend
     from facemoment.cli.utils import create_video_stream
 
-    # 1. 모듈 구성 (facemoment 도메인)
+    # 1. Build extractor name list
+    extractor_names = list(extractors) if extractors else ["face", "pose", "gesture"]
+
+    # 2. Build modules (facemoment domain logic)
     modules = build_modules(extractor_names, cooldown=cooldown)
-    module_instances = resolve_modules(modules)
 
-    # 2. FlowGraph 구성 (visualpath DAG)
-    graph = FlowGraph.from_modules(module_instances, on_trigger=on_trigger)
+    # 3. Build isolation config (CUDA conflict detection)
+    isolation_config = _build_isolation_config(extractor_names)
 
-    # 3. 비디오 소스 (visualbase 미디어 I/O)
+    # 4. Build FlowGraph (with isolation info in ModuleSpec)
+    graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
+
+    # 5. Select backend (WorkerBackend if isolation needed)
+    engine = _get_backend(backend, has_isolation=isolation_config is not None)
+
+    # 6. Open video source
     vb, source, stream = create_video_stream(str(video), fps=fps)
 
-    # 4. 백엔드 실행 (visualpath)
+    # 7. Execute (single path: FlowGraph → Backend.execute())
     try:
-        engine = get_backend(backend)
         pipeline_result = engine.execute(stream, graph)
     finally:
         vb.disconnect()
 
-    # 5. 클립 추출 (facemoment 후처리)
+    # 8. Clip extraction (post-processing)
     clips_extracted = 0
     if output_dir:
         clips_extracted = _extract_clips(str(video), pipeline_result.triggers, output_dir)
@@ -141,36 +263,6 @@ def _run_with_flowgraph(video, extractor_names, *, fps, cooldown, backend, outpu
     )
 
 
-def _run_with_pipeline(video, extractor_names, *, fps, cooldown, output_dir, on_trigger):
-    """FacemomentPipeline 경로 (CUDA 충돌 시 ProcessWorker 격리)."""
-    from facemoment.pipeline.pathway_pipeline import FacemomentPipeline
-    from facemoment.cli.utils import create_video_stream
-
-    pipeline = FacemomentPipeline(
-        extractors=extractor_names,
-        fusion_config={"cooldown_sec": cooldown, "main_only": True},
-    )
-
-    vb, source, stream = create_video_stream(str(video), fps=fps)
-
-    result = Result()
-    try:
-        frames = list(stream)
-        result.frame_count = len(frames)
-        result.duration_sec = result.frame_count / fps if fps > 0 else 0
-
-        triggers = pipeline.run(frames, on_trigger=on_trigger)
-        result.triggers = triggers
-        result.actual_backend = pipeline.actual_backend or "pipeline"
-
-        if output_dir:
-            result.clips_extracted = _extract_clips(str(video), triggers, output_dir)
-    finally:
-        vb.disconnect()
-
-    return result
-
-
 def _extract_clips(video_path, triggers, output_dir):
     """트리거 기반 클립 추출 (visualbase)."""
     from visualbase import VisualBase, FileSource
@@ -181,6 +273,15 @@ def _extract_clips(video_path, triggers, output_dir):
     clip_vb.disconnect()
     return clips
 
+
+# Legacy compatibility
+def _needs_cuda_isolation(extractor_names):
+    """Check if the extractor combination requires CUDA subprocess isolation.
+
+    .. deprecated::
+        Use ``_build_isolation_config()`` instead.
+    """
+    return bool(_detect_cuda_conflicts(extractor_names))
 
 
 if __name__ == "__main__":

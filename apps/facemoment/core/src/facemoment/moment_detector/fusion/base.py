@@ -18,7 +18,7 @@ from visualpath.core.module import Module
 from visualbase import Trigger
 
 # Import Observation from facemoment (preferred return type)
-from facemoment.moment_detector.extractors.base import Observation
+from visualpath.extractors.base import Observation
 
 # Backwards compatibility alias
 BaseFusion = Module

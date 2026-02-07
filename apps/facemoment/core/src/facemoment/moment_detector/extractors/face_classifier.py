@@ -15,7 +15,7 @@ import time
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.base import (
+from visualpath.extractors.base import (
     Module,
     Observation,
     FaceObservation,
@@ -23,7 +23,7 @@ from facemoment.moment_detector.extractors.base import (
     processing_step,
     get_processing_steps,
 )
-from facemoment.moment_detector.extractors.outputs import FaceDetectOutput
+from visualpath.extractors.outputs import FaceDetectOutput
 
 logger = logging.getLogger(__name__)
 

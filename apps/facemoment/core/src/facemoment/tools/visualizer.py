@@ -8,7 +8,7 @@ import numpy as np
 
 from visualbase import Frame, FrameViewer
 from facemoment.moment_detector import MomentDetector
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 
 
 class DetectorVisualizer:

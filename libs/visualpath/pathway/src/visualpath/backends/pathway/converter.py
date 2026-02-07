@@ -15,11 +15,14 @@ Conversion mapping (spec-based):
 - spec=None -> pass-through (fallback to process())
 """
 
+import logging
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from visualpath.flow.graph import FlowGraph
     from visualpath.flow.node import FlowNode
+
+logger = logging.getLogger(__name__)
 
 try:
     import pathway as pw
@@ -196,6 +199,9 @@ class FlowGraphConverter:
     ) -> None:
         """Convert ModuleSpec to Pathway UDF(s).
 
+        When ``spec.isolation`` is set, modules needing isolation are
+        wrapped in WorkerModule before being converted to UDFs.
+
         When ``spec.parallel=True`` and there are independent module
         groups (based on dependency analysis), each group gets its own
         UDF so Pathway can schedule them in parallel.  The branches are
@@ -211,6 +217,10 @@ class FlowGraphConverter:
         if not modules:
             self._tables[node_name] = input_table
             return
+
+        # Wrap isolated modules in WorkerModule if isolation config is present
+        if spec.isolation is not None:
+            modules = self._wrap_isolated_modules(modules, spec.isolation)
 
         # Single UDF path: no parallelism or single module
         if not spec.parallel or len(modules) == 1:
@@ -348,6 +358,73 @@ class FlowGraphConverter:
             )
 
         return joined
+
+    # ------------------------------------------------------------------
+    # Isolation — wrap modules in WorkerModule
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _wrap_isolated_modules(modules: list, isolation) -> list:
+        """Wrap modules needing isolation in WorkerModule.
+
+        Modules at INLINE level are kept as-is. Higher levels are
+        wrapped in WorkerModule so Pathway UDFs execute them via
+        subprocess workers.
+
+        Args:
+            modules: List of Module instances.
+            isolation: IsolationConfig with per-module overrides.
+
+        Returns:
+            List of modules (some may be WorkerModule wrappers).
+        """
+        from visualpath.core.isolation import IsolationLevel
+
+        try:
+            from visualpath.process.launcher import WorkerLauncher
+            from visualpath.process.worker_module import WorkerModule
+        except ImportError:
+            logger.warning(
+                "visualpath-isolation not available, skipping module wrapping"
+            )
+            return modules
+
+        result = []
+        for module in modules:
+            level = isolation.get_level(module.name)
+
+            if level == IsolationLevel.INLINE:
+                result.append(module)
+                continue
+
+            venv_path = isolation.get_venv_path(module.name)
+
+            try:
+                worker = WorkerLauncher.create(
+                    level=level,
+                    extractor=module if level <= IsolationLevel.THREAD else None,
+                    venv_path=venv_path,
+                    extractor_name=module.name,
+                )
+                wrapped = WorkerModule(
+                    name=module.name,
+                    worker=worker,
+                    depends=list(module.depends) if module.depends else [],
+                )
+                result.append(wrapped)
+                logger.info(
+                    "Wrapped module '%s' with %s isolation for Pathway",
+                    module.name, level.name,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to wrap module '%s' for %s isolation: %s. "
+                    "Using inline fallback.",
+                    module.name, level.name, e,
+                )
+                result.append(module)
+
+        return result
 
     # ------------------------------------------------------------------
     # JoinSpec — temporal config from graph

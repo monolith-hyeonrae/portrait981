@@ -6,8 +6,9 @@ import pytest
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.pose import PoseExtractor, KeypointIndex
-from facemoment.moment_detector.extractors.backends.base import PoseKeypoints
+from vpx.pose import PoseExtractor
+from visualpath.extractors.types import KeypointIndex
+from visualpath.extractors.backends.base import PoseKeypoints
 
 
 class MockPoseBackend:

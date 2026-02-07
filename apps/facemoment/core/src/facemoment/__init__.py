@@ -37,6 +37,7 @@ from facemoment.main import (
     # High-level API
     run,
     build_modules,
+    build_graph,
 )
 
 from facemoment.moment_detector import MomentDetector
@@ -71,6 +72,7 @@ __all__ = [
     # High-level API
     "run",
     "build_modules",
+    "build_graph",
     "Result",
     # Core (deprecated)
     "MomentDetector",

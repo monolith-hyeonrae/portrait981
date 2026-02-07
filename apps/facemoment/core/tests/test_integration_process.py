@@ -16,7 +16,7 @@ import numpy as np
 from visualbase.core.frame import Frame
 from visualbase.ipc.interfaces import VideoReader, MessageSender, MessageReceiver
 
-from facemoment.moment_detector.extractors.base import (
+from visualpath.extractors.base import (
     BaseExtractor,
     Observation,
     FaceObservation,

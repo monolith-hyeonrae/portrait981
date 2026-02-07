@@ -19,6 +19,7 @@ from visualpath.process.launcher import (
     ProcessWorker,
     VenvWorker,
 )
+from visualpath.process.worker_module import WorkerModule
 from visualpath.process.mapper import (
     ObservationMapper,
     DefaultObservationMapper,
@@ -40,6 +41,8 @@ __all__ = [
     "ThreadWorker",
     "ProcessWorker",
     "VenvWorker",
+    # WorkerModule
+    "WorkerModule",
     # Mappers
     "ObservationMapper",
     "DefaultObservationMapper",

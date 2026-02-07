@@ -14,6 +14,7 @@ from typing import Any, Callable, List, Optional, Tuple, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from visualpath.core.module import Module
+    from visualpath.core.isolation import IsolationConfig
     from visualpath.flow.node import FlowData, Condition
 
 # Type aliases for callable fields in specs.
@@ -51,11 +52,15 @@ class ModuleSpec(NodeSpec):
         modules: Tuple of modules to run (in dependency order).
         parallel: Whether independent modules can run in parallel.
         join_window_ns: Window for auto-joining parallel module branches.
+        isolation: Optional isolation configuration for module execution.
+            When set, backends can use this to wrap modules in WorkerModule
+            for subprocess/venv isolation.
     """
 
     modules: tuple = ()
     parallel: bool = False
     join_window_ns: int = 100_000_000  # 100ms
+    isolation: Optional["IsolationConfig"] = None
 
 
 @dataclass(frozen=True)

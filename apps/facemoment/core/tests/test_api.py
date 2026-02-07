@@ -25,11 +25,11 @@ class TestRunFunction:
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
         mock_engine.name = "SimpleBackend"
 
-        with patch("visualpath.runner.resolve_modules", return_value=[]), \
-             patch("visualpath.flow.graph.FlowGraph.from_modules") as mock_fg, \
-             patch("visualpath.runner.get_backend", return_value=mock_engine), \
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
              patch("facemoment.cli.utils.create_video_stream") as mock_cvs:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
+            mock_bg.return_value = MagicMock()
 
             result = fm.run("fake_video.mp4", extractors=["dummy"])
 
@@ -48,22 +48,22 @@ class TestRunFunction:
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
         mock_engine.name = "SimpleBackend"
 
-        with patch("visualpath.runner.resolve_modules", return_value=[]), \
-             patch("visualpath.flow.graph.FlowGraph.from_modules") as mock_fg, \
-             patch("visualpath.runner.get_backend", return_value=mock_engine), \
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
              patch("facemoment.cli.utils.create_video_stream") as mock_cvs:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
+            mock_bg.return_value = MagicMock()
 
-            callbacks = []
+            cb = lambda t: None
             result = fm.run(
                 "fake_video.mp4",
                 extractors=["dummy"],
-                on_trigger=lambda t: callbacks.append(t),
+                on_trigger=cb,
             )
             assert isinstance(result, fm.Result)
-            # on_trigger should be passed to FlowGraph.from_modules
-            _, kwargs = mock_fg.call_args
-            assert kwargs.get("on_trigger") is not None
+            # on_trigger should be passed to build_graph
+            _, kwargs = mock_bg.call_args
+            assert kwargs.get("on_trigger") is cb
 
     def test_run_with_output_dir(self):
         """Test run with output directory for clips."""
@@ -75,12 +75,12 @@ class TestRunFunction:
             mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
             mock_engine.name = "SimpleBackend"
 
-            with patch("visualpath.runner.resolve_modules", return_value=[]), \
-                 patch("visualpath.flow.graph.FlowGraph.from_modules"), \
-                 patch("visualpath.runner.get_backend", return_value=mock_engine), \
+            with patch("facemoment.main.build_graph") as mock_bg, \
+                 patch("facemoment.main._get_backend", return_value=mock_engine), \
                  patch("facemoment.cli.utils.create_video_stream") as mock_cvs, \
                  patch("facemoment.main._extract_clips", return_value=0) as mock_clips:
                 mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
+                mock_bg.return_value = MagicMock()
 
                 result = fm.run(
                     "fake_video.mp4",
@@ -99,11 +99,11 @@ class TestRunFunction:
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
         mock_engine.name = "SimpleBackend"
 
-        with patch("visualpath.runner.resolve_modules", return_value=[]) as mock_resolve, \
-             patch("visualpath.flow.graph.FlowGraph.from_modules"), \
-             patch("visualpath.runner.get_backend", return_value=mock_engine), \
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
              patch("facemoment.cli.utils.create_video_stream") as mock_cvs:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
+            mock_bg.return_value = MagicMock()
 
             result = fm.run("fake_video.mp4", extractors=["quality"])
             assert isinstance(result, fm.Result)

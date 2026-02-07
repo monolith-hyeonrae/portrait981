@@ -5,7 +5,7 @@ from collections import deque
 
 from visualbase import Trigger
 
-from facemoment.moment_detector.extractors.base import Observation
+from visualpath.extractors.base import Observation
 from facemoment.moment_detector.fusion.base import Module
 
 

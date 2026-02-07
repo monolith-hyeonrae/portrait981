@@ -47,14 +47,14 @@ def get_backend(backend: BackendType) -> "ExecutionBackend":
     """Get execution backend by name.
 
     Args:
-        backend: Backend name ("simple" or "pathway").
+        backend: Backend name ("simple", "pathway", or "worker").
 
     Returns:
         ExecutionBackend instance.
 
     Raises:
         ValueError: If backend is unknown.
-        ImportError: If Pathway is requested but not installed.
+        ImportError: If Pathway or Worker backend is requested but not installed.
     """
     from visualpath.backends.base import ExecutionBackend
 
@@ -70,8 +70,17 @@ def get_backend(backend: BackendType) -> "ExecutionBackend":
                 "Pathway backend requires pathway package. "
                 "Install with: pip install visualpath[pathway]"
             ) from e
+    elif backend == "worker":
+        try:
+            from visualpath.backends.worker import WorkerBackend
+            return WorkerBackend()
+        except ImportError as e:
+            raise ImportError(
+                "Worker backend requires visualpath-isolation package. "
+                "Install with: pip install visualpath-isolation"
+            ) from e
     else:
-        raise ValueError(f"Unknown backend: {backend}. Use 'simple' or 'pathway'.")
+        raise ValueError(f"Unknown backend: {backend}. Use 'simple', 'pathway', or 'worker'.")
 
 
 def resolve_modules(

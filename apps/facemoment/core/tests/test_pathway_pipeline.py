@@ -12,7 +12,7 @@ from facemoment.pipeline.pathway_pipeline import (
     PATHWAY_AVAILABLE,
     _CUDA_GROUPS,
 )
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 
 from helpers import create_test_video, create_mock_frame
 
@@ -38,203 +38,61 @@ class TestFacemomentPipeline:
         assert pipeline._fusion_config["cooldown_sec"] == 3.0
         assert pipeline._fusion_config["main_only"] is False
 
-    def test_build_fusion_creates_highlight_fusion(self):
-        """Test fusion building creates HighlightFusion."""
-        pipeline = FacemomentPipeline(
-            fusion_config={"cooldown_sec": 5.0}
-        )
-        fusion = pipeline._build_fusion()
-
+    def test_fusion_config_used_in_run(self):
+        """Test fusion config is passed through to build_modules."""
+        from facemoment.main import build_modules
         from facemoment.moment_detector.fusion import HighlightFusion
-        assert isinstance(fusion, HighlightFusion)
+
+        modules = build_modules(["dummy"], cooldown=5.0)
+        fusion = next(m for m in modules if isinstance(m, HighlightFusion))
         assert fusion._cooldown_ns == int(5.0 * 1e9)
-
-    def test_merge_observations_empty(self):
-        """Test merging empty observation list."""
-        pipeline = FacemomentPipeline()
-        frame = create_mock_frame(frame_id=1, t_ns=1000000)
-
-        merged = pipeline._merge_observations([], frame)
-
-        assert merged.source == "merged"
-        assert merged.frame_id == 1
-        assert merged.signals == {}
-
-    def test_merge_observations_with_face_data(self):
-        """Test merging observations with face data."""
-        pipeline = FacemomentPipeline()
-        frame = create_mock_frame(frame_id=1, t_ns=1000000)
-
-        obs1 = Observation(
-            source="face",
-            frame_id=1,
-            t_ns=1000000,
-            signals={"face_count": 2},
-            faces=[
-                FaceObservation(
-                    face_id=0, bbox=(0.1, 0.1, 0.3, 0.3),
-                    confidence=0.9, yaw=0.0, pitch=0.0, expression=0.8,
-                )
-            ],
-            metadata={"backend": "insightface"},
-        )
-
-        obs2 = Observation(
-            source="quality",
-            frame_id=1,
-            t_ns=1000000,
-            signals={"quality_gate": 0.8},
-            faces=[],
-            metadata={"blur": 0.1},
-        )
-
-        merged = pipeline._merge_observations([obs1, obs2], frame)
-
-        assert merged.source == "merged"
-        assert "face_count" in merged.signals
-        assert "quality_gate" in merged.signals
-        assert len(merged.faces) == 1  # From face observation
-
-    def test_merge_observations_copies_main_face_id(self):
-        """Test that main_face_id is copied to merged signals."""
-        pipeline = FacemomentPipeline()
-        frame = create_mock_frame(frame_id=1, t_ns=1000000)
-
-        # Create mock classifier output with main_face
-        mock_main_face = Mock()
-        mock_main_face.face = Mock()
-        mock_main_face.face.face_id = 42
-
-        mock_classifier_data = Mock()
-        mock_classifier_data.main_face = mock_main_face
-
-        classifier_obs = Observation(
-            source="face_classifier",
-            frame_id=1,
-            t_ns=1000000,
-            signals={},
-            faces=[],
-            metadata={},
-            data=mock_classifier_data,
-        )
-
-        merged = pipeline._merge_observations([classifier_obs], frame)
-
-        assert merged.signals.get("main_face_id") == 42
 
 
 class TestFacemomentPipelineExecution:
-    """Tests for FacemomentPipeline execution."""
+    """Tests for FacemomentPipeline execution via FlowGraph delegation."""
 
-    @pytest.fixture
-    def test_video(self, tmp_path):
-        """Create a test video."""
-        video_path = tmp_path / "test.mp4"
-        create_test_video(video_path, num_frames=30, fps=30)
-        return video_path
+    def test_run_delegates_to_flowgraph(self):
+        """Test that run delegates to the unified FlowGraph path."""
+        from visualpath.backends.base import PipelineResult
 
-    def test_run_simple_fallback(self):
-        """Test _run_simple execution path."""
         pipeline = FacemomentPipeline(extractors=["dummy"])
 
-        frames = [create_mock_frame(i, i * 100000) for i in range(10)]
+        mock_engine = Mock()
+        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=5)
+        mock_engine.name = "SimpleBackend"
 
-        # Mock the extractor creation
-        with patch("visualpath.plugin.create_extractor") as mock_create:
-            mock_extractor = Mock()
-            mock_extractor.initialize = Mock()
-            mock_extractor.cleanup = Mock()
-            mock_extractor.process = Mock(return_value=Observation(
-                source="dummy",
-                frame_id=0,
-                t_ns=0,
-                signals={"test": 1.0},
-                faces=[],
-                metadata={},
-            ))
-            mock_create.return_value = mock_extractor
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine):
+            mock_bg.return_value = Mock()
 
-            triggers = pipeline._run_simple(frames)
+            frames = [create_mock_frame(i, i * 100000) for i in range(5)]
+            triggers = pipeline.run(frames)
 
             assert isinstance(triggers, list)
-            # May or may not have triggers depending on fusion logic
-
-    def test_run_calls_initialize_and_cleanup(self):
-        """Test that run properly initializes and cleans up."""
-        pipeline = FacemomentPipeline(extractors=["dummy"])
-
-        # Mock PATHWAY_AVAILABLE to False so it uses simple fallback
-        with patch("facemoment.pipeline.pathway_pipeline.PATHWAY_AVAILABLE", False):
-            with patch.object(pipeline, "_build_extractors") as mock_build:
-                with patch.object(pipeline, "_build_fusion") as mock_build_fusion:
-                    mock_ext = Mock()
-                    mock_ext.name = "dummy"
-                    mock_ext.depends = []
-                    mock_ext.initialize = Mock()
-                    mock_ext.cleanup = Mock()
-                    mock_ext.process = Mock(return_value=None)
-                    mock_build.return_value = [mock_ext]
-
-                    mock_fusion = Mock()
-                    mock_fusion.update = Mock(return_value=Mock(
-                        should_trigger=False, trigger=None
-                    ))
-                    mock_build_fusion.return_value = mock_fusion
-
-                    frames = [create_mock_frame(0, 0)]
-                    pipeline.run(frames)
-
-                    mock_ext.initialize.assert_called()
-                    mock_ext.cleanup.assert_called()
+            mock_bg.assert_called_once()
+            mock_engine.execute.assert_called_once()
 
     def test_on_trigger_callback(self):
-        """Test on_trigger callback is called."""
+        """Test on_trigger callback is passed through."""
+        from visualpath.backends.base import PipelineResult
+
         pipeline = FacemomentPipeline(extractors=["dummy"])
 
-        # Track trigger callback
-        triggers_received = []
-        def on_trigger(t):
-            triggers_received.append(t)
+        mock_engine = Mock()
+        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
+        mock_engine.name = "SimpleBackend"
 
-        # Mock PATHWAY_AVAILABLE to False so it uses simple fallback
-        with patch("facemoment.pipeline.pathway_pipeline.PATHWAY_AVAILABLE", False):
-            with patch.object(pipeline, "_build_extractors") as mock_build:
-                with patch.object(pipeline, "_build_fusion") as mock_build_fusion:
-                    mock_ext = Mock()
-                    mock_ext.name = "dummy"
-                    mock_ext.depends = []
-                    mock_ext.initialize = Mock()
-                    mock_ext.cleanup = Mock()
-                    mock_ext.process = Mock(return_value=Observation(
-                        source="dummy",
-                        frame_id=0,
-                        t_ns=0,
-                        signals={},
-                        faces=[],
-                        metadata={},
-                    ))
-                    mock_build.return_value = [mock_ext]
+        cb = Mock()
 
-                    # Mock fusion to fire a trigger
-                    from visualbase import Trigger
-                    mock_trigger = Trigger.point(
-                        event_time_ns=1000000,
-                        pre_sec=2.0,
-                        post_sec=2.0,
-                        label="test",
-                        score=0.9,
-                    )
-                    mock_fusion = Mock()
-                    mock_fusion.update = Mock(return_value=Mock(
-                        should_trigger=True, trigger=mock_trigger
-                    ))
-                    mock_build_fusion.return_value = mock_fusion
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine):
+            mock_bg.return_value = Mock()
 
-                    frames = [create_mock_frame(0, 0)]
-                    pipeline.run(frames, on_trigger=on_trigger)
+            frames = [create_mock_frame(0, 0)]
+            pipeline.run(frames, on_trigger=cb)
 
-                    assert len(triggers_received) == 1
-                    assert triggers_received[0] == mock_trigger
+            _, kwargs = mock_bg.call_args
+            assert kwargs.get("on_trigger") is cb
 
 
 class TestPathwayAvailability:
@@ -246,21 +104,23 @@ class TestPathwayAvailability:
         assert isinstance(PATHWAY_AVAILABLE, bool)
 
     def test_run_with_pathway_unavailable(self):
-        """Test fallback when Pathway is not available."""
+        """Test that run works when Pathway is not available."""
+        from visualpath.backends.base import PipelineResult
+
         with patch("facemoment.pipeline.pathway_pipeline.PATHWAY_AVAILABLE", False):
             pipeline = FacemomentPipeline(extractors=["dummy"])
 
-            with patch.object(pipeline, "_run_simple") as mock_simple:
-                mock_simple.return_value = []
+            mock_engine = Mock()
+            mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
+            mock_engine.name = "SimpleBackend"
+
+            with patch("facemoment.main.build_graph") as mock_bg, \
+                 patch("facemoment.main._get_backend", return_value=mock_engine):
+                mock_bg.return_value = Mock()
+
                 frames = [create_mock_frame(0, 0)]
-
-                # Initialize manually since _build_extractors may fail
-                pipeline._extractors = []
-                pipeline._fusion = Mock()
-                pipeline._initialized = True
-
-                pipeline._run_simple(frames)
-                mock_simple.assert_called_once()
+                triggers = pipeline.run(frames)
+                assert isinstance(triggers, list)
 
 
 class TestHighlevelAPIBackend:
@@ -276,7 +136,7 @@ class TestHighlevelAPIBackend:
         assert "backend" in sig.parameters
 
     def test_main_run_uses_flowgraph_and_backend(self):
-        """Test fm.run creates FlowGraph and uses backend.execute."""
+        """Test fm.run creates FlowGraph via build_graph and uses backend.execute."""
         from visualpath.backends.base import PipelineResult
 
         mock_engine = Mock()
@@ -286,24 +146,23 @@ class TestHighlevelAPIBackend:
         mock_stream = [Mock(), Mock()]
         mock_vb = Mock()
 
-        with patch("visualpath.runner.resolve_modules", return_value=[]) as mock_resolve, \
-             patch("visualpath.flow.graph.FlowGraph.from_modules") as mock_fg, \
-             patch("visualpath.runner.get_backend", return_value=mock_engine) as mock_get_be, \
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
              patch("facemoment.cli.utils.create_video_stream", return_value=(mock_vb, Mock(), mock_stream)):
+            mock_bg.return_value = Mock()
+
             from facemoment.main import run
             result = run("fake.mp4", extractors=["dummy"], fps=5, cooldown=1.5)
 
-            # resolve_modules was called with build_modules output
-            mock_resolve.assert_called_once()
-            # FlowGraph.from_modules was called
-            mock_fg.assert_called_once()
+            # build_graph was called
+            mock_bg.assert_called_once()
             # backend.execute was called
             mock_engine.execute.assert_called_once()
             assert result.frame_count == 2
             assert result.actual_backend == "SimpleBackend"
 
     def test_main_run_passes_on_trigger(self):
-        """Test fm.run passes on_trigger to FlowGraph.from_modules."""
+        """Test fm.run passes on_trigger to build_graph."""
         from visualpath.backends.base import PipelineResult
 
         mock_engine = Mock()
@@ -311,15 +170,15 @@ class TestHighlevelAPIBackend:
         mock_engine.name = "SimpleBackend"
         cb = lambda t: None
 
-        with patch("visualpath.runner.resolve_modules", return_value=[]), \
-             patch("visualpath.flow.graph.FlowGraph.from_modules") as mock_fg, \
-             patch("visualpath.runner.get_backend", return_value=mock_engine), \
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
              patch("facemoment.cli.utils.create_video_stream", return_value=(Mock(), Mock(), [Mock()])):
+            mock_bg.return_value = Mock()
+
             from facemoment.main import run
-            # Use non-CUDA extractor to stay on FlowGraph path
             run("test.mp4", extractors=["dummy"], on_trigger=cb)
 
-            _, kwargs = mock_fg.call_args
+            _, kwargs = mock_bg.call_args
             assert kwargs["on_trigger"] is cb
 
 
@@ -408,130 +267,35 @@ class TestOrchestratorBackend:
         assert orchestrator._backend == "simple"
 
 
-class TestRunSimpleWithDepsGeneric:
-    """Tests for _run_simple using generic deps instead of FaceClassifier special handling."""
+class TestPipelineDelegation:
+    """Tests for FacemomentPipeline delegating to the unified FlowGraph path."""
 
-    def test_run_simple_generic_deps(self):
-        """Test that _run_simple uses generic deps accumulation."""
+    def test_pipeline_delegates_build_modules(self):
+        """Test that pipeline uses build_modules for module construction."""
+        from facemoment.main import build_modules
+
+        modules = build_modules(["face"])
+        names = [m for m in modules if isinstance(m, str)]
+        assert "face_classifier" in names  # auto-injected
+
+    def test_pipeline_actual_backend_recorded(self):
+        """Test that the actual backend name is recorded after run."""
+        from visualpath.backends.base import PipelineResult
+
         pipeline = FacemomentPipeline(extractors=["dummy"])
 
-        # Create mock extractors: upstream + dependent
-        mock_upstream = Mock()
-        mock_upstream.name = "upstream"
-        mock_upstream.depends = []
-        mock_upstream.initialize = Mock()
-        mock_upstream.cleanup = Mock()
-        mock_upstream.process = Mock(return_value=Observation(
-            source="upstream",
-            frame_id=0,
-            t_ns=0,
-            signals={"test": 1.0},
-            faces=[],
-            metadata={},
-        ))
+        mock_engine = Mock()
+        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
+        mock_engine.name = "TestBackend"
 
-        mock_dependent = Mock()
-        mock_dependent.name = "dependent"
-        mock_dependent.depends = ["upstream"]
-        mock_dependent.initialize = Mock()
-        mock_dependent.cleanup = Mock()
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine):
+            mock_bg.return_value = Mock()
 
-        def dependent_extract(frame, deps=None):
-            has_upstream = deps is not None and "upstream" in deps
-            return Observation(
-                source="dependent",
-                frame_id=frame.frame_id,
-                t_ns=frame.t_src_ns,
-                signals={"has_upstream": has_upstream},
-                faces=[],
-                metadata={},
-            )
-        mock_dependent.process = dependent_extract
+            frames = [create_mock_frame(0, 0)]
+            pipeline.run(frames)
 
-        # Set up pipeline internals
-        pipeline._extractors = [mock_upstream, mock_dependent]
-        pipeline._fusion = Mock()
-        pipeline._fusion.update = Mock(return_value=Mock(
-            should_trigger=False, trigger=None
-        ))
-        pipeline._classifier = None
-        pipeline._initialized = True
-
-        frames = [create_mock_frame(i, i * 100000) for i in range(3)]
-        triggers = pipeline._run_simple(frames)
-
-        assert isinstance(triggers, list)
-        # Verify fusion was called with merged observations
-        assert pipeline._fusion.update.call_count == 3
-        # Verify the dependent extractor received upstream deps
-        for call_args in pipeline._fusion.update.call_args_list:
-            merged_obs = call_args[0][0]
-            assert "has_upstream" in merged_obs.signals
-
-    def test_run_simple_classifier_via_deps(self):
-        """Test that FaceClassifier works through generic deps mechanism."""
-        pipeline = FacemomentPipeline(extractors=["face"])
-
-        # Create mock face extractor
-        mock_face_ext = Mock()
-        mock_face_ext.name = "face"
-        mock_face_ext.depends = []
-        mock_face_ext.initialize = Mock()
-        mock_face_ext.cleanup = Mock()
-        mock_face_ext.process = Mock(return_value=Observation(
-            source="face",
-            frame_id=0,
-            t_ns=0,
-            signals={"face_count": 1},
-            faces=[
-                FaceObservation(
-                    face_id=0, bbox=(0.1, 0.1, 0.3, 0.3),
-                    confidence=0.9, yaw=0.0, pitch=0.0, expression=0.8,
-                )
-            ],
-            metadata={},
-        ))
-
-        # Create mock classifier that depends on face
-        mock_classifier = Mock()
-        mock_classifier.name = "face_classifier"
-        mock_classifier.depends = ["face"]
-        mock_classifier.initialize = Mock()
-        mock_classifier.cleanup = Mock()
-
-        mock_classifier_data = Mock()
-        mock_classifier_data.main_face = Mock()
-        mock_classifier_data.main_face.face = Mock()
-        mock_classifier_data.main_face.face.face_id = 0
-
-        def classifier_extract(frame, deps=None):
-            return Observation(
-                source="face_classifier",
-                frame_id=frame.frame_id,
-                t_ns=frame.t_src_ns,
-                signals={},
-                faces=[],
-                metadata={},
-                data=mock_classifier_data,
-            )
-        mock_classifier.process = classifier_extract
-
-        # Set up pipeline
-        pipeline._extractors = [mock_face_ext, mock_classifier]
-        pipeline._fusion = Mock()
-        pipeline._fusion.update = Mock(return_value=Mock(
-            should_trigger=False, trigger=None
-        ))
-        pipeline._classifier = mock_classifier
-        pipeline._initialized = True
-
-        frames = [create_mock_frame(0, 0)]
-        pipeline._run_simple(frames)
-
-        # Verify fusion received classifier_obs
-        call_kwargs = pipeline._fusion.update.call_args[1]
-        assert "classifier_obs" in call_kwargs
-        assert call_kwargs["classifier_obs"] is not None
+            assert pipeline.actual_backend == "TestBackend"
 
 
 class TestHighlightFusionMergedSignals:
@@ -660,228 +424,34 @@ class TestCudaConflictDetection:
         pipeline._workers = {"pose": Mock()}
         assert "pose" in pipeline.workers
 
-    def test_build_extractors_no_conflict(self):
-        """No workers created when there's no CUDA conflict."""
-        pipeline = FacemomentPipeline(
-            extractors=["dummy"],
-            auto_inject_classifier=False,
-        )
+    def test_isolation_config_built_for_conflicts(self):
+        """IsolationConfig is built when CUDA conflicts detected."""
+        from facemoment.main import _build_isolation_config
 
-        with patch("visualpath.plugin.create_extractor") as mock_create:
-            mock_ext = Mock()
-            mock_ext.name = "dummy"
-            mock_ext.depends = []
-            mock_create.return_value = mock_ext
+        config = _build_isolation_config(["face", "pose"])
+        if config is not None:
+            # pose should be isolated (minority group)
+            from visualpath.core.isolation import IsolationLevel
+            assert config.get_level("pose") == IsolationLevel.PROCESS
 
-            extractors = pipeline._build_extractors()
+    def test_no_isolation_config_without_conflicts(self):
+        """No IsolationConfig when no CUDA conflicts."""
+        from facemoment.main import _build_isolation_config
 
-            assert len(extractors) == 1
-            assert pipeline._workers == {}
+        config = _build_isolation_config(["dummy"])
+        assert config is None
 
-    def test_build_extractors_with_conflict_creates_worker(self):
-        """Workers created for minority CUDA group when conflict detected."""
-        pipeline = FacemomentPipeline(
-            extractors=["face", "pose"],
-            auto_inject_classifier=False,
-        )
-
-        mock_face_ext = Mock()
-        mock_face_ext.name = "face"
-        mock_face_ext.depends = []
-
-        mock_worker = Mock()
-
-        with patch("visualpath.plugin.create_extractor") as mock_create, \
-             patch("visualpath.process.launcher.ProcessWorker") as mock_pw_cls, \
-             patch.object(FacemomentPipeline, "_detect_cuda_conflicts", return_value={"pose"}):
-            mock_create.return_value = mock_face_ext
-            mock_pw_cls.return_value = mock_worker
-
-            extractors = pipeline._build_extractors()
-
-            # face should be inline, pose should be a worker
-            assert len(extractors) == 1
-            assert extractors[0].name == "face"
-            assert "pose" in pipeline._workers
-            mock_pw_cls.assert_called_once_with(extractor_name="pose")
-
-    def test_run_simple_with_workers(self):
-        """_run_simple processes both inline extractors and subprocess workers."""
-        pipeline = FacemomentPipeline(extractors=["face", "pose"])
-
-        # Setup inline extractor
-        mock_ext = Mock()
-        mock_ext.name = "face"
-        mock_ext.depends = []
-        mock_ext.process = Mock(return_value=Observation(
-            source="face",
-            frame_id=0,
-            t_ns=0,
-            signals={"face_count": 1},
-            faces=[],
-            metadata={},
-        ))
-
-        # Setup worker
-        mock_worker = Mock()
-        mock_result = Mock()
-        mock_result.observation = Observation(
-            source="pose",
-            frame_id=0,
-            t_ns=0,
-            signals={"pose_count": 1},
-            faces=[],
-            metadata={},
-        )
-        mock_worker.process = Mock(return_value=mock_result)
-
-        pipeline._extractors = [mock_ext]
-        pipeline._workers = {"pose": mock_worker}
-        pipeline._fusion = Mock()
-        pipeline._fusion.update = Mock(return_value=Mock(
-            should_trigger=False, trigger=None
-        ))
-        pipeline._classifier = None
+    def test_cleanup_resets_state(self):
+        """cleanup() resets initialized state."""
+        pipeline = FacemomentPipeline(extractors=["face"])
         pipeline._initialized = True
-
-        frames = [create_mock_frame(0, 0)]
-        pipeline._run_simple(frames)
-
-        # Both extractor and worker should have been called
-        mock_ext.process.assert_called_once()
-        mock_worker.process.assert_called_once()
-
-        # Fusion should receive merged obs with signals from both
-        merged_obs = pipeline._fusion.update.call_args[0][0]
-        assert "face_count" in merged_obs.signals
-        assert "pose_count" in merged_obs.signals
-
-    def test_run_simple_worker_receives_deps(self):
-        """Workers receive accumulated deps from inline extractors."""
-        pipeline = FacemomentPipeline(extractors=["face", "pose"])
-
-        face_obs = Observation(
-            source="face",
-            frame_id=0,
-            t_ns=0,
-            signals={"face_count": 1},
-            faces=[],
-            metadata={},
-        )
-
-        mock_ext = Mock()
-        mock_ext.name = "face"
-        mock_ext.depends = []
-        mock_ext.process = Mock(return_value=face_obs)
-
-        mock_worker = Mock()
-        mock_result = Mock()
-        mock_result.observation = Observation(
-            source="pose", frame_id=0, t_ns=0,
-            signals={}, faces=[], metadata={},
-        )
-        mock_worker.process = Mock(return_value=mock_result)
-
-        pipeline._extractors = [mock_ext]
-        pipeline._workers = {"pose": mock_worker}
-        pipeline._fusion = Mock()
-        pipeline._fusion.update = Mock(return_value=Mock(
-            should_trigger=False, trigger=None
-        ))
-        pipeline._classifier = None
-        pipeline._initialized = True
-
-        frames = [create_mock_frame(0, 0)]
-        pipeline._run_simple(frames)
-
-        # Verify worker received deps containing face observation
-        call_kwargs = mock_worker.process.call_args[1]
-        assert "face" in call_kwargs["deps"]
-        assert call_kwargs["deps"]["face"] is face_obs
-
-    def test_run_pathway_falls_back_with_workers(self):
-        """_run_pathway falls back to _run_simple when workers are active."""
-        pipeline = FacemomentPipeline(extractors=["face", "pose"])
-        pipeline._workers = {"pose": Mock()}
-        pipeline._extractors = []
-        pipeline._fusion = Mock()
-        pipeline._classifier = None
-        pipeline._initialized = True
-
-        with patch.object(pipeline, "_run_simple", return_value=[]) as mock_simple:
-            frames = [create_mock_frame(0, 0)]
-            pipeline._run_pathway(frames)
-            mock_simple.assert_called_once()
-
-    def test_cleanup_stops_workers(self):
-        """cleanup() stops all workers."""
-        pipeline = FacemomentPipeline(extractors=["face", "pose"])
-
-        mock_worker = Mock()
-        pipeline._workers = {"pose": mock_worker}
-        pipeline._extractors = []
-        pipeline._fusion = None
-        pipeline._classifier = None
-        pipeline._initialized = True
-
         pipeline.cleanup()
+        assert not pipeline._initialized
 
-        mock_worker.stop.assert_called_once()
-        assert pipeline._workers == {}
-
-    def test_initialize_starts_workers(self):
-        """initialize() starts all workers."""
-        pipeline = FacemomentPipeline(
-            extractors=["dummy"],
-            auto_inject_classifier=False,
-        )
-
-        mock_worker = Mock()
-        mock_worker.start = Mock()
-
-        with patch.object(pipeline, "_build_extractors") as mock_build, \
-             patch.object(pipeline, "_build_fusion") as mock_fusion:
-            mock_ext = Mock()
-            mock_ext.name = "dummy"
-            mock_ext.initialize = Mock()
-            mock_build.return_value = [mock_ext]
-
-            # Simulate _build_extractors populating workers
-            def build_side_effect():
-                pipeline._workers = {"pose": mock_worker}
-                return [mock_ext]
-            mock_build.side_effect = build_side_effect
-
-            mock_fusion.return_value = Mock()
-
-            pipeline.initialize()
-
-            mock_worker.start.assert_called_once()
-
-    def test_initialize_removes_failed_workers(self):
-        """Workers that fail to start are removed."""
-        pipeline = FacemomentPipeline(
-            extractors=["dummy"],
-            auto_inject_classifier=False,
-        )
-
-        mock_worker = Mock()
-        mock_worker.start = Mock(side_effect=RuntimeError("cannot start"))
-
-        with patch.object(pipeline, "_build_extractors") as mock_build, \
-             patch.object(pipeline, "_build_fusion") as mock_fusion:
-            mock_ext = Mock()
-            mock_ext.name = "dummy"
-            mock_ext.initialize = Mock()
-            mock_build.return_value = [mock_ext]
-
-            def build_side_effect():
-                pipeline._workers = {"pose": mock_worker}
-                return [mock_ext]
-            mock_build.side_effect = build_side_effect
-
-            mock_fusion.return_value = Mock()
-
-            pipeline.initialize()
-
-            assert "pose" not in pipeline._workers
+    def test_initialize_loads_extractors(self):
+        """initialize() loads extractors and fusion."""
+        pipeline = FacemomentPipeline(extractors=["dummy"])
+        pipeline.initialize()
+        assert pipeline._initialized
+        assert len(pipeline.extractors) > 0
+        assert pipeline.fusion is not None

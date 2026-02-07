@@ -3,12 +3,8 @@
 import pytest
 import numpy as np
 
-from facemoment.moment_detector.extractors.gesture import (
-    GestureExtractor,
-    GestureType,
-    HandLandmarkIndex,
-)
-from facemoment.moment_detector.extractors.backends.base import HandLandmarks
+from vpx.gesture import GestureExtractor, GestureType, HandLandmarkIndex
+from visualpath.extractors.backends.base import HandLandmarks
 
 
 class MockHandBackend:

@@ -276,7 +276,7 @@ def probe_extractors(use_ml=None, device="cuda:0", roi=None) -> dict:
     if use_ml is not False:
         # Try face extractor
         try:
-            from facemoment.moment_detector.extractors import FaceExtractor
+            from vpx.face import FaceExtractor
             FaceExtractor()
             result["face"] = True
             result["names"].append("face")
@@ -286,7 +286,7 @@ def probe_extractors(use_ml=None, device="cuda:0", roi=None) -> dict:
 
         # Try pose extractor
         try:
-            from facemoment.moment_detector.extractors import PoseExtractor
+            from vpx.pose import PoseExtractor
             PoseExtractor()
             result["pose"] = True
             result["names"].append("pose")
@@ -295,7 +295,7 @@ def probe_extractors(use_ml=None, device="cuda:0", roi=None) -> dict:
 
         # Try gesture extractor
         try:
-            from facemoment.moment_detector.extractors import GestureExtractor
+            from vpx.gesture import GestureExtractor
             GestureExtractor()
             result["gesture"] = True
             result["names"].append("gesture")

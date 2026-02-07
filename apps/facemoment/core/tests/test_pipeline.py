@@ -16,7 +16,7 @@ from facemoment.pipeline import (
     PipelineStats,
     create_default_config,
 )
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 from visualpath.core import IsolationLevel
 
 from helpers import create_test_video
@@ -281,39 +281,42 @@ class TestPipelineOrchestratorIntegration:
         return output
 
     def test_run_with_dummy_extractor(self, test_video, output_dir):
-        """Test running pipeline with dummy extractor in inline mode."""
-        # Use dummy extractor which is always available
-        # Use backend="simple" to test worker-based callbacks
+        """Test running pipeline with dummy extractor delegates to FlowGraph."""
+        from visualpath.backends.base import PipelineResult
+
         config = PipelineConfig(
             extractors=[ExtractorConfig(name="dummy")],
             fusion=FusionConfig(cooldown_sec=1.0),
             clip_output_dir=str(output_dir),
             fps=10,
-            backend="simple",  # Use simple backend to test callbacks
+            backend="simple",
         )
 
         orchestrator = PipelineOrchestrator.from_config(config)
 
-        # Track events
-        frames_seen = []
-        observations_seen = []
+        mock_engine = Mock()
+        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=10)
+        mock_engine.name = "SimpleBackend"
 
-        orchestrator.set_on_frame(lambda f: frames_seen.append(f))
-        orchestrator.set_on_observations(lambda obs: observations_seen.append(obs))
+        # Orchestrator imports build_graph and _get_backend locally in run()
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
+             patch("facemoment.pipeline.orchestrator.VisualBase") as mock_vb_cls, \
+             patch("facemoment.pipeline.orchestrator.FileSource"):
+            mock_bg.return_value = Mock()
+            mock_vb = Mock()
+            mock_vb.get_stream.return_value = iter([])
+            mock_vb_cls.return_value = mock_vb
 
-        # Run pipeline
-        clips = orchestrator.run(str(test_video), fps=10)
+            clips = orchestrator.run(str(test_video), fps=10)
 
-        # Verify stats
-        stats = orchestrator.get_stats()
-        assert stats.frames_processed > 0
-        assert len(frames_seen) == stats.frames_processed
+            # Verify stats
+            stats = orchestrator.get_stats()
+            assert stats.frames_processed == 10
+            assert stats.processing_time_sec > 0
 
-        # Observations should be collected
-        assert len(observations_seen) > 0
-
-    def test_run_stream(self, test_video, output_dir):
-        """Test stream mode processing."""
+    def test_run_stream_deprecated(self, test_video, output_dir):
+        """Test stream mode is deprecated and returns empty iterator."""
         config = PipelineConfig(
             extractors=[ExtractorConfig(name="dummy")],
             clip_output_dir=str(output_dir),
@@ -321,33 +324,47 @@ class TestPipelineOrchestratorIntegration:
 
         orchestrator = PipelineOrchestrator.from_config(config)
 
-        frame_count = 0
-        for frame, observations, result in orchestrator.run_stream(
-            str(test_video), fps=10
-        ):
-            frame_count += 1
-            assert frame is not None
-            # observations may be empty if worker fails
-            # result may be None if no observations
+        with pytest.warns(DeprecationWarning):
+            frame_count = 0
+            for frame, observations, result in orchestrator.run_stream(
+                str(test_video), fps=10
+            ):
+                frame_count += 1
 
-        assert frame_count > 0
+            # run_stream is deprecated and returns empty iterator
+            assert frame_count == 0
 
     def test_get_stats_after_run(self, test_video, output_dir):
         """Test statistics collection."""
+        from visualpath.backends.base import PipelineResult
+
         config = PipelineConfig(
             extractors=[ExtractorConfig(name="dummy")],
             clip_output_dir=str(output_dir),
         )
 
         orchestrator = PipelineOrchestrator.from_config(config)
-        orchestrator.run(str(test_video), fps=10)
 
-        stats = orchestrator.get_stats()
+        mock_engine = Mock()
+        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=30)
+        mock_engine.name = "SimpleBackend"
 
-        assert stats.frames_processed > 0
-        assert stats.processing_time_sec > 0
-        assert stats.avg_frame_time_ms > 0
-        assert "dummy" in stats.worker_stats or len(stats.worker_stats) == 0
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
+             patch("facemoment.pipeline.orchestrator.VisualBase") as mock_vb_cls, \
+             patch("facemoment.pipeline.orchestrator.FileSource"):
+            mock_bg.return_value = Mock()
+            mock_vb = Mock()
+            mock_vb.get_stream.return_value = iter([])
+            mock_vb_cls.return_value = mock_vb
+
+            orchestrator.run(str(test_video), fps=10)
+
+            stats = orchestrator.get_stats()
+
+            assert stats.frames_processed == 30
+            assert stats.processing_time_sec > 0
+            assert stats.avg_frame_time_ms > 0
 
 
 class TestYAMLConfig:
@@ -397,70 +414,32 @@ fps: 15
             pytest.skip("PyYAML not installed")
 
 
-class TestMergeObservations:
-    """Tests for observation merging logic."""
+class TestOrchestratorDelegation:
+    """Tests for PipelineOrchestrator delegating to the unified FlowGraph path."""
 
-    def test_merge_empty_observations(self):
-        """Test merging empty observation list."""
-        from visualbase import Frame
-        import numpy as np
-
-        orchestrator = PipelineOrchestrator(
-            extractor_configs=[ExtractorConfig(name="dummy")],
-        )
-
-        data = np.zeros((240, 320, 3), dtype=np.uint8)
-        frame = Frame.from_array(data, frame_id=1, t_src_ns=1000000)
-
-        merged = orchestrator._merge_observations([], frame)
-
-        assert merged.source == "merged"
-        assert merged.frame_id == 1
-        assert merged.signals == {}
-
-    def test_merge_multiple_observations(self):
-        """Test merging multiple observations."""
-        from visualbase import Frame
-        import numpy as np
+    def test_orchestrator_delegates_to_build_graph(self):
+        """Test that orchestrator.run() delegates to build_graph."""
+        from visualpath.backends.base import PipelineResult
 
         orchestrator = PipelineOrchestrator(
             extractor_configs=[ExtractorConfig(name="dummy")],
         )
 
-        data = np.zeros((240, 320, 3), dtype=np.uint8)
-        frame = Frame.from_array(data, frame_id=1, t_src_ns=1000000)
+        mock_engine = Mock()
+        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=5)
+        mock_engine.name = "SimpleBackend"
 
-        obs1 = Observation(
-            source="face",
-            frame_id=1,
-            t_ns=1000000,
-            signals={"face_count": 2, "max_expression": 0.8},
-            faces=[
-                FaceObservation(
-                    face_id=0, bbox=(0.1, 0.1, 0.3, 0.3),
-                    confidence=0.9, yaw=0.0, pitch=0.0, expression=0.8,
-                )
-            ],
-            metadata={"backend": "insightface"},
-        )
+        with patch("facemoment.main.build_graph") as mock_bg, \
+             patch("facemoment.main._get_backend", return_value=mock_engine), \
+             patch("facemoment.pipeline.orchestrator.VisualBase") as mock_vb_cls, \
+             patch("facemoment.pipeline.orchestrator.FileSource"):
+            mock_bg.return_value = Mock()
+            mock_vb = Mock()
+            mock_vb.get_stream.return_value = iter([])
+            mock_vb_cls.return_value = mock_vb
 
-        obs2 = Observation(
-            source="pose",
-            frame_id=1,
-            t_ns=1000000,
-            signals={"hand_wave_detected": 0.7},
-            faces=[],
-            metadata={"backend": "yolo"},
-        )
+            with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
+                orchestrator.run(tmp.name, fps=10)
 
-        merged = orchestrator._merge_observations([obs1, obs2], frame)
-
-        assert merged.source == "merged"
-        # Signals should be merged
-        assert "face_count" in merged.signals
-        assert "hand_wave_detected" in merged.signals
-        # Faces should come from face observation
-        assert len(merged.faces) == 1
-        # Metadata should contain both sources
-        assert "face" in merged.metadata
-        assert "pose" in merged.metadata
+            stats = orchestrator.get_stats()
+            assert stats.frames_processed == 5

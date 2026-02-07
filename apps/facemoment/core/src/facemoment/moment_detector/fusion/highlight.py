@@ -7,7 +7,7 @@ import logging
 
 from visualbase import Trigger
 
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 from facemoment.moment_detector.fusion.base import Module
 from facemoment.moment_detector.extractors.face_classifier import FaceClassifierOutput
 from facemoment.observability import ObservabilityHub, TraceLevel

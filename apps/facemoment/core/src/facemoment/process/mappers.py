@@ -35,7 +35,7 @@ from visualbase.ipc.messages import (
 )
 from visualpath.process.mapper import ObservationMapper, CompositeMapper
 
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
+from visualpath.extractors.base import Observation, FaceObservation
 
 
 class FaceObservationMapper:

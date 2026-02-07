@@ -7,7 +7,7 @@ for visualization and documentation purposes.
 
 from typing import List
 
-from facemoment.moment_detector.extractors.base import ProcessingStep
+from visualpath.extractors.base import ProcessingStep
 
 
 class SourceProcessor:

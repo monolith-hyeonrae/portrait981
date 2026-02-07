@@ -9,9 +9,9 @@ from facemoment.moment_detector.visualize import (
     DebugVisualizer,
     VisualizationConfig,
 )
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
-from facemoment.moment_detector.extractors.outputs import PoseOutput
-from facemoment.moment_detector.extractors.types import KeypointIndex
+from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.extractors.outputs import PoseOutput
+from visualpath.extractors.types import KeypointIndex
 
 
 class TestExtractorVisualizer:

@@ -5,12 +5,13 @@ members = [
     "libs/visualpath/isolation",
     "libs/visualpath/cli",
     "libs/visualpath/pathway",
+    "libs/visualpath/extractors/base",
+    "libs/vpx/face-detect",
+    "libs/vpx/expression",
+    "libs/vpx/face",
+    "libs/vpx/pose",
+    "libs/vpx/gesture",
     "apps/facemoment/core",
-    "apps/facemoment/extractors/face-detect",
-    "apps/facemoment/extractors/expression",
-    "apps/facemoment/extractors/face",
-    "apps/facemoment/extractors/pose",
-    "apps/facemoment/extractors/gesture",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.

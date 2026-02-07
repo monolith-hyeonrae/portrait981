@@ -9,11 +9,9 @@ from typing import List, Optional, Tuple, Dict, Any
 
 from facemoment.cli.utils import (
     create_video_stream,
-    check_ml_dependencies,
     setup_observability,
     cleanup_observability,
     detect_distributed_mode,
-    detect_ml_mode,
     create_video_writer,
     score_frame,
 )
@@ -56,14 +54,7 @@ def run_debug(args):
             venv_gesture=getattr(args, 'venv_gesture', None),
         )
     else:
-        backend = getattr(args, 'backend', None)
-        use_ml = args.use_ml
-
-        if use_ml is False or backend == "simple":
-            session = SimpleDebugSession(args, selected, show_window)
-        else:
-            # PathwayDebugSession: inline (default) or --backend pathway
-            session = PathwayDebugSession(args, selected, show_window)
+        session = PathwayDebugSession(args, selected, show_window)
 
     session.run()
 
@@ -323,18 +314,24 @@ class PathwayDebugSession(DebugSession):
         from facemoment.pipeline.pathway_pipeline import FacemomentPipeline, PATHWAY_AVAILABLE
         from facemoment.observability.pathway_monitor import PathwayMonitor
 
+        use_ml = self.args.use_ml
+        backend = getattr(self.args, 'backend', None)
+
         # Build extractor list
-        extractor_names = []
-        if 'pose' in self.selected or 'all' in self.selected:
-            extractor_names.append('pose')
-        if 'gesture' in self.selected or 'all' in self.selected:
-            extractor_names.append('gesture')
-        if 'face' in self.selected or 'all' in self.selected:
-            extractor_names.append('face')
-        if 'quality' in self.selected or 'all' in self.selected:
-            extractor_names.append('quality')
-        if not extractor_names:
+        if use_ml is False:
             extractor_names = ['dummy']
+        else:
+            extractor_names = []
+            if 'pose' in self.selected or 'all' in self.selected:
+                extractor_names.append('pose')
+            if 'gesture' in self.selected or 'all' in self.selected:
+                extractor_names.append('gesture')
+            if 'face' in self.selected or 'all' in self.selected:
+                extractor_names.append('face')
+            if 'quality' in self.selected or 'all' in self.selected:
+                extractor_names.append('quality')
+            if not extractor_names:
+                extractor_names = ['dummy']
 
         self.pipeline = FacemomentPipeline(
             extractors=extractor_names,
@@ -346,7 +343,13 @@ class PathwayDebugSession(DebugSession):
         # Detect actual backend
         # Default: inline (smooth frame-by-frame visualization)
         # --backend pathway: force Pathway streaming engine
-        if self._force_pathway:
+        if use_ml is False:
+            self._use_pathway = False
+            self.backend_label = "INLINE (no-ml)"
+        elif backend == "simple":
+            self._use_pathway = False
+            self.backend_label = "INLINE (simple)"
+        elif self._force_pathway:
             if not PATHWAY_AVAILABLE:
                 self._use_pathway = False
                 self.backend_label = "INLINE (pathway unavailable)"
@@ -483,109 +486,36 @@ class PathwayDebugSession(DebugSession):
 
     def _process_frame_inline(self, frame):
         """Process one frame inline (no PathwayBackend)."""
-        self.monitor.begin_frame(frame)
+        from facemoment.pipeline.frame_processor import process_frame
 
-        observations = {}
-        deps = {}
-        classifier_obs = None
+        result = process_frame(
+            frame, self.pipeline.extractors,
+            classifier=self.pipeline._classifier,
+            workers=self.pipeline.workers,
+            fusion=self.pipeline.fusion,
+            monitor=self.monitor,
+        )
 
-        # Inline extractors (deps accumulated)
-        for ext in self.pipeline.extractors:
-            try:
-                extractor_deps = None
-                if ext.depends:
-                    extractor_deps = {
-                        n: deps[n] for n in ext.depends if n in deps
-                    }
-                    # Composite "face" extractor satisfies "face_detect" dependency
-                    if "face_detect" in ext.depends and "face_detect" not in extractor_deps and "face" in deps:
-                        extractor_deps["face"] = deps["face"]
-                self.monitor.begin_extractor(ext.name)
-                try:
-                    obs = ext.process(frame, extractor_deps)
-                except TypeError:
-                    obs = ext.process(frame)
-                sub_timings = getattr(obs, "timing", None) if obs else None
-                self.monitor.end_extractor(ext.name, obs, sub_timings=sub_timings)
-                if obs:
-                    observations[ext.name] = obs
-                    deps[ext.name] = obs
-                    if ext is self.pipeline._classifier:
-                        classifier_obs = obs
-            except Exception:
-                self.monitor.end_extractor(ext.name, None)
-
-        # Subprocess workers
-        for name, worker in self.pipeline.workers.items():
-            try:
-                self.monitor.begin_extractor(name)
-                result = worker.process(frame, deps=deps)
-                if result.observation:
-                    observations[name] = result.observation
-                    deps[name] = result.observation
-                self.monitor.end_extractor(name, result.observation)
-            except Exception:
-                self.monitor.end_extractor(name, None)
-
-        if classifier_obs:
-            self.monitor.record_classifier(classifier_obs)
-
-        # Fusion
-        fusion_result = None
-        is_gate_open = False
-        if self.pipeline.fusion:
-            obs_list = list(observations.values())
-            merged_obs = self.pipeline._merge_observations(obs_list, frame)
-
-            main_face_id = None
-            main_face_source = "none"
-            if classifier_obs and hasattr(classifier_obs, "data") and classifier_obs.data:
-                data = classifier_obs.data
-                if hasattr(data, "main_face") and data.main_face:
-                    main_face_id = data.main_face.face.face_id
-                    main_face_source = "classifier_obs"
-            elif hasattr(merged_obs, "signals") and "main_face_id" in merged_obs.signals:
-                main_face_id = merged_obs.signals["main_face_id"]
-                main_face_source = "merged_signals"
-
-            self.monitor.record_merge(obs_list, merged_obs, main_face_id, main_face_source)
-
-            self.monitor.begin_fusion()
-            fusion_result = self.pipeline.fusion.update(merged_obs, classifier_obs=classifier_obs)
-            self.monitor.end_fusion(fusion_result)
-
-            is_gate_open = self.pipeline.fusion.is_gate_open
-
-        self.monitor.end_frame(gate_open=is_gate_open)
-
-        # Timing info for profile mode
-        timing_info = None
-        if self.profile_mode:
-            face_obs = observations.get("face")
-            if face_obs and face_obs.timing:
-                timing_info = face_obs.timing
-
-        # Frame scoring
-        score_result = score_frame(self.scorer, observations)
+        score_result = score_frame(self.scorer, result.observations)
 
         debug_image = self.visualizer.create_debug_view(
             frame,
-            face_obs=observations.get("face") or observations.get("dummy"),
-            pose_obs=observations.get("pose"),
-            gesture_obs=observations.get("gesture"),
-            quality_obs=observations.get("quality"),
-            classifier_obs=classifier_obs,
-            fusion_result=fusion_result,
-            is_gate_open=is_gate_open,
-            in_cooldown=self.pipeline.fusion.in_cooldown if self.pipeline.fusion else False,
-            timing=timing_info if self.profile_mode else None,
+            face_obs=result.observations.get("face") or result.observations.get("dummy"),
+            pose_obs=result.observations.get("pose"),
+            gesture_obs=result.observations.get("gesture"),
+            quality_obs=result.observations.get("quality"),
+            classifier_obs=result.classifier_obs,
+            fusion_result=result.fusion_result,
+            is_gate_open=result.is_gate_open,
+            in_cooldown=result.in_cooldown,
+            timing=result.timing_info if self.profile_mode else None,
             roi=self.roi,
             monitor_stats=self.monitor.get_frame_stats(),
             backend_label=self.backend_label,
             score_result=score_result,
         )
 
-        return debug_image, timing_info
+        return debug_image, result.timing_info
 
     def _on_reset(self):
         if self.pipeline and self.pipeline.fusion:
@@ -603,168 +533,6 @@ class PathwayDebugSession(DebugSession):
             self.report_data = _build_report_data(
                 summary, self.visualizer, self.backend_label,
             )
-
-
-# ---------------------------------------------------------------------------
-# SimpleDebugSession
-# ---------------------------------------------------------------------------
-
-class SimpleDebugSession(DebugSession):
-    """Debug session using simple/library mode with raw extractors."""
-
-    def __init__(self, args, selected, show_window):
-        super().__init__(args, selected, show_window)
-        self.backend_label = "SIMPLE"
-        self.extractors = []
-        self.face_classifier = None
-        self.fusion = None
-
-    def _setup_pipeline(self):
-        from facemoment.moment_detector.extractors import QualityExtractor
-        from facemoment.moment_detector.extractors.face_classifier import FaceClassifierExtractor
-
-        use_ml = self.args.use_ml
-        ml_mode = detect_ml_mode(self.args)
-        print(f"ML backends: {ml_mode}")
-
-        extractor_status = {}
-
-        # Load torch-based extractors first
-        if 'pose' in self.selected or 'all' in self.selected:
-            if use_ml is not False and _try_load_extractor('pose', self.extractors, self.args):
-                extractor_status['pose'] = 'enabled'
-            else:
-                extractor_status['pose'] = 'disabled' if use_ml is not False else 'skipped'
-
-        if 'gesture' in self.selected or 'all' in self.selected:
-            if use_ml is not False and _try_load_extractor('gesture', self.extractors, self.args):
-                extractor_status['gesture'] = 'enabled'
-            else:
-                extractor_status['gesture'] = 'disabled' if use_ml is not False else 'skipped'
-
-        if 'face' in self.selected or 'all' in self.selected:
-            if use_ml is False:
-                from facemoment.moment_detector.extractors import DummyExtractor
-                self.extractors.append(DummyExtractor(num_faces=2, spike_probability=0.1))
-                extractor_status['face'] = 'dummy'
-            elif _try_load_extractor('face', self.extractors, self.args):
-                extractor_status['face'] = 'enabled'
-            else:
-                extractor_status['face'] = 'disabled'
-
-        if 'quality' in self.selected or 'all' in self.selected:
-            self.extractors.append(QualityExtractor())
-            extractor_status['quality'] = 'enabled'
-
-        # Face classifier
-        if extractor_status.get('face') == 'enabled':
-            self.face_classifier = FaceClassifierExtractor(
-                min_track_frames=3, min_area_ratio=0.005, min_confidence=0.5,
-            )
-            extractor_status['face_classifier'] = 'enabled'
-
-        for name, status in extractor_status.items():
-            icon = "+" if status == 'enabled' else ("-" if status == 'disabled' else "o")
-            print(f"  [{icon}] {name}: {status}")
-
-        if not self.extractors:
-            print("Error: No extractors available")
-            sys.exit(1)
-
-        # Fusion
-        if any(e.name in ('face', 'dummy') for e in self.extractors):
-            if any(e.name == 'face' for e in self.extractors):
-                from facemoment.moment_detector.fusion import HighlightFusion
-                self.fusion = HighlightFusion()
-                print("  [+] fusion: HighlightFusion")
-            else:
-                from facemoment.moment_detector.fusion import DummyFusion
-                self.fusion = DummyFusion()
-                print("  [+] fusion: DummyFusion")
-
-        # Initialize extractors
-        for ext in self.extractors:
-            if ext.name not in ('quality',):
-                try:
-                    ext.initialize()
-                except Exception as e:
-                    print(f"Warning: Failed to initialize {ext.name}: {e}")
-
-        if self.face_classifier:
-            self.face_classifier.initialize()
-
-    def _print_backend_info(self):
-        print("\nBackends:")
-        for ext in self.extractors:
-            if hasattr(ext, 'get_backend_info'):
-                info = ext.get_backend_info()
-                for component, backend_name in info.items():
-                    print(f"  {component.capitalize():12}: {backend_name}")
-        print("-" * 50)
-
-    def _process_frame(self, frame):
-        observations = {}
-        for ext in self.extractors:
-            try:
-                obs = ext.process(frame)
-                if obs:
-                    observations[ext.name] = obs
-            except Exception:
-                pass
-
-        classifier_obs = None
-        if self.face_classifier:
-            face_obs = observations.get("face")
-            if face_obs:
-                try:
-                    classifier_obs = self.face_classifier.process(frame, {"face": face_obs})
-                except Exception:
-                    pass
-
-        fusion_result = None
-        if self.fusion:
-            fusion_obs = observations.get("face") or observations.get("dummy")
-            if fusion_obs:
-                fusion_result = self.fusion.update(fusion_obs, classifier_obs=classifier_obs)
-
-        timing_info = None
-        if self.profile_mode:
-            face_obs = observations.get("face")
-            if face_obs and face_obs.timing:
-                timing_info = face_obs.timing
-
-        # Frame scoring
-        score_result = score_frame(self.scorer, observations)
-
-        debug_image = self.visualizer.create_debug_view(
-            frame,
-            face_obs=observations.get("face") or observations.get("dummy"),
-            pose_obs=observations.get("pose"),
-            gesture_obs=observations.get("gesture"),
-            quality_obs=observations.get("quality"),
-            classifier_obs=classifier_obs,
-            fusion_result=fusion_result,
-            is_gate_open=self.fusion.is_gate_open if self.fusion else False,
-            in_cooldown=self.fusion.in_cooldown if self.fusion else False,
-            timing=timing_info if self.profile_mode else None,
-            roi=self.roi,
-            backend_label="SIMPLE",
-            score_result=score_result,
-        )
-
-        return debug_image, timing_info
-
-    def _on_reset(self):
-        if self.fusion:
-            self.fusion.reset()
-        super()._on_reset()
-
-    def _teardown_pipeline(self):
-        for ext in self.extractors:
-            if hasattr(ext, 'cleanup'):
-                ext.cleanup()
-        if self.face_classifier:
-            self.face_classifier.cleanup()
 
 
 # ---------------------------------------------------------------------------
@@ -1115,36 +883,3 @@ def _parse_roi(roi_str: Optional[str]) -> Optional[tuple]:
         return None
 
 
-def _try_load_extractor(name: str, extractors: list, args) -> bool:
-    """Try to load and add an extractor."""
-    device = getattr(args, 'device', 'cuda:0')
-    # Use same default ROI as debug session for consistency
-    roi = _parse_roi(getattr(args, 'roi', None)) or (0.3, 0.1, 0.7, 0.6)
-
-    try:
-        if name == 'face':
-            if not check_ml_dependencies("face"):
-                return False
-            from facemoment.moment_detector.extractors import FaceExtractor
-            extractors.append(FaceExtractor(device=device, roi=roi))
-            return True
-        elif name == 'pose':
-            if not check_ml_dependencies("pose"):
-                return False
-            from facemoment.moment_detector.extractors import PoseExtractor
-            extractors.append(PoseExtractor(device=device))
-            return True
-        elif name == 'gesture':
-            try:
-                import mediapipe
-            except ImportError:
-                print("  GestureExtractor requires mediapipe")
-                return False
-            from facemoment.moment_detector.extractors import GestureExtractor
-            extractors.append(GestureExtractor())
-            return True
-    except Exception as e:
-        print(f"  Failed to load {name}: {e}")
-        return False
-
-    return False

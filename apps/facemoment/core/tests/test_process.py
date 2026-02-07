@@ -14,7 +14,7 @@ from visualbase.ipc.uds import UDSServer, UDSClient
 from visualbase.ipc.messages import parse_obs_message
 from visualbase.ipc.interfaces import VideoReader, MessageSender
 
-from facemoment.moment_detector.extractors.base import (
+from visualpath.extractors.base import (
     BaseExtractor,
     Observation,
     FaceObservation,

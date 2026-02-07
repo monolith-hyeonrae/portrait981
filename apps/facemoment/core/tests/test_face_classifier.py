@@ -9,8 +9,8 @@ from facemoment.moment_detector.extractors.face_classifier import (
     ClassifiedFace,
     FaceClassifierOutput,
 )
-from facemoment.moment_detector.extractors.base import Observation, FaceObservation
-from facemoment.moment_detector.extractors.outputs import FaceDetectOutput
+from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.extractors.outputs import FaceDetectOutput
 
 
 def make_face(face_id: int, bbox: tuple, confidence: float = 0.9) -> FaceObservation:
