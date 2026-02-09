@@ -30,11 +30,10 @@
 visualbase (미디어 I/O)
   → visualpath (분석 프레임워크)
       → visualpath-analyzers-base (공유 타입: Observation, Module, protocols)
-          → vpx-face-detect (InsightFace SCRFD, onnxruntime-gpu)
-          → vpx-expression  (HSEmotion, onnxruntime CPU)
-          → vpx-face        (legacy composite = face-detect + expression)
-          → vpx-pose        (YOLO-Pose, ultralytics)
-          → vpx-gesture     (MediaPipe Hands)
+          → vpx-face-detect      (InsightFace SCRFD, onnxruntime-gpu)
+          → vpx-face-expression  (HSEmotion, onnxruntime CPU)
+          → vpx-body-pose        (YOLO-Pose, ultralytics)
+          → vpx-hand-gesture     (MediaPipe Hands)
       → facemoment (core: CLI, pipeline, fusion, classifier, quality, dummy)
       → portrait981 (통합 오케스트레이터, 미구현)
 ```
@@ -53,11 +52,14 @@ portrait981/                    ← repo root
 │   │   └── analyzers/
 │   │       └── base/           # 공유 타입/프로토콜
 │   └── vpx/
-│       ├── face-detect/        # InsightFace SCRFD
-│       ├── expression/         # HSEmotion
-│       ├── face/               # legacy composite
-│       ├── pose/               # YOLO-Pose
-│       └── gesture/            # MediaPipe Hands
+│       ├── sdk/                # vpx-sdk (모듈 SDK)
+│       ├── runner/             # vpx-runner (Analyzer 러너)
+│       ├── viz/                # vpx-viz (시각화)
+│       └── plugins/            # Analyzer 플러그인
+│           ├── face-detect/    # InsightFace SCRFD
+│           ├── face-expression/# HSEmotion
+│           ├── body-pose/      # YOLO-Pose
+│           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
 │   └── facemoment/
 │       └── core/               # 얼굴/장면 분석 core
@@ -80,18 +82,19 @@ portrait981/                    ← repo root
 | visualpath-cli | `libs/visualpath/cli/` | CLI 도구 |
 | visualpath-pathway | `libs/visualpath/pathway/` | Pathway 백엔드 |
 | visualpath-analyzers-base | `libs/visualpath/analyzers/base/` | 공유 타입/프로토콜 |
-| vpx-face-detect | `libs/vpx/face-detect/` | 얼굴 검출 |
-| vpx-expression | `libs/vpx/expression/` | 표정 분석 |
-| vpx-face | `libs/vpx/face/` | 복합 (legacy) |
-| vpx-pose | `libs/vpx/pose/` | 포즈 추정 |
-| vpx-gesture | `libs/vpx/gesture/` | 제스처 감지 |
+| vpx-face-detect | `libs/vpx/plugins/face-detect/` | 얼굴 검출 |
+| vpx-face-expression | `libs/vpx/plugins/face-expression/` | 표정 분석 |
+| vpx-body-pose | `libs/vpx/plugins/body-pose/` | 포즈 추정 |
+| vpx-hand-gesture | `libs/vpx/plugins/hand-gesture/` | 제스처 감지 |
+| vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
+| vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
 | facemoment | `apps/facemoment/core/` | 얼굴/장면 분석 core |
 
 ## Namespace Package 패턴
 
 두 개의 namespace를 여러 패키지가 공유:
 
-**`vpx` namespace** (5개 analyzer 패키지):
+**`vpx` namespace** (4개 analyzer + sdk + runner + viz 패키지):
 - 각 `libs/vpx/*/src/vpx/__init__.py`에 `pkgutil.extend_path` 사용
 
 **`visualpath.analyzers` namespace** (analyzers-base 패키지):
@@ -110,15 +113,14 @@ portrait981/                    ← repo root
 from visualpath.analyzers.base import Module, Observation, FaceObservation
 from visualpath.analyzers.types import KeypointIndex, GestureType
 from vpx.face_detect.output import FaceDetectOutput
-from vpx.pose.output import PoseOutput
+from vpx.body_pose.output import PoseOutput
 from visualpath.analyzers.backends.base import DetectedFace, FaceDetectionBackend
 
 # Analyzer (vpx 패키지)
 from vpx.face_detect import FaceDetectionAnalyzer
-from vpx.expression import ExpressionAnalyzer
-from vpx.face import FaceAnalyzer
-from vpx.pose import PoseAnalyzer
-from vpx.gesture import GestureAnalyzer
+from vpx.face_expression import ExpressionAnalyzer
+from vpx.body_pose import PoseAnalyzer
+from vpx.hand_gesture import GestureAnalyzer
 
 # facemoment-specific
 from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierAnalyzer
@@ -140,14 +142,14 @@ ML 의존성 충돌 방지를 위해 analyzer별 독립 venv:
 
 ```bash
 # face_detect: onnxruntime-gpu
-uv venv venv-face-detect && uv pip install -e "libs/vpx/face-detect"
+uv venv venv-face-detect && uv pip install -e "libs/vpx/plugins/face-detect"
 
-# expression: onnxruntime CPU (hsemotion-onnx)
-uv venv venv-expression && uv pip install -e "libs/vpx/expression"
+# face_expression: onnxruntime CPU (hsemotion-onnx)
+uv venv venv-face-expression && uv pip install -e "libs/vpx/plugins/face-expression"
 
-# pose / gesture: 각각 독립 venv
-uv venv venv-pose && uv pip install -e "libs/vpx/pose"
-uv venv venv-gesture && uv pip install -e "libs/vpx/gesture"
+# body_pose / hand_gesture: 각각 독립 venv
+uv venv venv-body-pose && uv pip install -e "libs/vpx/plugins/body-pose"
+uv venv venv-hand-gesture && uv pip install -e "libs/vpx/plugins/hand-gesture"
 ```
 
 ### onnxruntime GPU/CPU 충돌 방지

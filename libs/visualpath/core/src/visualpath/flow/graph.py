@@ -4,6 +4,7 @@ FlowGraph manages a directed acyclic graph of FlowNodes,
 handling node registration, edge connections, and validation.
 """
 
+import logging
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
@@ -12,6 +13,8 @@ from visualpath.flow.node import FlowNode, FlowData
 
 if TYPE_CHECKING:
     from visualpath.core.module import Module
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -249,6 +252,12 @@ class FlowGraph:
         # Check module dependency satisfaction
         self._check_module_dependencies()
 
+        # Check port schema compatibility (warnings only)
+        self._check_port_schema()
+
+        # Check module capability compatibility (warnings only)
+        self._check_capability_compatibility()
+
     def _check_cycles(self) -> None:
         """Check for cycles using DFS with color marking."""
         WHITE, GRAY, BLACK = 0, 1, 2
@@ -353,6 +362,72 @@ class FlowGraph:
             raise ValueError(
                 "Unsatisfied module dependencies:\n  " + "\n  ".join(unsatisfied)
             )
+
+    def _check_port_schema(self) -> None:
+        """Check port schema compatibility between modules (warnings only).
+
+        For each module with a port_schema declaring input_signals,
+        verify that some upstream module's port_schema declares those
+        signals in its output_signals.
+        """
+        from visualpath.flow.specs import ModuleSpec
+
+        # Collect all modules in order
+        all_modules = []
+        for node in self._nodes.values():
+            spec = node.spec
+            if isinstance(spec, ModuleSpec):
+                all_modules.extend(spec.modules)
+
+        # Build output signals map: module_name -> output_signals
+        output_map: Dict[str, Set[str]] = {}
+        for mod in all_modules:
+            schema = getattr(mod, 'port_schema', None)
+            if schema is not None and schema.output_signals:
+                output_map[mod.name] = set(schema.output_signals)
+
+        # Check each module's input_signals
+        for mod in all_modules:
+            schema = getattr(mod, 'port_schema', None)
+            if schema is None or not schema.input_signals:
+                continue
+
+            # Gather all output signals from declared dependencies
+            available_signals: Set[str] = set()
+            for dep_name in list(getattr(mod, 'depends', [])):
+                if dep_name in output_map:
+                    available_signals |= output_map[dep_name]
+
+            missing = set(schema.input_signals) - available_signals
+            if missing:
+                logger.warning(
+                    "Port schema: module '%s' expects input signals %s "
+                    "not declared in upstream port_schema outputs",
+                    mod.name, missing,
+                )
+
+    def _check_capability_compatibility(self) -> None:
+        """Check capability compatibility across all modules (warnings only).
+
+        Collects all modules from ModuleSpec nodes and runs
+        check_compatibility(). Results are logged as warnings,
+        never raising exceptions.
+        """
+        from visualpath.flow.specs import ModuleSpec
+        from visualpath.core.compat import check_compatibility
+
+        all_modules = []
+        for node in self._nodes.values():
+            spec = node.spec
+            if isinstance(spec, ModuleSpec):
+                all_modules.extend(spec.modules)
+
+        if not all_modules:
+            return
+
+        report = check_compatibility(list(all_modules))
+        for warning in report.warnings:
+            logger.warning("FlowGraph compatibility: %s", warning)
 
     def topological_order(self) -> List[str]:
         """Get nodes in topological order.

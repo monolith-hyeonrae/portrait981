@@ -6,11 +6,13 @@ members = [
     "libs/visualpath/cli",
     "libs/visualpath/pathway",
     "libs/visualpath/analyzers/base",
-    "libs/vpx/face-detect",
-    "libs/vpx/expression",
-    "libs/vpx/face",
-    "libs/vpx/pose",
-    "libs/vpx/gesture",
+    "libs/vpx/plugins/face-detect",
+    "libs/vpx/plugins/face-expression",
+    "libs/vpx/plugins/body-pose",
+    "libs/vpx/plugins/hand-gesture",
+    "libs/vpx/sdk",
+    "libs/vpx/runner",
+    "libs/vpx/viz",
     "apps/facemoment/core",
 ]
 

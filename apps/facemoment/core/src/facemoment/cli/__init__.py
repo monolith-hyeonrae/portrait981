@@ -143,6 +143,10 @@ Examples:
         "--backend", choices=["pathway", "simple"], default="pathway",
         help="Execution backend: 'pathway' (streaming, default) or 'simple' (sequential)"
     )
+    proc_parser.add_argument(
+        "--profile", choices=["lite", "platform"], default=None,
+        help="Execution profile: 'lite' (inline, no observability) or 'platform' (process isolation, observability)"
+    )
     _add_distributed_args(proc_parser)
     proc_parser.add_argument(
         "--roi", type=str, metavar="X1,Y1,X2,Y2",

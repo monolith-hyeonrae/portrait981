@@ -47,7 +47,7 @@ src/facemoment/
     └── mappers.py             # FacemomentMapper
 ```
 
-ML 의존성이 필요한 analyzer는 별도 패키지로 분리됨 (face_detect, expression, face, pose, gesture).
+ML 의존성이 필요한 analyzer는 별도 패키지로 분리됨 (vpx-face-detect, vpx-face-expression, vpx-body-pose, vpx-hand-gesture).
 
 ## High-Level API
 
@@ -97,11 +97,10 @@ class ExpressionAnalyzer(Module):
 | Analyzer | name | depends | 패키지 | Backend | Steps |
 |----------|------|---------|--------|---------|-------|
 | FaceDetectionAnalyzer | `face.detect` | - | vpx-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
-| ExpressionAnalyzer | `face.expression` | face.detect | vpx-expression | HSEmotion | expression → aggregation |
+| ExpressionAnalyzer | `face.expression` | face.detect | vpx-face-expression | HSEmotion | expression → aggregation |
 | FaceClassifierAnalyzer | `face.classify` | face.detect | facemoment (core) | 내장 로직 | track_update → classify → role_assignment |
-| FaceAnalyzer | `face` | - | vpx-face | InsightFace + HSEmotion | detect → expression/tracking → roi_filter |
-| PoseAnalyzer | `body.pose` | - | vpx-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
-| GestureAnalyzer | `hand.gesture` | - | vpx-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
+| PoseAnalyzer | `body.pose` | - | vpx-body-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
+| GestureAnalyzer | `hand.gesture` | - | vpx-hand-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
 | QualityAnalyzer | `frame.quality` | - | facemoment (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
 | DummyAnalyzer | `mock.dummy` | - | facemoment (core) | - | 테스트용 |
 

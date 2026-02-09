@@ -22,6 +22,7 @@ from visualpath.analyzers.base import (
     processing_step,
     get_processing_steps,
 )
+from visualpath.core.capabilities import Capability, ModuleCapabilities
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 
@@ -102,6 +103,12 @@ class FaceClassifierAnalyzer(Module):
     @property
     def name(self) -> str:
         return "face.classify"
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities(
+            flags=Capability.STATEFUL,
+        )
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:

@@ -9,15 +9,15 @@ from vpx.face_detect.backends.base import (  # noqa: F401
     DetectedFace,
     FaceDetectionBackend,
 )
-from vpx.expression.backends.base import (  # noqa: F401
+from vpx.face_expression.backends.base import (  # noqa: F401
     FaceExpression,
     ExpressionBackend,
 )
-from vpx.pose.backends.base import (  # noqa: F401
+from vpx.body_pose.backends.base import (  # noqa: F401
     PoseKeypoints,
     PoseBackend,
 )
-from vpx.gesture.backends.base import (  # noqa: F401
+from vpx.hand_gesture.backends.base import (  # noqa: F401
     HandLandmarks,
     HandLandmarkBackend,
 )

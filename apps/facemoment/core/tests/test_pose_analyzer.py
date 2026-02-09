@@ -6,9 +6,9 @@ import pytest
 
 from visualbase import Frame
 
-from vpx.pose import PoseAnalyzer
-from vpx.pose.types import KeypointIndex
-from vpx.pose.backends.base import PoseKeypoints
+from vpx.body_pose import PoseAnalyzer
+from vpx.body_pose.types import KeypointIndex
+from vpx.body_pose.backends.base import PoseKeypoints
 
 
 class MockPoseBackend:

@@ -92,12 +92,12 @@ def _check_face_analyzer(verbose: bool = False):
 
     # Expression backend (HSEmotion or PyFeat)
     try:
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
         import hsemotion_onnx
         status["expression"] = "HSEmotion (fast)"
     except ImportError:
         try:
-            from vpx.expression.backends.pyfeat import PyFeatBackend
+            from vpx.face_expression.backends.pyfeat import PyFeatBackend
             status["expression"] = "PyFeat (accurate, slow)"
         except ImportError:
             status["expression"] = "NOT AVAILABLE (install hsemotion-onnx or py-feat)"
@@ -113,7 +113,7 @@ def _check_pose_analyzer(verbose: bool = False):
     """Check PoseAnalyzer availability."""
     try:
         import ultralytics
-        from vpx.pose.backends.yolo_pose import YOLOPoseBackend
+        from vpx.body_pose.backends.yolo_pose import YOLOPoseBackend
         print(f"  [+] PoseAnalyzer")
         print(f"        Backend: YOLO-Pose (ultralytics v{ultralytics.__version__})")
     except ImportError:
@@ -333,17 +333,17 @@ def _build_facemoment_flow_graph():
     except ImportError:
         availability["face.classify"] = False
     try:
-        from vpx.expression import ExpressionAnalyzer  # noqa: F401
+        from vpx.face_expression import ExpressionAnalyzer  # noqa: F401
         availability["face.expression"] = True
     except ImportError:
         availability["face.expression"] = False
     try:
-        from vpx.pose import PoseAnalyzer  # noqa: F401
+        from vpx.body_pose import PoseAnalyzer  # noqa: F401
         availability["body.pose"] = True
     except ImportError:
         availability["body.pose"] = False
     try:
-        from vpx.gesture import GestureAnalyzer  # noqa: F401
+        from vpx.hand_gesture import GestureAnalyzer  # noqa: F401
         availability["hand.gesture"] = True
     except ImportError:
         availability["hand.gesture"] = False
@@ -493,13 +493,6 @@ def _print_processing_steps():
         except Exception:
             return []
 
-    # Composite Face analyzer (legacy)
-    try:
-        from vpx.face import FaceAnalyzer
-        analyzers_info.append(("FaceAnalyzer", "face", _get_steps(FaceAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("FaceAnalyzer", "face", f"NOT AVAILABLE: {e}"))
-
     # Split Face analyzers
     try:
         from vpx.face_detect import FaceDetectionAnalyzer
@@ -508,7 +501,7 @@ def _print_processing_steps():
         analyzers_info.append(("FaceDetectionAnalyzer", "face.detect", f"NOT AVAILABLE: {e}"))
 
     try:
-        from vpx.expression import ExpressionAnalyzer
+        from vpx.face_expression import ExpressionAnalyzer
         analyzers_info.append(("ExpressionAnalyzer", "face.expression", _get_steps(ExpressionAnalyzer)))
     except (ImportError, AttributeError) as e:
         analyzers_info.append(("ExpressionAnalyzer", "face.expression", f"NOT AVAILABLE: {e}"))
@@ -521,14 +514,14 @@ def _print_processing_steps():
 
     # PoseAnalyzer
     try:
-        from vpx.pose import PoseAnalyzer
+        from vpx.body_pose import PoseAnalyzer
         analyzers_info.append(("PoseAnalyzer", "body.pose", _get_steps(PoseAnalyzer)))
     except (ImportError, AttributeError) as e:
         analyzers_info.append(("PoseAnalyzer", "body.pose", f"NOT AVAILABLE: {e}"))
 
     # GestureAnalyzer
     try:
-        from vpx.gesture import GestureAnalyzer
+        from vpx.hand_gesture import GestureAnalyzer
         analyzers_info.append(("GestureAnalyzer", "hand.gesture", _get_steps(GestureAnalyzer)))
     except (ImportError, AttributeError) as e:
         analyzers_info.append(("GestureAnalyzer", "hand.gesture", f"NOT AVAILABLE: {e}"))

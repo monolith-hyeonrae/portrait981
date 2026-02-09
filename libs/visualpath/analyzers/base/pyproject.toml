@@ -4,8 +4,7 @@ version = "0.1.0"
 description = "Shared types and protocols for visualpath analyzers"
 requires-python = ">=3.10"
 dependencies = [
-    "visualpath",
-    "numpy>=1.24.0",
+    "vpx-sdk",
 ]
 
 [build-system]
@@ -16,4 +15,4 @@ build-backend = "hatchling.build"
 packages = ["src/visualpath"]
 
 [tool.uv.sources]
-visualpath = { workspace = true }
+vpx-sdk = { workspace = true }

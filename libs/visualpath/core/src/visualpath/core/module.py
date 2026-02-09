@@ -75,6 +75,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List, Optional, TYPE_CHECKING
 
+from visualpath.core.capabilities import ModuleCapabilities, PortSchema
+from visualpath.core.error_policy import ErrorPolicy
+
 if TYPE_CHECKING:
     from visualbase import Frame
     from visualpath.core.observation import Observation
@@ -117,6 +120,10 @@ class Module(ABC):
     # Class attribute: list of module names this module depends on
     depends: List[str] = []
     optional_depends: List[str] = []
+
+    # Optional class attributes for interface contracts
+    port_schema: Optional["PortSchema"] = None
+    error_policy: Optional["ErrorPolicy"] = None
 
     @property
     @abstractmethod
@@ -173,6 +180,20 @@ class Module(ABC):
         """
         pass
 
+    def warmup(self, sample_frame=None) -> None:
+        """Warm up module after initialize(), before first process().
+
+        Called after initialize() to pre-warm CUDA kernels, allocate
+        buffers, or perform a dry-run. Override for modules that benefit
+        from warmup (ML models with GPU).
+
+        Lifecycle: initialize() -> warmup(sample_frame?) -> [process()...] -> cleanup()
+
+        Args:
+            sample_frame: Optional sample frame for dry-run warmup.
+        """
+        pass
+
     def cleanup(self) -> None:
         """Release module resources.
 
@@ -187,6 +208,15 @@ class Module(ABC):
     def runtime_info(self) -> "RuntimeInfo":
         """실행 환경 정보. 기본값: INLINE + 현재 PID."""
         return RuntimeInfo(isolation="INLINE", pid=os.getpid())
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        """Declare module capabilities.
+
+        Override to declare GPU usage, resource groups, etc.
+        Default: no capabilities (safe for all execution modes).
+        """
+        return ModuleCapabilities()
 
     def reset(self) -> None:
         """Reset module state.

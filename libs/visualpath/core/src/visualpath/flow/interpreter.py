@@ -344,41 +344,9 @@ class SimpleInterpreter:
     # -----------------------------------------------------------------
 
     def _toposort_modules(self, modules: tuple) -> list:
-        """Topologically sort modules based on their depends/optional_depends.
-
-        Uses Kahn's algorithm. Only considers dependencies that are
-        present within the given set of modules (external deps are ignored).
-        Falls back to original order for any unresolvable cycles.
-        """
-        from collections import defaultdict, deque
-
-        name_to_mod = {m.name: m for m in modules}
-        available = set(name_to_mod.keys())
-        in_degree = {m.name: 0 for m in modules}
-        dependents = defaultdict(list)
-
-        for m in modules:
-            for dep in list(getattr(m, 'depends', [])) + list(getattr(m, 'optional_depends', [])):
-                if dep in available:
-                    in_degree[m.name] += 1
-                    dependents[dep].append(m.name)
-
-        queue = deque(n for n, d in in_degree.items() if d == 0)
-        result = []
-        while queue:
-            name = queue.popleft()
-            result.append(name_to_mod[name])
-            for dep_name in dependents[name]:
-                in_degree[dep_name] -= 1
-                if in_degree[dep_name] == 0:
-                    queue.append(dep_name)
-
-        if len(result) != len(modules):
-            # Cycle detected — append remaining modules in original order
-            seen = {m.name for m in result}
-            result.extend(m for m in modules if m.name not in seen)
-
-        return result
+        """Topologically sort modules based on their depends/optional_depends."""
+        from visualpath.core.graph import toposort_modules
+        return toposort_modules(modules)
 
     def _interpret_modules(
         self, node: FlowNode, spec: ModuleSpec, data: FlowData
@@ -445,8 +413,44 @@ class SimpleInterpreter:
         frame: Any,
         deps: Optional[Dict[str, Any]],
     ) -> Any:
-        """Call a module's process method."""
-        return module.process(frame, deps)
+        """Call a module's process method, respecting ErrorPolicy if declared."""
+        policy = getattr(module, 'error_policy', None)
+        if policy is None:
+            return module.process(frame, deps)
+
+        # Apply retry + error policy
+        last_error = None
+        max_attempts = 1 + policy.max_retries
+        for attempt in range(max_attempts):
+            try:
+                return module.process(frame, deps)
+            except Exception as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    logger.debug(
+                        "Module '%s' attempt %d/%d failed: %s",
+                        getattr(module, 'name', '?'),
+                        attempt + 1, max_attempts, e,
+                    )
+                    continue
+
+        # All attempts failed — apply on_error policy
+        if policy.on_error == "raise":
+            raise last_error  # type: ignore[misc]
+        elif policy.on_error == "fallback" and policy.fallback_signals:
+            from visualpath.core.observation import Observation
+            return Observation(
+                source=getattr(module, 'name', 'unknown'),
+                frame_id=getattr(frame, 'frame_id', 0),
+                t_ns=getattr(frame, 't_src_ns', 0),
+                signals=dict(policy.fallback_signals),
+            )
+        # "skip" or default
+        logger.warning(
+            "Module '%s' failed after %d attempts, skipping: %s",
+            getattr(module, 'name', '?'), max_attempts, last_error,
+        )
+        return None
 
     # -----------------------------------------------------------------
     # Filters

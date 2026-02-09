@@ -24,6 +24,7 @@ DEFAULT_BACKEND = 'pathway'
 # CUDA conflict groups: analyzers sharing the same CUDA runtime binding.
 # If analyzers from 2+ groups are active, the minority group must run in
 # a subprocess to avoid symbol conflicts (e.g. onnxruntime-gpu vs torch).
+# NOTE: This is the legacy fallback. Prefer module.capabilities.resource_groups.
 _CUDA_GROUPS: Dict[str, Set[str]] = {
     "onnxruntime": {"face.detect", "face.expression"},
     "torch": {"body.pose"},
@@ -192,6 +193,7 @@ def run(
     fps: int = DEFAULT_FPS,
     cooldown: float = DEFAULT_COOLDOWN,
     backend: str = DEFAULT_BACKEND,
+    profile: Optional[str] = None,
     on_trigger: Optional[Callable[[Trigger], None]] = None,
 ) -> Result:
     """Process a video and return results.
@@ -207,6 +209,7 @@ def run(
         fps: Frames per second to process.
         cooldown: Seconds between triggers.
         backend: Execution backend ("pathway", "simple", or "worker").
+        profile: Execution profile ("lite" or "platform"). Overrides backend/isolation defaults.
         on_trigger: Callback when a trigger fires.
 
     Returns:
@@ -226,14 +229,23 @@ def run(
     # 2. Build modules (facemoment domain logic)
     modules = build_modules(analyzer_names, cooldown=cooldown)
 
-    # 3. Build isolation config (CUDA conflict detection)
-    isolation_config = _build_isolation_config(analyzer_names)
+    # 3. Resolve profile or build isolation config
+    effective_backend = backend
+    if profile is not None:
+        from visualpath.core.profile import ExecutionProfile, resolve_profile
+        from visualpath.runner import resolve_modules as _resolve
+        exec_profile = ExecutionProfile.from_name(profile)
+        resolved = _resolve(modules)
+        isolation_config = resolve_profile(exec_profile, resolved)
+        effective_backend = exec_profile.backend
+    else:
+        isolation_config = _build_isolation_config(analyzer_names)
 
     # 4. Build FlowGraph (with isolation info in ModuleSpec)
     graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
 
     # 5. Select backend (WorkerBackend if isolation needed)
-    engine = _get_backend(backend)
+    engine = _get_backend(effective_backend)
 
     # 6. Open video source
     vb, source, stream = create_video_stream(str(video), fps=fps)

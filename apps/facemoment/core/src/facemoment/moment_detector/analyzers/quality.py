@@ -16,6 +16,7 @@ from visualpath.analyzers.base import (
     processing_step,
     get_processing_steps,
 )
+from visualpath.core.capabilities import Capability, ModuleCapabilities
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,12 @@ class QualityAnalyzer(Module):
     @property
     def name(self) -> str:
         return "frame.quality"
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities(
+            flags=Capability.DETERMINISTIC | Capability.THREAD_SAFE,
+        )
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:

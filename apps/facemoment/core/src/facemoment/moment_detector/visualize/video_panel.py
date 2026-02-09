@@ -14,10 +14,10 @@ import numpy as np
 
 from visualpath.analyzers.base import Observation
 from vpx.face_detect.types import FaceObservation
-from vpx.pose.types import KeypointIndex
-from vpx.gesture.types import HandLandmarkIndex
-from vpx.pose.output import PoseOutput
-from vpx.gesture.output import GestureOutput
+from vpx.body_pose.types import KeypointIndex
+from vpx.hand_gesture.types import HandLandmarkIndex
+from vpx.body_pose.output import PoseOutput
+from vpx.hand_gesture.output import GestureOutput
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,
     COLOR_WHITE_BGR,

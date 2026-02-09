@@ -1,0 +1,24 @@
+[project]
+name = "vpx-face-expression"
+version = "0.1.0"
+description = "Expression analysis analyzer (HSEmotion)"
+requires-python = ">=3.10"
+dependencies = [
+    "vpx-sdk",
+    "vpx-face-detect",
+    "hsemotion-onnx>=0.3",
+]
+
+[project.entry-points."visualpath.analyzers"]
+"face.expression" = "vpx.face_expression:ExpressionAnalyzer"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vpx"]
+
+[tool.uv.sources]
+vpx-sdk = { workspace = true }
+vpx-face-detect = { workspace = true }

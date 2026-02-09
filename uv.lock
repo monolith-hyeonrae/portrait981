@@ -23,11 +23,13 @@ members = [
     "visualpath-cli",
     "visualpath-isolation",
     "visualpath-pathway",
-    "vpx-expression",
-    "vpx-face",
+    "vpx-body-pose",
     "vpx-face-detect",
-    "vpx-gesture",
-    "vpx-pose",
+    "vpx-face-expression",
+    "vpx-hand-gesture",
+    "vpx-runner",
+    "vpx-sdk",
+    "vpx-viz",
 ]
 overrides = [{ name = "onnxruntime", marker = "sys_platform == 'never'" }]
 
@@ -1075,37 +1077,35 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+body-pose = [
+    { name = "vpx-body-pose" },
+]
 dev = [
     { name = "pytest" },
-]
-expression = [
-    { name = "vpx-expression" },
-]
-face = [
-    { name = "vpx-face" },
 ]
 face-detect = [
     { name = "vpx-face-detect" },
 ]
-gesture = [
-    { name = "vpx-gesture" },
+face-expression = [
+    { name = "vpx-face-expression" },
+]
+hand-gesture = [
+    { name = "vpx-hand-gesture" },
 ]
 local = [
     { name = "pathway" },
     { name = "pyqt6" },
     { name = "pyzmq" },
     { name = "supervision" },
-    { name = "vpx-face" },
-    { name = "vpx-gesture" },
-    { name = "vpx-pose" },
-]
-pose = [
-    { name = "vpx-pose" },
+    { name = "vpx-body-pose" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-face-expression" },
+    { name = "vpx-hand-gesture" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "facemoment", extras = ["face", "pose", "gesture"], marker = "extra == 'local'", editable = "apps/facemoment/core" },
+    { name = "facemoment", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture"], marker = "extra == 'local'", editable = "apps/facemoment/core" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
     { name = "pathway", marker = "extra == 'local'", specifier = ">=0.8.0" },
@@ -1116,13 +1116,12 @@ requires-dist = [
     { name = "visualbase", editable = "libs/visualbase" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
     { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
-    { name = "vpx-expression", marker = "extra == 'expression'", editable = "libs/vpx/expression" },
-    { name = "vpx-face", marker = "extra == 'face'", editable = "libs/vpx/face" },
-    { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/face-detect" },
-    { name = "vpx-gesture", marker = "extra == 'gesture'", editable = "libs/vpx/gesture" },
-    { name = "vpx-pose", marker = "extra == 'pose'", editable = "libs/vpx/pose" },
+    { name = "vpx-body-pose", marker = "extra == 'body-pose'", editable = "libs/vpx/plugins/body-pose" },
+    { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/plugins/face-detect" },
+    { name = "vpx-face-expression", marker = "extra == 'face-expression'", editable = "libs/vpx/plugins/face-expression" },
+    { name = "vpx-hand-gesture", marker = "extra == 'hand-gesture'", editable = "libs/vpx/plugins/hand-gesture" },
 ]
-provides-extras = ["face-detect", "expression", "face", "pose", "gesture", "local", "dev"]
+provides-extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "local", "dev"]
 
 [[package]]
 name = "fastapi"
@@ -5619,16 +5618,11 @@ name = "visualpath-analyzers-base"
 version = "0.1.0"
 source = { editable = "libs/visualpath/analyzers/base" }
 dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "visualpath" },
+    { name = "vpx-sdk" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "visualpath", editable = "libs/visualpath/core" },
-]
+requires-dist = [{ name = "vpx-sdk", editable = "libs/vpx/sdk" }]
 
 [[package]]
 name = "visualpath-cli"
@@ -5697,46 +5691,29 @@ requires-dist = [
 ]
 
 [[package]]
-name = "vpx-expression"
+name = "vpx-body-pose"
 version = "0.1.0"
-source = { editable = "libs/vpx/expression" }
+source = { editable = "libs/vpx/plugins/body-pose" }
 dependencies = [
-    { name = "hsemotion-onnx" },
-    { name = "visualpath-analyzers-base" },
-    { name = "vpx-face-detect" },
+    { name = "ultralytics" },
+    { name = "vpx-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "hsemotion-onnx", specifier = ">=0.3" },
-    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
-    { name = "vpx-face-detect", editable = "libs/vpx/face-detect" },
-]
-
-[[package]]
-name = "vpx-face"
-version = "0.1.0"
-source = { editable = "libs/vpx/face" }
-dependencies = [
-    { name = "vpx-expression" },
-    { name = "vpx-face-detect" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "vpx-expression", editable = "libs/vpx/expression" },
-    { name = "vpx-face-detect", editable = "libs/vpx/face-detect" },
+    { name = "ultralytics", specifier = ">=8.0.0" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 
 [[package]]
 name = "vpx-face-detect"
 version = "0.1.0"
-source = { editable = "libs/vpx/face-detect" }
+source = { editable = "libs/vpx/plugins/face-detect" }
 dependencies = [
     { name = "insightface" },
     { name = "ml-dtypes" },
     { name = "onnxruntime-gpu" },
-    { name = "visualpath-analyzers-base" },
+    { name = "vpx-sdk" },
 ]
 
 [package.metadata]
@@ -5744,37 +5721,90 @@ requires-dist = [
     { name = "insightface", specifier = ">=0.7.3" },
     { name = "ml-dtypes", specifier = ">=0.5.0" },
     { name = "onnxruntime-gpu", specifier = ">=1.16.0" },
-    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 
 [[package]]
-name = "vpx-gesture"
+name = "vpx-face-expression"
 version = "0.1.0"
-source = { editable = "libs/vpx/gesture" }
+source = { editable = "libs/vpx/plugins/face-expression" }
+dependencies = [
+    { name = "hsemotion-onnx" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "hsemotion-onnx", specifier = ">=0.3" },
+    { name = "vpx-face-detect", editable = "libs/vpx/plugins/face-detect" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+]
+
+[[package]]
+name = "vpx-hand-gesture"
+version = "0.1.0"
+source = { editable = "libs/vpx/plugins/hand-gesture" }
 dependencies = [
     { name = "mediapipe" },
-    { name = "visualpath-analyzers-base" },
+    { name = "vpx-sdk" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mediapipe", specifier = ">=0.10.32" },
-    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 
 [[package]]
-name = "vpx-pose"
+name = "vpx-runner"
 version = "0.1.0"
-source = { editable = "libs/vpx/pose" }
+source = { editable = "libs/vpx/runner" }
 dependencies = [
-    { name = "ultralytics" },
-    { name = "visualpath-analyzers-base" },
+    { name = "visualbase" },
+    { name = "vpx-sdk" },
+]
+
+[package.optional-dependencies]
+viz = [
+    { name = "vpx-viz" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "ultralytics", specifier = ">=8.0.0" },
-    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
+    { name = "visualbase", editable = "libs/visualbase" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+    { name = "vpx-viz", marker = "extra == 'viz'", editable = "libs/vpx/viz" },
+]
+provides-extras = ["viz"]
+
+[[package]]
+name = "vpx-sdk"
+version = "0.1.0"
+source = { editable = "libs/vpx/sdk" }
+dependencies = [
+    { name = "visualpath" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "visualpath", editable = "libs/visualpath/core" }]
+
+[[package]]
+name = "vpx-viz"
+version = "0.1.0"
+source = { editable = "libs/vpx/viz" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python" },
+    { name = "vpx-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "opencv-python", specifier = ">=4.8.0" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 
 [[package]]

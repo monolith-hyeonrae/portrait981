@@ -8,16 +8,16 @@ when running in isolated worker environments.
 
 Usage:
     # Import only what you need (lazy loading)
-    from vpx.face import FaceAnalyzer
-    from vpx.pose import PoseAnalyzer
-    from vpx.gesture import GestureAnalyzer
+    from vpx.face_expression import ExpressionAnalyzer
+    from vpx.body_pose import PoseAnalyzer
+    from vpx.hand_gesture import GestureAnalyzer
 
     # Or import base types (always available)
     from facemoment.moment_detector.analyzers import BaseAnalyzer, Observation
 
     # Import type definitions (canonical)
-    from vpx.pose.types import KeypointIndex
-    from vpx.gesture.types import GestureType
+    from vpx.body_pose.types import KeypointIndex
+    from vpx.hand_gesture.types import GestureType
 """
 
 # Base types - always available (no ML dependencies)
@@ -28,14 +28,14 @@ from visualpath.analyzers.base import (
     IsolationLevel,
 )
 from vpx.face_detect.types import FaceObservation
-from vpx.pose.types import KeypointIndex, COCO_KEYPOINT_NAMES
-from vpx.gesture.types import HandLandmarkIndex, GestureType
+from vpx.body_pose.types import KeypointIndex, COCO_KEYPOINT_NAMES
+from vpx.hand_gesture.types import HandLandmarkIndex, GestureType
 from facemoment.moment_detector.analyzers.dummy import DummyAnalyzer
 from facemoment.moment_detector.analyzers.quality import QualityAnalyzer
 from vpx.face_detect.output import FaceDetectOutput
-from vpx.expression.output import ExpressionOutput
-from vpx.pose.output import PoseOutput
-from vpx.gesture.output import GestureOutput
+from vpx.face_expression.output import ExpressionOutput
+from vpx.body_pose.output import PoseOutput
+from vpx.hand_gesture.output import GestureOutput
 from facemoment.moment_detector.analyzers.quality import QualityOutput
 from facemoment.moment_detector.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
 
@@ -62,32 +62,28 @@ __all__ = [
     "DummyAnalyzer",
     "QualityAnalyzer",
     # Lazy imports (import directly from submodule)
-    # "FaceAnalyzer",           # from vpx.face import FaceAnalyzer (composite)
     # "FaceDetectionAnalyzer",  # from vpx.face_detect import FaceDetectionAnalyzer
-    # "ExpressionAnalyzer",     # from vpx.expression import ExpressionAnalyzer
-    # "PoseAnalyzer",           # from vpx.pose import PoseAnalyzer
-    # "GestureAnalyzer",        # from vpx.gesture import GestureAnalyzer
+    # "ExpressionAnalyzer",     # from vpx.face_expression import ExpressionAnalyzer
+    # "PoseAnalyzer",           # from vpx.body_pose import PoseAnalyzer
+    # "GestureAnalyzer",        # from vpx.hand_gesture import GestureAnalyzer
 ]
 
 
 def __getattr__(name: str):
     """Lazy import for ML-dependent analyzers."""
-    if name == "FaceAnalyzer":
-        from vpx.face import FaceAnalyzer
-        return FaceAnalyzer
-    elif name == "FaceDetectionAnalyzer":
+    if name == "FaceDetectionAnalyzer":
         from vpx.face_detect import FaceDetectionAnalyzer
         return FaceDetectionAnalyzer
     elif name == "ExpressionAnalyzer":
-        from vpx.expression import ExpressionAnalyzer
+        from vpx.face_expression import ExpressionAnalyzer
         return ExpressionAnalyzer
     elif name == "FaceClassifierAnalyzer":
         from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierAnalyzer
         return FaceClassifierAnalyzer
     elif name == "PoseAnalyzer":
-        from vpx.pose import PoseAnalyzer
+        from vpx.body_pose import PoseAnalyzer
         return PoseAnalyzer
     elif name == "GestureAnalyzer":
-        from vpx.gesture import GestureAnalyzer
+        from vpx.hand_gesture import GestureAnalyzer
         return GestureAnalyzer
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

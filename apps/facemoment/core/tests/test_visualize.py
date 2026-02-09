@@ -12,8 +12,8 @@ from facemoment.moment_detector.visualize import (
 from visualpath.analyzers.base import Observation
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
-from vpx.pose.output import PoseOutput
-from vpx.pose.types import KeypointIndex
+from vpx.body_pose.output import PoseOutput
+from vpx.body_pose.types import KeypointIndex
 
 
 class TestAnalyzerVisualizer:

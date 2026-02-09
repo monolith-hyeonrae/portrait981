@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from vpx.face_detect.backends.base import DetectedFace
-from vpx.expression.backends.base import FaceExpression
+from vpx.face_expression.backends.base import FaceExpression
 
 
 class TestHSEmotionBackend:
@@ -13,7 +13,7 @@ class TestHSEmotionBackend:
 
     def test_emotion_map(self):
         """Test emotion mapping from HSEmotion to standard names."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         backend = HSEmotionBackend()
 
@@ -29,7 +29,7 @@ class TestHSEmotionBackend:
 
     def test_initialize_without_dependency(self):
         """Test initialization fails gracefully without hsemotion-onnx."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         backend = HSEmotionBackend()
 
@@ -40,7 +40,7 @@ class TestHSEmotionBackend:
 
     def test_analyze_empty_faces(self):
         """Test analyze returns empty list for no faces."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         # Create mock for hsemotion_onnx.facial_emotions
         mock_recognizer = MagicMock()
@@ -58,7 +58,7 @@ class TestHSEmotionBackend:
 
     def test_analyze_returns_face_expression(self):
         """Test analyze returns FaceExpression for each face."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         # Create mock for hsemotion_onnx
         mock_recognizer = MagicMock()
@@ -90,7 +90,7 @@ class TestHSEmotionBackend:
 
     def test_analyze_multiple_faces(self):
         """Test analyze handles multiple faces."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         mock_recognizer = MagicMock()
         # Return different emotions for each call
@@ -120,7 +120,7 @@ class TestHSEmotionBackend:
 
     def test_analyze_empty_face_region(self):
         """Test analyze handles invalid face bbox gracefully."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         mock_recognizer = MagicMock()
         mock_facial_emotions = MagicMock()
@@ -144,7 +144,7 @@ class TestHSEmotionBackend:
 
     def test_expression_intensity_calculation(self):
         """Test expression intensity is calculated correctly."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         mock_recognizer = MagicMock()
 
@@ -177,7 +177,7 @@ class TestHSEmotionBackend:
 
     def test_cleanup(self):
         """Test cleanup releases resources."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         mock_recognizer = MagicMock()
         mock_facial_emotions = MagicMock()
@@ -194,7 +194,7 @@ class TestHSEmotionBackend:
 
     def test_no_action_units(self):
         """Test that HSEmotion backend returns empty action units."""
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
 
         mock_recognizer = MagicMock()
         mock_recognizer.predict_emotions.return_value = (
@@ -218,46 +218,3 @@ class TestHSEmotionBackend:
             assert results[0].action_units == {}
 
 
-class TestFaceAnalyzerBackendSelection:
-    """Tests for FaceAnalyzer backend selection logic."""
-
-    def test_hsemotion_preferred_over_pyfeat(self):
-        """Test that HSEmotion is preferred when available."""
-        from vpx.face import FaceAnalyzer
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
-
-        # Mock both backends available
-        mock_facial_emotions = MagicMock()
-        mock_facial_emotions.HSEmotionRecognizer.return_value = MagicMock()
-
-        mock_insightface = MagicMock()
-        mock_insightface.app.FaceAnalysis.return_value = MagicMock()
-
-        with patch.dict("sys.modules", {
-            "hsemotion_onnx.facial_emotions": mock_facial_emotions,
-            "insightface": mock_insightface,
-            "insightface.app": mock_insightface.app,
-        }):
-            analyzer = FaceAnalyzer()
-            analyzer.initialize()
-
-            # Should use HSEmotionBackend
-            assert isinstance(analyzer._expression_backend, HSEmotionBackend)
-
-            analyzer.cleanup()
-
-    def test_fallback_to_pyfeat_when_hsemotion_unavailable(self):
-        """Test that PyFeat is used when HSEmotion is not available."""
-        from vpx.face import FaceAnalyzer
-
-        # Mock hsemotion import failure
-        def raise_import_error(*args, **kwargs):
-            raise ImportError("No module named 'hsemotion_onnx'")
-
-        with patch(
-            "vpx.face.backends.face_backends.HSEmotionBackend",
-            side_effect=raise_import_error
-        ):
-            # This test would need more complex mocking to fully verify
-            # For now, we verify the logic exists in the initialize method
-            pass

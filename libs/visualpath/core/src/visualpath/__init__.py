@@ -72,6 +72,9 @@ from visualpath.core.module import Module
 from visualpath.core.observation import Observation, DummyAnalyzer
 from visualpath.core.isolation import IsolationLevel, IsolationConfig
 from visualpath.core.path import Path, PathConfig, PathOrchestrator
+from visualpath.core.capabilities import Capability, ModuleCapabilities, PortSchema
+from visualpath.core.compat import CompatibilityReport, check_compatibility
+from visualpath.core.error_policy import ErrorPolicy
 
 __all__ = [
     # Configuration
@@ -101,4 +104,12 @@ __all__ = [
     "Path",
     "PathConfig",
     "PathOrchestrator",
+    # Capabilities
+    "Capability",
+    "ModuleCapabilities",
+    "PortSchema",
+    "CompatibilityReport",
+    "check_compatibility",
+    # Error policy
+    "ErrorPolicy",
 ]

@@ -1,0 +1,261 @@
+"""Expression analysis analyzer - depends on face_detect."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional, Dict, List
+import logging
+
+if TYPE_CHECKING:
+    from visualbase import Frame
+
+from vpx.sdk import (
+    Module,
+    Observation,
+    ProcessingStep,
+    processing_step,
+    get_processing_steps,
+    Capability,
+    ModuleCapabilities,
+)
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
+from vpx.face_expression.backends.base import ExpressionBackend
+from vpx.face_expression.output import ExpressionOutput
+
+logger = logging.getLogger(__name__)
+
+
+class ExpressionAnalyzer(Module):
+    """Analyzer for expression analysis.
+
+    Depends on face_detect analyzer for face bounding boxes.
+    Analyzes emotions and action units for detected faces.
+
+    depends: ["face.detect"]
+
+    Outputs:
+        - signals: max_expression, expression_happy, expression_angry, expression_neutral
+        - data: {"faces": List[FaceObservation with expression data]}
+
+    Example:
+        >>> # Use with FlowGraph for automatic dependency resolution
+        >>> graph = (FlowGraphBuilder()
+        ...     .source()
+        ...     .path("detect", modules=[FaceDetectionAnalyzer()])
+        ...     .path("expr", modules=[ExpressionAnalyzer()])
+        ...     .build())
+    """
+
+    # Dependency declaration
+    depends = ["face.detect"]
+
+    def __init__(
+        self,
+        expression_backend: Optional[ExpressionBackend] = None,
+        device: str = "cuda:0",
+    ):
+        self._device = device
+        self._expression_backend = expression_backend
+        self._initialized = False
+        # Step timing tracking (auto-populated by @processing_step decorator)
+        self._step_timings: Optional[Dict[str, float]] = None
+
+    @property
+    def name(self) -> str:
+        return "face.expression"
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities(
+            flags=Capability.GPU,
+            gpu_memory_mb=256,
+            init_time_sec=2.0,
+            resource_groups=frozenset({"onnxruntime"}),
+            required_extras=frozenset({"vpx-face-expression"}),
+        )
+
+    @property
+    def processing_steps(self) -> List[ProcessingStep]:
+        """Get the list of internal processing steps (auto-extracted from decorators)."""
+        return get_processing_steps(self)
+
+    def initialize(self) -> None:
+        if self._initialized:
+            return
+
+        if self._expression_backend is None:
+            # Try HSEmotion first (fast)
+            try:
+                from vpx.face_expression.backends.hsemotion import (
+                    HSEmotionBackend,
+                )
+                self._expression_backend = HSEmotionBackend()
+                self._expression_backend.initialize(self._device)
+                logger.info("ExpressionAnalyzer using HSEmotionBackend")
+            except ImportError:
+                logger.debug("hsemotion-onnx not available, trying PyFeat")
+            except Exception as e:
+                logger.warning(f"Failed to initialize HSEmotion: {e}")
+
+            # Fall back to PyFeat
+            if self._expression_backend is None:
+                try:
+                    from vpx.face_expression.backends.pyfeat import (
+                        PyFeatBackend,
+                    )
+                    self._expression_backend = PyFeatBackend()
+                    self._expression_backend.initialize(self._device)
+                    logger.info("ExpressionAnalyzer using PyFeatBackend")
+                except ImportError:
+                    logger.warning("No expression backend available")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize PyFeat: {e}")
+
+        self._initialized = True
+
+    def cleanup(self) -> None:
+        if self._expression_backend is not None:
+            self._expression_backend.cleanup()
+        logger.info("ExpressionAnalyzer cleaned up")
+
+    # ========== Processing Steps (decorated methods) ==========
+
+    @processing_step(
+        name="expression",
+        description="Facial expression and emotion analysis",
+        backend="HSEmotion",
+        input_type="Frame + List[DetectedFace]",
+        output_type="List[ExpressionResult]",
+    )
+    def _analyze_expressions(self, image, detected_faces) -> List:
+        """Analyze expressions for detected faces."""
+        if self._expression_backend is None:
+            return []
+        return self._expression_backend.analyze(image, detected_faces)
+
+    @processing_step(
+        name="aggregation",
+        description="Aggregate expression signals (max, happy, angry, neutral)",
+        input_type="List[ExpressionResult] + List[FaceObservation]",
+        output_type="ExpressionOutput",
+        depends_on=["expression"],
+    )
+    def _aggregate_expressions(
+        self,
+        expressions: List,
+        face_observations: List[FaceObservation],
+    ) -> Dict:
+        """Aggregate expression data into output format."""
+        updated_faces = []
+        max_expression = 0.0
+        max_happy = 0.0
+        max_angry = 0.0
+        min_neutral = 1.0
+
+        for i, face_obs in enumerate(face_observations):
+            expression = expressions[i] if i < len(expressions) else None
+
+            expr_intensity = 0.0
+            face_happy = 0.0
+            face_angry = 0.0
+            face_neutral = 1.0
+            signals: Dict[str, float] = {}
+
+            if expression is not None:
+                expr_intensity = expression.expression_intensity
+                signals["dominant_emotion"] = hash(expression.dominant_emotion) % 100 / 100
+
+                for au_name, au_val in expression.action_units.items():
+                    signals[au_name.lower()] = au_val
+                for em_name, em_val in expression.emotions.items():
+                    signals[f"em_{em_name}"] = em_val
+
+                face_happy = expression.emotions.get("happy", 0.0)
+                face_angry = expression.emotions.get("angry", 0.0)
+                face_neutral = expression.emotions.get("neutral", 1.0)
+
+            max_expression = max(max_expression, expr_intensity)
+            max_happy = max(max_happy, face_happy)
+            max_angry = max(max_angry, face_angry)
+            min_neutral = min(min_neutral, face_neutral)
+
+            # Create updated FaceObservation with expression
+            updated_face = FaceObservation(
+                face_id=face_obs.face_id,
+                confidence=face_obs.confidence,
+                bbox=face_obs.bbox,
+                inside_frame=face_obs.inside_frame,
+                yaw=face_obs.yaw,
+                pitch=face_obs.pitch,
+                roll=face_obs.roll,
+                area_ratio=face_obs.area_ratio,
+                center_distance=face_obs.center_distance,
+                expression=expr_intensity,
+                signals=signals,
+            )
+            updated_faces.append(updated_face)
+
+        return {
+            "faces": updated_faces,
+            "signals": {
+                "max_expression": max_expression,
+                "expression_happy": max_happy,
+                "expression_angry": max_angry,
+                "expression_neutral": min_neutral,
+            },
+        }
+
+    # ========== Main process method ==========
+
+    def process(
+        self,
+        frame: Frame,
+        deps: Optional[Dict[str, Observation]] = None,
+    ) -> Optional[Observation]:
+        # Get face_detect dependency (type-safe access)
+        face_obs = deps.get("face.detect") if deps else None
+        if face_obs is None:
+            logger.warning("ExpressionAnalyzer: no face_detect dependency")
+            return None
+
+        face_data: FaceDetectOutput = face_obs.data
+        if not face_data:
+            return None
+
+        # Type-safe attribute access
+        detected_faces = face_data.detected_faces
+        face_observations = face_data.faces
+
+        if not detected_faces or not face_observations:
+            return Observation(
+                source=self.name,
+                frame_id=frame.frame_id,
+                t_ns=frame.t_src_ns,
+                signals={
+                    "max_expression": 0.0,
+                    "expression_happy": 0.0,
+                    "expression_angry": 0.0,
+                    "expression_neutral": 1.0,
+                },
+                data=ExpressionOutput(faces=[]),
+            )
+
+        # Enable step timing collection
+        self._step_timings = {}
+
+        # Execute processing steps (timing auto-tracked by decorators)
+        expressions = self._analyze_expressions(frame.data, detected_faces)
+        result = self._aggregate_expressions(expressions, face_observations)
+
+        # Collect timing data
+        timing = self._step_timings.copy() if self._step_timings else None
+        self._step_timings = None
+
+        return Observation(
+            source=self.name,
+            frame_id=frame.frame_id,
+            t_ns=frame.t_src_ns,
+            signals=result["signals"],
+            data=ExpressionOutput(faces=result["faces"]),
+            timing=timing,
+        )

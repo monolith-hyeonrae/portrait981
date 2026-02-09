@@ -413,7 +413,7 @@ def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
             result["face_mode"] = "enabled"
             # Also probe expression
             try:
-                from vpx.expression import ExpressionAnalyzer
+                from vpx.face_expression import ExpressionAnalyzer
                 ExpressionAnalyzer()
                 result["names"].append("face.expression")
             except Exception:
@@ -423,7 +423,7 @@ def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
 
         # Try pose analyzer
         try:
-            from vpx.pose import PoseAnalyzer
+            from vpx.body_pose import PoseAnalyzer
             PoseAnalyzer()
             result["body.pose"] = True
             result["names"].append("body.pose")
@@ -432,7 +432,7 @@ def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
 
         # Try gesture analyzer
         try:
-            from vpx.gesture import GestureAnalyzer
+            from vpx.hand_gesture import GestureAnalyzer
             GestureAnalyzer()
             result["hand.gesture"] = True
             result["names"].append("hand.gesture")

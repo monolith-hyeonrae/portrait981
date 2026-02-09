@@ -80,10 +80,12 @@ class PathNode(FlowNode):
         )
 
     def initialize(self) -> None:
-        """Initialize all modules."""
+        """Initialize all modules and call warmup()."""
         for module in self._modules:
             if hasattr(module, 'initialize'):
                 module.initialize()
+            if hasattr(module, 'warmup'):
+                module.warmup()
 
     def cleanup(self) -> None:
         """Cleanup all modules."""

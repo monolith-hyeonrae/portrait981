@@ -3,8 +3,8 @@
 import pytest
 import numpy as np
 
-from vpx.gesture import GestureAnalyzer, GestureType, HandLandmarkIndex
-from vpx.gesture.backends.base import HandLandmarks
+from vpx.hand_gesture import GestureAnalyzer, GestureType, HandLandmarkIndex
+from vpx.hand_gesture.backends.base import HandLandmarks
 
 
 class MockHandBackend:

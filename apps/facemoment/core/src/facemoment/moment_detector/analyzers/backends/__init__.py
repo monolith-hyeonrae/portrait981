@@ -8,21 +8,21 @@ Each backend can be imported independently to avoid dependency conflicts.
 Usage:
     # Import base types (always available)
     from vpx.face_detect.backends.base import DetectedFace, FaceDetectionBackend
-    from vpx.expression.backends.base import FaceExpression, ExpressionBackend
+    from vpx.face_expression.backends.base import FaceExpression, ExpressionBackend
 
     # Import specific backends (requires corresponding dependencies)
     from vpx.face_detect.backends.insightface import InsightFaceSCRFD
-    from vpx.expression.backends.hsemotion import HSEmotionBackend
-    from vpx.expression.backends.pyfeat import PyFeatBackend
-    from vpx.pose.backends.yolo_pose import YOLOPoseBackend
-    from vpx.gesture.backends.mediapipe_hands import MediaPipeHandsBackend
+    from vpx.face_expression.backends.hsemotion import HSEmotionBackend
+    from vpx.face_expression.backends.pyfeat import PyFeatBackend
+    from vpx.body_pose.backends.yolo_pose import YOLOPoseBackend
+    from vpx.hand_gesture.backends.mediapipe_hands import MediaPipeHandsBackend
 """
 
 # Base types - re-exported from vpx packages
 from vpx.face_detect.backends.base import FaceDetectionBackend, DetectedFace
-from vpx.expression.backends.base import ExpressionBackend, FaceExpression
-from vpx.pose.backends.base import PoseBackend, PoseKeypoints
-from vpx.gesture.backends.base import HandLandmarkBackend, HandLandmarks
+from vpx.face_expression.backends.base import ExpressionBackend, FaceExpression
+from vpx.body_pose.backends.base import PoseBackend, PoseKeypoints
+from vpx.hand_gesture.backends.base import HandLandmarkBackend, HandLandmarks
 
 __all__ = [
     # Protocols
@@ -37,10 +37,10 @@ __all__ = [
     "HandLandmarks",
     # Lazy imports (import directly from submodule)
     # "InsightFaceSCRFD",     # from vpx.face_detect.backends.insightface
-    # "PyFeatBackend",        # from vpx.expression.backends.pyfeat
-    # "HSEmotionBackend",     # from vpx.expression.backends.hsemotion
-    # "YOLOPoseBackend",      # from vpx.pose.backends.yolo_pose
-    # "MediaPipeHandsBackend",# from vpx.gesture.backends.mediapipe_hands
+    # "PyFeatBackend",        # from vpx.face_expression.backends.pyfeat
+    # "HSEmotionBackend",     # from vpx.face_expression.backends.hsemotion
+    # "YOLOPoseBackend",      # from vpx.body_pose.backends.yolo_pose
+    # "MediaPipeHandsBackend",# from vpx.hand_gesture.backends.mediapipe_hands
 ]
 
 
@@ -52,17 +52,17 @@ def __getattr__(name: str):
         return InsightFaceSCRFD
     # Expression backends
     elif name == "PyFeatBackend":
-        from vpx.expression.backends.pyfeat import PyFeatBackend
+        from vpx.face_expression.backends.pyfeat import PyFeatBackend
         return PyFeatBackend
     elif name == "HSEmotionBackend":
-        from vpx.expression.backends.hsemotion import HSEmotionBackend
+        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
         return HSEmotionBackend
     # Pose backends
     elif name == "YOLOPoseBackend":
-        from vpx.pose.backends.yolo_pose import YOLOPoseBackend
+        from vpx.body_pose.backends.yolo_pose import YOLOPoseBackend
         return YOLOPoseBackend
     # Hand backends
     elif name == "MediaPipeHandsBackend":
-        from vpx.gesture.backends.mediapipe_hands import MediaPipeHandsBackend
+        from vpx.hand_gesture.backends.mediapipe_hands import MediaPipeHandsBackend
         return MediaPipeHandsBackend
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

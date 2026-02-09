@@ -9,6 +9,7 @@ from visualpath.analyzers.base import (
     Module,
     Observation,
 )
+from visualpath.core.capabilities import Capability, ModuleCapabilities
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 
@@ -46,6 +47,12 @@ class DummyAnalyzer(Module):
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities(
+            flags=Capability.DETERMINISTIC | Capability.THREAD_SAFE | Capability.CROSS_HOST_OK,
+        )
 
     def process(self, frame: Frame, deps=None) -> Optional[Observation]:
         """Generate dummy observation with random values."""

@@ -15,18 +15,17 @@ dependencies = [
 # === Analyzer packages (each with independent dependencies) ===
 # In production, each VenvWorker installs only its sub-package:
 #   uv pip install vpx-face-detect   → onnxruntime-gpu
-#   uv pip install vpx-expression    → onnxruntime (CPU) — no conflict!
+#   uv pip install vpx-face-expression → onnxruntime (CPU) — no conflict!
 face-detect = ["vpx-face-detect"]
-expression = ["vpx-expression"]
-face = ["vpx-face"]              # Legacy composite (detect + expression)
-pose = ["vpx-pose"]
-gesture = ["vpx-gesture"]
+face-expression = ["vpx-face-expression"]
+body-pose = ["vpx-body-pose"]
+hand-gesture = ["vpx-hand-gesture"]
 
 # === Local development ===
 # For running everything in a single environment.
 # The workspace root override-dependencies blocks CPU onnxruntime.
 local = [
-    "facemoment[face,pose,gesture]",
+    "facemoment[face-detect,face-expression,body-pose,hand-gesture]",
     "pyzmq>=25.0.0",
     "pyqt6>=6.10.2",
     "supervision>=0.19.0",
@@ -70,7 +69,6 @@ visualpath = { workspace = true }
 visualpath-isolation = { workspace = true }
 visualpath-analyzers-base = { workspace = true }
 vpx-face-detect = { workspace = true }
-vpx-expression = { workspace = true }
-vpx-face = { workspace = true }
-vpx-pose = { workspace = true }
-vpx-gesture = { workspace = true }
+vpx-face-expression = { workspace = true }
+vpx-body-pose = { workspace = true }
+vpx-hand-gesture = { workspace = true }

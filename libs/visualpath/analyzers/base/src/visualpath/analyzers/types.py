@@ -8,8 +8,8 @@ re-exported here for backwards compatibility.
 """
 
 # Re-exported from vpx packages
-from vpx.pose.types import KeypointIndex, COCO_KEYPOINT_NAMES  # noqa: F401
-from vpx.gesture.types import HandLandmarkIndex, GestureType  # noqa: F401
+from vpx.body_pose.types import KeypointIndex, COCO_KEYPOINT_NAMES  # noqa: F401
+from vpx.hand_gesture.types import HandLandmarkIndex, GestureType  # noqa: F401
 
 
 __all__ = [
