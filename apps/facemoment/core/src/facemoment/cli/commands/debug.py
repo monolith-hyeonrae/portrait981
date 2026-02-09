@@ -22,7 +22,7 @@ def run_debug(args):
     """Run unified debug session with selected analyzers.
 
     Supports:
-    - Single analyzer: -e face, -e pose, -e quality, -e gesture
+    - Single analyzer: -e face_detect, -e pose, -e quality, -e gesture
     - Multiple analyzers: -e face,pose or -e all (default)
     - Raw video preview: -e raw (no analysis, verify video input)
     - Dummy mode: --no-ml (replaces legacy 'visualize' command)
@@ -312,11 +312,11 @@ class PathwayDebugSession(DebugSession):
         self._force_pathway = getattr(args, 'backend', None) == 'pathway'
         self._venv_paths = {}
         if venv_face:
-            self._venv_paths["face"] = venv_face
+            self._venv_paths["face.detect"] = venv_face
         if venv_pose:
-            self._venv_paths["pose"] = venv_pose
+            self._venv_paths["body.pose"] = venv_pose
         if venv_gesture:
-            self._venv_paths["gesture"] = venv_gesture
+            self._venv_paths["hand.gesture"] = venv_gesture
 
     def _setup_pipeline(self):
         from facemoment.pipeline.pathway_pipeline import FacemomentPipeline, PATHWAY_AVAILABLE
@@ -327,19 +327,20 @@ class PathwayDebugSession(DebugSession):
 
         # Build analyzer list
         if use_ml is False:
-            analyzer_names = ['dummy']
+            analyzer_names = ['mock.dummy']
         else:
             analyzer_names = []
-            if 'pose' in self.selected or 'all' in self.selected:
-                analyzer_names.append('pose')
-            if 'gesture' in self.selected or 'all' in self.selected:
-                analyzer_names.append('gesture')
-            if 'face' in self.selected or 'all' in self.selected:
-                analyzer_names.append('face')
-            if 'quality' in self.selected or 'all' in self.selected:
-                analyzer_names.append('quality')
+            if 'body.pose' in self.selected or 'all' in self.selected:
+                analyzer_names.append('body.pose')
+            if 'hand.gesture' in self.selected or 'all' in self.selected:
+                analyzer_names.append('hand.gesture')
+            if 'face.detect' in self.selected or 'all' in self.selected:
+                analyzer_names.append('face.detect')
+                analyzer_names.append('face.expression')
+            if 'frame.quality' in self.selected or 'all' in self.selected:
+                analyzer_names.append('frame.quality')
             if not analyzer_names:
-                analyzer_names = ['dummy']
+                analyzer_names = ['mock.dummy']
 
         distributed = detect_distributed_mode(self.args)
 
@@ -393,13 +394,13 @@ class PathwayDebugSession(DebugSession):
             else:
                 print(f"  {name:<18}{origin:<6}failed to load")
 
-        if 'face' in analyzer_names:
-            origin = origins.get('face_classifier', 'core')
-            ri = info_map.get('face_classifier')
+        if 'face.detect' in analyzer_names:
+            origin = origins.get('face.classify', 'core')
+            ri = info_map.get('face.classify')
             if ri:
-                print(f"  {'face_classifier':<18}{origin:<6}{DIM}enabled  auto-injected  pid={ri.pid}{RESET}")
+                print(f"  {'face.classify':<18}{origin:<6}{DIM}enabled  auto-injected  pid={ri.pid}{RESET}")
             else:
-                print(f"  {'face_classifier':<18}{origin:<6}failed to load")
+                print(f"  {'face.classify':<18}{origin:<6}failed to load")
 
         if not self.pipeline.analyzers and not self.pipeline.workers:
             print("Error: No analyzers available")
@@ -445,21 +446,21 @@ class PathwayDebugSession(DebugSession):
                 return
 
             obs_dict = {obs.source: obs for obs in obs_list}
-            classifier_obs = obs_dict.get("face_classifier")
-            face_obs = obs_dict.get("face") or obs_dict.get("dummy")
+            classifier_obs = obs_dict.get("face.classify")
+            face_obs = obs_dict.get("face.detect") or obs_dict.get("mock.dummy")
             is_gate_open = fusion.is_gate_open if fusion else False
             in_cooldown = fusion.in_cooldown if fusion else False
 
             # Frame scoring
-            obs_dict["face"] = face_obs  # ensure face/dummy is keyed as "face"
+            obs_dict["face.detect"] = face_obs  # ensure face_detect/dummy is keyed as "face.detect"
             score_result = score_frame(session.scorer, obs_dict)
 
             debug_image = session.visualizer.create_debug_view(
                 frame,
                 face_obs=face_obs,
-                pose_obs=obs_dict.get("pose"),
-                gesture_obs=obs_dict.get("gesture"),
-                quality_obs=obs_dict.get("quality"),
+                pose_obs=obs_dict.get("body.pose"),
+                gesture_obs=obs_dict.get("hand.gesture"),
+                quality_obs=obs_dict.get("frame.quality"),
                 classifier_obs=classifier_obs,
                 fusion_result=fusion_result,
                 is_gate_open=is_gate_open,
@@ -467,6 +468,7 @@ class PathwayDebugSession(DebugSession):
                 roi=session.roi,
                 backend_label=session.backend_label,
                 score_result=score_result,
+                expression_obs=obs_dict.get("face.expression"),
             )
 
             # Writer
@@ -509,6 +511,7 @@ class PathwayDebugSession(DebugSession):
             frame, self.pipeline.analyzers,
             classifier=self.pipeline._classifier,
             workers=self.pipeline.workers,
+            worker_depends=self.pipeline.worker_depends,
             fusion=self.pipeline.fusion,
             monitor=self.monitor,
         )
@@ -517,10 +520,10 @@ class PathwayDebugSession(DebugSession):
 
         debug_image = self.visualizer.create_debug_view(
             frame,
-            face_obs=result.observations.get("face") or result.observations.get("dummy"),
-            pose_obs=result.observations.get("pose"),
-            gesture_obs=result.observations.get("gesture"),
-            quality_obs=result.observations.get("quality"),
+            face_obs=result.observations.get("face.detect") or result.observations.get("mock.dummy"),
+            pose_obs=result.observations.get("body.pose"),
+            gesture_obs=result.observations.get("hand.gesture"),
+            quality_obs=result.observations.get("frame.quality"),
             classifier_obs=result.classifier_obs,
             fusion_result=result.fusion_result,
             is_gate_open=result.is_gate_open,
@@ -530,6 +533,7 @@ class PathwayDebugSession(DebugSession):
             monitor_stats=self.monitor.get_frame_stats(),
             backend_label=self.backend_label,
             score_result=score_result,
+            expression_obs=result.observations.get("face.expression"),
         )
 
         return debug_image, result.timing_info
@@ -654,7 +658,7 @@ def _parse_analyzer_arg(arg: str) -> List[str]:
         return ['raw']
 
     parts = [p.strip().lower() for p in arg.split(',')]
-    valid = {'face', 'pose', 'quality', 'gesture', 'all', 'raw', 'none'}
+    valid = {'face.detect', 'body.pose', 'frame.quality', 'hand.gesture', 'all', 'raw', 'none'}
     for p in parts:
         if p not in valid:
             print(f"Warning: Unknown analyzer '{p}', valid: {valid}")

@@ -12,7 +12,6 @@ The deps pattern matches ``SimpleInterpreter._interpret_modules()``::
         deps[ext.name] = obs
 
 Plus facemoment-specific additions:
-- Composite "face" analyzer satisfies "face_detect" dependency
 - Subprocess workers (ProcessWorker)
 - Monitor hooks (begin/end_frame, begin/end_analyzer, etc.)
 - Fusion update with classifier observation
@@ -26,13 +25,12 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def _run_workers_parallel(frame, workers, deps, observations, monitor):
-    """Run subprocess workers in parallel and collect results.
+def _run_worker_batch(frame, batch, deps, observations, monitor):
+    """Run a batch of subprocess workers in parallel and collect results.
 
-    Workers are independent vpx analyzers (no inter-dependencies).
     Each worker.process() blocks on ZMQ I/O, so threading provides
     true parallelism here.  Results populate *deps* and *observations*
-    so that subsequent inline analyzers can use them.
+    so that subsequent workers/analyzers can use them.
 
     PathwayMonitor is NOT thread-safe, so all monitor calls happen
     in the main thread after futures complete.  Pre-computed
@@ -47,15 +45,15 @@ def _run_workers_parallel(frame, workers, deps, observations, monitor):
             logger.warning("Worker '%s' raised: %s", name, exc)
             return name, None
 
-    with ThreadPoolExecutor(max_workers=len(workers)) as pool:
-        futures = {pool.submit(_call, item): item[0] for item in workers.items()}
+    with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+        futures = {pool.submit(_call, item): item[0] for item in batch.items()}
         results = {}
         for future in as_completed(futures):
             name = futures[future]
             results[name] = future.result()[1]
 
     # Record results in main thread (monitor is not thread-safe)
-    for name in workers:
+    for name in batch:
         result = results.get(name)
         if result is None:
             if monitor is not None:
@@ -73,6 +71,45 @@ def _run_workers_parallel(frame, workers, deps, observations, monitor):
             monitor.end_analyzer(
                 name, result.observation, elapsed_ms=result.timing_ms,
             )
+
+
+def _run_workers_parallel(frame, workers, deps, observations, monitor,
+                          *, worker_depends=None):
+    """Run subprocess workers in topological phases.
+
+    Workers are grouped by dependency order: workers whose deps are
+    all satisfied run first in parallel, then dependent workers run
+    in a second parallel batch with accumulated deps.
+
+    This ensures ``face.expression`` (depends on ``face.detect``)
+    receives the ``face.detect`` observation even in ``--distributed``
+    mode where both run as subprocess workers.
+
+    Args:
+        worker_depends: Dict mapping worker name to list of worker
+            names it depends on.  Only inter-worker deps matter;
+            deps on inline analyzers are handled by execution order.
+    """
+    if worker_depends is None:
+        worker_depends = {}
+
+    remaining = set(workers)
+    while remaining:
+        # Ready = workers whose worker-deps are all completed
+        ready = {
+            n for n in remaining
+            if all(d not in remaining for d in worker_depends.get(n, []))
+        }
+        if not ready:
+            # Break cycles gracefully — run everything remaining
+            ready = set(remaining)
+
+        _run_worker_batch(
+            frame,
+            {n: workers[n] for n in ready},
+            deps, observations, monitor,
+        )
+        remaining -= ready
 
 
 @dataclass
@@ -93,6 +130,7 @@ def process_frame(
     *,
     classifier=None,
     workers=None,
+    worker_depends=None,
     fusion=None,
     merge_fn=None,
     monitor=None,
@@ -104,6 +142,10 @@ def process_frame(
         analyzers: Ordered list of analyzer instances.
         classifier: The classifier analyzer instance (to identify its obs).
         workers: Dict of ``{name: worker}`` subprocess workers. Optional.
+        worker_depends: Dict mapping worker name to list of worker names
+            it depends on.  Enables phased execution so dependent workers
+            (e.g. ``face.expression``) receive deps from earlier workers
+            (e.g. ``face.detect``).  Optional.
         fusion: Fusion instance with ``update(merged_obs, classifier_obs=)``. Optional.
         merge_fn: Callable ``(obs_list, frame) -> merged_obs`` for fusion input.
             Defaults to ``pipeline.utils.merge_observations``.
@@ -127,23 +169,18 @@ def process_frame(
     # inline analyzers (e.g. face_classifier depends on face).
     # Independent workers run in parallel via ThreadPoolExecutor.
     if workers:
-        _run_workers_parallel(frame, workers, deps, observations, monitor)
+        _run_workers_parallel(frame, workers, deps, observations, monitor,
+                              worker_depends=worker_depends)
 
     # --- Phase 2: Inline analyzers (deps accumulated) ---
     for ext in analyzers:
         try:
             analyzer_deps = None
-            if ext.depends:
+            all_dep_names = list(getattr(ext, 'depends', [])) + list(getattr(ext, 'optional_depends', []))
+            if all_dep_names:
                 analyzer_deps = {
-                    n: deps[n] for n in ext.depends if n in deps
+                    n: deps[n] for n in all_dep_names if n in deps
                 }
-                # Composite "face" analyzer satisfies "face_detect" dependency
-                if (
-                    "face_detect" in ext.depends
-                    and "face_detect" not in analyzer_deps
-                    and "face" in deps
-                ):
-                    analyzer_deps["face"] = deps["face"]
 
             if monitor is not None:
                 monitor.begin_analyzer(ext.name)
@@ -210,7 +247,7 @@ def process_frame(
 
     # --- Timing info (for profile mode) ---
     timing_info = None
-    face_obs = observations.get("face")
+    face_obs = observations.get("face.detect")
     if face_obs and getattr(face_obs, "timing", None):
         timing_info = face_obs.timing
 

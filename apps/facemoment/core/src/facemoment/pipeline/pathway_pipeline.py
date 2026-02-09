@@ -24,8 +24,16 @@ logger = logging.getLogger(__name__)
 
 # CUDA conflict groups: analyzers sharing the same CUDA runtime binding.
 _CUDA_GROUPS: Dict[str, Set[str]] = {
-    "onnxruntime": {"face", "face_detect", "expression"},
-    "torch": {"pose"},
+    "onnxruntime": {"face.detect", "face.expression"},
+    "torch": {"body.pose"},
+}
+
+# Known inter-worker dependencies (mirrors Module.depends declarations).
+# Used by _run_workers_parallel() to phase workers correctly without
+# importing analyzer classes (which would cause CUDA conflicts).
+_KNOWN_WORKER_DEPS: Dict[str, List[str]] = {
+    "face.expression": ["face.detect"],
+    "face.classify": ["face.detect"],
 }
 
 # Check for Pathway availability
@@ -65,7 +73,7 @@ class FacemomentPipeline:
             DeprecationWarning,
             stacklevel=2,
         )
-        self._analyzer_names = analyzers or ["face", "pose", "gesture"]
+        self._analyzer_names = analyzers or ["face.detect", "face.expression", "body.pose", "hand.gesture"]
         self._fusion_config = fusion_config or {}
         self._window_ns = window_ns
         self._auto_inject_classifier = auto_inject_classifier
@@ -78,7 +86,7 @@ class FacemomentPipeline:
         self._initialized = False
         self.actual_backend: Optional[str] = None
 
-    _TORCH_ANALYZERS = frozenset({"pose"})
+    _TORCH_ANALYZERS = frozenset({"body.pose"})
 
     @staticmethod
     def _detect_cuda_conflicts(names: List[str]) -> Set[str]:
@@ -156,9 +164,9 @@ class FacemomentPipeline:
 
         # Auto-inject classifier
         if self._auto_inject_classifier:
-            if any(n in ("face", "face_detect") for n in names):
-                if "face_classifier" not in names:
-                    names.append("face_classifier")
+            if "face.detect" in names:
+                if "face.classify" not in names:
+                    names.append("face.classify")
 
         # Detect CUDA conflicts
         isolated = _detect_cuda_conflicts(names)
@@ -204,10 +212,16 @@ class FacemomentPipeline:
             try:
                 ext = create_analyzer(name)
                 analyzers.append(ext)
-                if name == "face_classifier":
+                if name == "face.classify":
                     self._classifier = ext
             except Exception as exc:
                 logger.warning("Failed to load analyzer '%s': %s", name, exc)
+
+        # Build worker dependency map (only deps among active workers)
+        self._worker_depends = {
+            name: [d for d in _KNOWN_WORKER_DEPS.get(name, []) if d in self._workers]
+            for name in self._workers
+        }
 
         return analyzers
 
@@ -289,6 +303,10 @@ class FacemomentPipeline:
     @property
     def workers(self) -> Dict:
         return self._workers
+
+    @property
+    def worker_depends(self) -> Dict[str, List[str]]:
+        return self._worker_depends
 
 
 __all__ = ["FacemomentPipeline", "PATHWAY_AVAILABLE"]
