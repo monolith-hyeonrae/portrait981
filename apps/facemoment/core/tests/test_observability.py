@@ -168,7 +168,7 @@ class TestTraceRecords:
         record = FrameAnalyzeRecord(
             frame_id=100,
             t_ns=1000000000,
-            source="face",
+            source="face.detect",
             face_count=2,
             processing_ms=42.5,
         )
@@ -176,7 +176,7 @@ class TestTraceRecords:
         d = record.to_dict()
         assert d["record_type"] == "frame_analyze"
         assert d["frame_id"] == 100
-        assert d["source"] == "face"
+        assert d["source"] == "face.detect"
         assert d["face_count"] == 2
         assert d["processing_ms"] == 42.5
         assert "min_level" not in d  # Internal field should be removed
@@ -222,14 +222,14 @@ class TestTraceRecords:
         """Test TimingRecord fields."""
         record = TimingRecord(
             frame_id=50,
-            component="face",
+            component="face.detect",
             processing_ms=55.0,
             threshold_ms=50.0,
             is_slow=True,
         )
 
         assert record.record_type == "timing"
-        assert record.component == "face"
+        assert record.component == "face.detect"
         assert record.is_slow is True
 
     def test_frame_drop_record(self):
@@ -355,9 +355,9 @@ class TestMemorySink:
         """Test filtering records by frame ID."""
         sink = MemorySink()
 
-        sink.write(TimingRecord(frame_id=1, component="face", processing_ms=40.0))
-        sink.write(TimingRecord(frame_id=1, component="pose", processing_ms=20.0))
-        sink.write(TimingRecord(frame_id=2, component="face", processing_ms=42.0))
+        sink.write(TimingRecord(frame_id=1, component="face.detect", processing_ms=40.0))
+        sink.write(TimingRecord(frame_id=1, component="body.pose", processing_ms=20.0))
+        sink.write(TimingRecord(frame_id=2, component="face.detect", processing_ms=42.0))
 
         frame_1_records = sink.get_by_frame(1)
         assert len(frame_1_records) == 2
@@ -366,9 +366,9 @@ class TestMemorySink:
         """Test getting trigger records."""
         sink = MemorySink()
 
-        sink.write(TimingRecord(frame_id=1, component="face", processing_ms=40.0))
+        sink.write(TimingRecord(frame_id=1, component="face.detect", processing_ms=40.0))
         sink.write(TriggerFireRecord(frame_id=2, reason="test", score=0.9))
-        sink.write(TimingRecord(frame_id=3, component="face", processing_ms=41.0))
+        sink.write(TimingRecord(frame_id=3, component="face.detect", processing_ms=41.0))
 
         triggers = sink.get_triggers()
         assert len(triggers) == 1
@@ -382,25 +382,25 @@ class TestMemorySink:
         for i in range(5):
             sink.write(TimingRecord(
                 frame_id=i,
-                component="face",
+                component="face.detect",
                 processing_ms=40.0 + i,
                 is_slow=i > 3,
             ))
             sink.write(TimingRecord(
                 frame_id=i,
-                component="pose",
+                component="body.pose",
                 processing_ms=20.0 + i,
                 is_slow=False,
             ))
 
         stats = sink.get_timing_stats()
 
-        assert "face" in stats
-        assert "pose" in stats
-        assert stats["face"]["count"] == 5
-        assert stats["face"]["avg_ms"] == 42.0  # (40+41+42+43+44)/5
-        assert stats["face"]["slow_count"] == 1
-        assert stats["pose"]["avg_ms"] == 22.0
+        assert "face.detect" in stats
+        assert "body.pose" in stats
+        assert stats["face.detect"]["count"] == 5
+        assert stats["face.detect"]["avg_ms"] == 42.0  # (40+41+42+43+44)/5
+        assert stats["face.detect"]["slow_count"] == 1
+        assert stats["body.pose"]["avg_ms"] == 22.0
 
     def test_clear(self):
         """Test clearing records."""
@@ -471,14 +471,14 @@ class TestConsoleSink:
 
         # Fast record - no output
         fast_record = TimingRecord(
-            frame_id=1, component="face", processing_ms=30.0
+            frame_id=1, component="face.detect", processing_ms=30.0
         )
         sink.write(fast_record)
         assert "[TIMING]" not in stream.getvalue()
 
         # Slow record - should warn
         slow_record = TimingRecord(
-            frame_id=2, component="face", processing_ms=60.0
+            frame_id=2, component="face.detect", processing_ms=60.0
         )
         sink.write(slow_record)
         assert "[TIMING]" in stream.getvalue()
@@ -534,7 +534,7 @@ class TestIntegration:
                 # Extract record
                 hub.emit(FrameAnalyzeRecord(
                     frame_id=frame_id,
-                    source="face",
+                    source="face.detect",
                     face_count=1,
                     processing_ms=40.0,
                 ))
@@ -542,7 +542,7 @@ class TestIntegration:
                 # Timing record
                 hub.emit(TimingRecord(
                     frame_id=frame_id,
-                    component="face",
+                    component="face.detect",
                     processing_ms=40.0,
                 ))
 

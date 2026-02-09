@@ -92,7 +92,7 @@ def serialize_observation(obs: Optional[Any]) -> Optional[Dict[str, Any]]:
     """Serialize an Observation for ZMQ transmission.
 
     Works with any object that has the standard Observation attributes
-    (source, frame_id, t_ns, signals, metadata, timing, data, faces).
+    (source, frame_id, t_ns, signals, metadata, timing, data).
 
     Args:
         obs: Observation to serialize.
@@ -114,11 +114,6 @@ def serialize_observation(obs: Optional[Any]) -> Optional[Dict[str, Any]]:
 
     if hasattr(obs, "data") and obs.data is not None:
         result["data"] = serialize_value(obs.data)
-
-    # faces field (analyzers-base Observation has this, core does not)
-    faces = getattr(obs, "faces", [])
-    if faces:
-        result["faces"] = serialize_value(faces)
 
     return result
 
@@ -153,11 +148,6 @@ def deserialize_observation(data: Optional[Dict[str, Any]]) -> Optional[Observat
         metadata=data.get("metadata", {}),
         timing=data.get("timing"),
     )
-
-    # Attach faces (analyzers-base Observation declares this field;
-    # core Observation does not, but Python allows extra attributes).
-    faces_raw = data.get("faces", [])
-    obs.faces = [_wrap_value(f) for f in faces_raw] if faces_raw else []
 
     return obs
 

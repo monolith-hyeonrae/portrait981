@@ -31,7 +31,7 @@ class TestRunFunction:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
             mock_bg.return_value = MagicMock()
 
-            result = fm.run("fake_video.mp4", analyzers=["dummy"])
+            result = fm.run("fake_video.mp4", analyzers=["mock.dummy"])
 
             assert isinstance(result, fm.Result)
             assert hasattr(result, "triggers")
@@ -57,7 +57,7 @@ class TestRunFunction:
             cb = lambda t: None
             result = fm.run(
                 "fake_video.mp4",
-                analyzers=["dummy"],
+                analyzers=["mock.dummy"],
                 on_trigger=cb,
             )
             assert isinstance(result, fm.Result)
@@ -85,7 +85,7 @@ class TestRunFunction:
                 result = fm.run(
                     "fake_video.mp4",
                     output_dir=tmpdir,
-                    analyzers=["dummy"],
+                    analyzers=["mock.dummy"],
                 )
                 assert result.clips_extracted == 0
                 mock_clips.assert_called_once()
@@ -105,7 +105,7 @@ class TestRunFunction:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
             mock_bg.return_value = MagicMock()
 
-            result = fm.run("fake_video.mp4", analyzers=["quality"])
+            result = fm.run("fake_video.mp4", analyzers=["frame.quality"])
             assert isinstance(result, fm.Result)
 
 
@@ -119,50 +119,50 @@ class TestBuildModules:
 
         modules = build_modules()
         names = [m for m in modules if isinstance(m, str)]
-        assert "face" in names
-        assert "pose" in names
-        assert "gesture" in names
-        assert "face_classifier" in names  # auto-injected
+        assert "face.detect" in names
+        assert "body.pose" in names
+        assert "hand.gesture" in names
+        assert "face.classify" in names  # auto-injected
         assert any(isinstance(m, HighlightFusion) for m in modules)
 
     def test_face_classifier_auto_inject(self):
         """Test FaceClassifier is auto-injected when face is used."""
         from facemoment.main import build_modules
 
-        modules = build_modules(["face"])
+        modules = build_modules(["face.detect"])
         names = [m for m in modules if isinstance(m, str)]
-        assert "face_classifier" in names
+        assert "face.classify" in names
 
     def test_face_detect_triggers_classifier(self):
         """Test FaceClassifier is auto-injected when face_detect is used."""
         from facemoment.main import build_modules
 
-        modules = build_modules(["face_detect", "expression"])
+        modules = build_modules(["face.detect", "face.expression"])
         names = [m for m in modules if isinstance(m, str)]
-        assert "face_classifier" in names
+        assert "face.classify" in names
 
     def test_no_classifier_without_face(self):
         """Test FaceClassifier is not injected when face is not used."""
         from facemoment.main import build_modules
 
-        modules = build_modules(["quality", "dummy"])
+        modules = build_modules(["frame.quality", "mock.dummy"])
         names = [m for m in modules if isinstance(m, str)]
-        assert "face_classifier" not in names
+        assert "face.classify" not in names
 
     def test_no_duplicate_classifier(self):
         """Test FaceClassifier is not duplicated if already included."""
         from facemoment.main import build_modules
 
-        modules = build_modules(["face", "face_classifier"])
+        modules = build_modules(["face.detect", "face.classify"])
         names = [m for m in modules if isinstance(m, str)]
-        assert names.count("face_classifier") == 1
+        assert names.count("face.classify") == 1
 
     def test_custom_cooldown(self):
         """Test custom cooldown parameter."""
         from facemoment.main import build_modules
         from facemoment.moment_detector.fusion import HighlightFusion
 
-        modules = build_modules(["dummy"], cooldown=5.0)
+        modules = build_modules(["mock.dummy"], cooldown=5.0)
         fusion = next(m for m in modules if isinstance(m, HighlightFusion))
         assert fusion._cooldown_ns == int(5.0 * 1e9)
 

@@ -4,10 +4,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from visualpath.analyzers.backends.base import (
-    DetectedFace,
-    FaceExpression,
-)
+from vpx.face_detect.backends.base import DetectedFace
+from vpx.expression.backends.base import FaceExpression
 
 
 class TestHSEmotionBackend:

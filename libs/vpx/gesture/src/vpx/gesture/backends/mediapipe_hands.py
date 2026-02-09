@@ -7,7 +7,7 @@ import urllib.request
 
 import numpy as np
 
-from visualpath.analyzers.backends.base import HandLandmarks
+from vpx.gesture.backends.base import HandLandmarks
 
 logger = logging.getLogger(__name__)
 

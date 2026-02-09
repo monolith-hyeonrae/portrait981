@@ -264,12 +264,12 @@ def _run_library(args, backend="pathway"):
     # Determine which analyzers to use
     probed = probe_analyzers(use_ml=use_ml)
     analyzer_names = probed["names"]
-    face_available = probed["face"]
-    pose_available = probed["pose"]
-    gesture_available = probed["gesture"]
+    face_available = probed["face.detect"]
+    pose_available = probed["body.pose"]
+    gesture_available = probed["hand.gesture"]
 
     for name in analyzer_names:
-        if name == "dummy":
+        if name == "mock.dummy":
             print("  DummyAnalyzer: enabled (fallback)")
         else:
             print(f"  {name.capitalize()}Analyzer: enabled")

@@ -42,9 +42,9 @@ facemoment = "facemoment.cli:main"
 # Register core analyzers and fusions as plugins for visualpath.
 # ML analyzers are registered by their sub-packages (vpx-face-detect, etc.)
 [project.entry-points."visualpath.analyzers"]
-face_classifier = "facemoment.moment_detector.analyzers.face_classifier:FaceClassifierAnalyzer"
-quality = "facemoment.moment_detector.analyzers.quality:QualityAnalyzer"
-dummy = "facemoment.moment_detector.analyzers.dummy:DummyAnalyzer"
+"face.classify" = "facemoment.moment_detector.analyzers.face_classifier:FaceClassifierAnalyzer"
+"frame.quality" = "facemoment.moment_detector.analyzers.quality:QualityAnalyzer"
+"mock.dummy" = "facemoment.moment_detector.analyzers.dummy:DummyAnalyzer"
 
 [project.entry-points."visualpath.fusions"]
 highlight = "facemoment.moment_detector.fusion.highlight:HighlightFusion"

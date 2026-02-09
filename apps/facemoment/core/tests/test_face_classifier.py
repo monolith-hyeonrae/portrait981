@@ -9,8 +9,9 @@ from facemoment.moment_detector.analyzers.face_classifier import (
     ClassifiedFace,
     FaceClassifierOutput,
 )
-from visualpath.analyzers.base import Observation, FaceObservation
-from visualpath.analyzers.outputs import FaceDetectOutput
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 
 
 def make_face(face_id: int, bbox: tuple, confidence: float = 0.9) -> FaceObservation:
@@ -42,7 +43,7 @@ def make_frame(frame_id: int = 1):
 def make_face_detect_obs(faces: list, frame_id: int = 1) -> Observation:
     """Create a face detection Observation."""
     return Observation(
-        source="face_detect",
+        source="face.detect",
         frame_id=frame_id,
         t_ns=frame_id * 100_000_000,
         signals={},
@@ -69,7 +70,7 @@ class TestFaceClassifierAnalyzer:
         for i in range(5):
             frame = make_frame(i)
             face = make_face(1, (0.4, 0.3, 0.2, 0.3))  # Center, large
-            deps = {"face_detect": make_face_detect_obs([face], i)}
+            deps = {"face.detect": make_face_detect_obs([face], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -87,7 +88,7 @@ class TestFaceClassifierAnalyzer:
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
             # Smaller face on side -> passenger
             face2 = make_face(2, (0.65, 0.3, 0.15, 0.25))
-            deps = {"face_detect": make_face_detect_obs([face1, face2], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, face2], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -107,7 +108,7 @@ class TestFaceClassifierAnalyzer:
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))  # Largest -> main
             face2 = make_face(2, (0.65, 0.3, 0.15, 0.25))  # Second -> passenger
             face3 = make_face(3, (0.1, 0.4, 0.1, 0.15))    # Third -> transient
-            deps = {"face_detect": make_face_detect_obs([face1, face2, face3], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, face2, face3], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -133,7 +134,7 @@ class TestFaceClassifierAnalyzer:
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
             # Very small face -> noise
             noise_face = make_face(99, (0.9, 0.9, 0.02, 0.02), confidence=0.3)
-            deps = {"face_detect": make_face_detect_obs([face1, noise_face], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, noise_face], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -149,14 +150,14 @@ class TestFaceClassifierAnalyzer:
         for i in range(5):
             frame = make_frame(i)
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
-            deps = {"face_detect": make_face_detect_obs([face1], i)}
+            deps = {"face.detect": make_face_detect_obs([face1], i)}
             classifier.process(frame, deps)
 
         # Now add a new face for just 1 frame
         frame = make_frame(5)
         face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
         new_face = make_face(99, (0.6, 0.3, 0.15, 0.2))
-        deps = {"face_detect": make_face_detect_obs([face1, new_face], 5)}
+        deps = {"face.detect": make_face_detect_obs([face1, new_face], 5)}
         obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -174,7 +175,7 @@ class TestFaceClassifierAnalyzer:
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))  # main
             face2 = make_face(2, (0.65, 0.3, 0.15, 0.25))  # passenger
             face3 = make_face(3, (0.1, 0.4, 0.08, 0.1))    # transient (small)
-            deps = {"face_detect": make_face_detect_obs([face1, face2, face3], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, face2, face3], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -193,7 +194,7 @@ class TestFaceClassifierAnalyzer:
             frame = make_frame(i)
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
             face2 = make_face(2, (0.65, 0.3, 0.15, 0.25))
-            deps = {"face_detect": make_face_detect_obs([face1, face2], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, face2], i)}
             obs = classifier.process(frame, deps)
 
         assert obs.signals["main_detected"] == 1
@@ -205,7 +206,7 @@ class TestFaceClassifierAnalyzer:
         classifier.initialize()
 
         frame = make_frame(1)
-        deps = {"face_detect": make_face_detect_obs([], 1)}
+        deps = {"face.detect": make_face_detect_obs([], 1)}
         obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -224,7 +225,7 @@ class TestFaceClassifierAnalyzer:
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
             # Passenger: stable side position
             face2 = make_face(2, (0.65, 0.3, 0.15, 0.25))
-            deps = {"face_detect": make_face_detect_obs([face1, face2], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, face2], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data
@@ -240,7 +241,7 @@ class TestFaceClassifierAnalyzer:
         for i in range(5):
             frame = make_frame(i)
             face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))  # Stable
-            deps = {"face_detect": make_face_detect_obs([face1], i)}
+            deps = {"face.detect": make_face_detect_obs([face1], i)}
             classifier.process(frame, deps)
 
         # Now add a moving face (position changes each frame)
@@ -250,7 +251,7 @@ class TestFaceClassifierAnalyzer:
             # Moving face: x position changes significantly
             x_pos = 0.1 + (i - 5) * 0.05  # Moves from 0.1 to 0.6
             moving_face = make_face(99, (x_pos, 0.3, 0.12, 0.2))
-            deps = {"face_detect": make_face_detect_obs([face1, moving_face], i)}
+            deps = {"face.detect": make_face_detect_obs([face1, moving_face], i)}
             obs = classifier.process(frame, deps)
 
         data: FaceClassifierOutput = obs.data

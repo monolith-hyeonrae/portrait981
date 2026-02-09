@@ -12,7 +12,9 @@ from facemoment.pipeline.pathway_pipeline import (
     PATHWAY_AVAILABLE,
     _CUDA_GROUPS,
 )
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 
 from helpers import create_test_video, create_mock_frame
 
@@ -23,12 +25,12 @@ class TestFacemomentPipeline:
     def test_init_default_analyzers(self):
         """Test default analyzer configuration."""
         pipeline = FacemomentPipeline()
-        assert pipeline._analyzer_names == ["face", "pose", "gesture"]
+        assert pipeline._analyzer_names == ["face.detect", "face.expression", "body.pose", "hand.gesture"]
 
     def test_init_custom_analyzers(self):
         """Test custom analyzer configuration."""
-        pipeline = FacemomentPipeline(analyzers=["face", "quality"])
-        assert pipeline._analyzer_names == ["face", "quality"]
+        pipeline = FacemomentPipeline(analyzers=["face.detect", "frame.quality"])
+        assert pipeline._analyzer_names == ["face.detect", "frame.quality"]
 
     def test_init_fusion_config(self):
         """Test fusion configuration."""
@@ -43,7 +45,7 @@ class TestFacemomentPipeline:
         from facemoment.main import build_modules
         from facemoment.moment_detector.fusion import HighlightFusion
 
-        modules = build_modules(["dummy"], cooldown=5.0)
+        modules = build_modules(["mock.dummy"], cooldown=5.0)
         fusion = next(m for m in modules if isinstance(m, HighlightFusion))
         assert fusion._cooldown_ns == int(5.0 * 1e9)
 
@@ -55,7 +57,7 @@ class TestFacemomentPipelineExecution:
         """Test that run delegates to the unified FlowGraph path."""
         from visualpath.backends.base import PipelineResult
 
-        pipeline = FacemomentPipeline(analyzers=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["mock.dummy"])
 
         mock_engine = Mock()
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=5)
@@ -76,7 +78,7 @@ class TestFacemomentPipelineExecution:
         """Test on_trigger callback is passed through."""
         from visualpath.backends.base import PipelineResult
 
-        pipeline = FacemomentPipeline(analyzers=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["mock.dummy"])
 
         mock_engine = Mock()
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
@@ -108,7 +110,7 @@ class TestPathwayAvailability:
         from visualpath.backends.base import PipelineResult
 
         with patch("facemoment.pipeline.pathway_pipeline.PATHWAY_AVAILABLE", False):
-            pipeline = FacemomentPipeline(analyzers=["dummy"])
+            pipeline = FacemomentPipeline(analyzers=["mock.dummy"])
 
             mock_engine = Mock()
             mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
@@ -152,7 +154,7 @@ class TestHighlevelAPIBackend:
             mock_bg.return_value = Mock()
 
             from facemoment.main import run
-            result = run("fake.mp4", analyzers=["dummy"], fps=5, cooldown=1.5)
+            result = run("fake.mp4", analyzers=["mock.dummy"], fps=5, cooldown=1.5)
 
             # build_graph was called
             mock_bg.assert_called_once()
@@ -176,7 +178,7 @@ class TestHighlevelAPIBackend:
             mock_bg.return_value = Mock()
 
             from facemoment.main import run
-            run("test.mp4", analyzers=["dummy"], on_trigger=cb)
+            run("test.mp4", analyzers=["mock.dummy"], on_trigger=cb)
 
             _, kwargs = mock_bg.call_args
             assert kwargs["on_trigger"] is cb
@@ -204,7 +206,7 @@ class TestPipelineConfigBackend:
         from facemoment.pipeline.config import PipelineConfig
 
         data = {
-            "analyzers": [{"name": "dummy"}],
+            "analyzers": [{"name": "mock.dummy"}],
             "backend": "simple",
         }
         config = PipelineConfig.from_dict(data)
@@ -215,7 +217,7 @@ class TestPipelineConfigBackend:
         from facemoment.pipeline.config import PipelineConfig, AnalyzerConfig
 
         config = PipelineConfig(
-            analyzers=[AnalyzerConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="mock.dummy")],
             backend="pathway",
         )
         data = config.to_dict()
@@ -237,7 +239,7 @@ class TestOrchestratorBackend:
         from facemoment.pipeline import PipelineOrchestrator, AnalyzerConfig
 
         orchestrator = PipelineOrchestrator(
-            analyzer_configs=[AnalyzerConfig(name="dummy")]
+            analyzer_configs=[AnalyzerConfig(name="mock.dummy")]
         )
         assert orchestrator._backend == "pathway"
 
@@ -246,7 +248,7 @@ class TestOrchestratorBackend:
         from facemoment.pipeline import PipelineOrchestrator, AnalyzerConfig
 
         orchestrator = PipelineOrchestrator(
-            analyzer_configs=[AnalyzerConfig(name="dummy")],
+            analyzer_configs=[AnalyzerConfig(name="mock.dummy")],
             backend="simple",
         )
         assert orchestrator._backend == "simple"
@@ -260,7 +262,7 @@ class TestOrchestratorBackend:
         )
 
         config = PipelineConfig(
-            analyzers=[AnalyzerConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="mock.dummy")],
             backend="simple",
         )
         orchestrator = PipelineOrchestrator.from_config(config)
@@ -274,15 +276,15 @@ class TestPipelineDelegation:
         """Test that pipeline uses build_modules for module construction."""
         from facemoment.main import build_modules
 
-        modules = build_modules(["face"])
+        modules = build_modules(["face.detect"])
         names = [m for m in modules if isinstance(m, str)]
-        assert "face_classifier" in names  # auto-injected
+        assert "face.classify" in names  # auto-injected
 
     def test_pipeline_actual_backend_recorded(self):
         """Test that the actual backend name is recorded after run."""
         from visualpath.backends.base import PipelineResult
 
-        pipeline = FacemomentPipeline(analyzers=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["mock.dummy"])
 
         mock_engine = Mock()
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
@@ -313,12 +315,12 @@ class TestHighlightFusionMergedSignals:
             frame_id=1,
             t_ns=1000000,
             signals={"main_face_id": 42, "face_count": 1},
-            faces=[
+            data=FaceDetectOutput(faces=[
                 FaceObservation(
                     face_id=42, bbox=(0.1, 0.1, 0.3, 0.3),
                     confidence=0.9, yaw=0.0, pitch=0.0, expression=0.8,
                 )
-            ],
+            ]),
             metadata={},
         )
 
@@ -343,11 +345,10 @@ class TestHighlightFusionMergedSignals:
         mock_data.main_face = mock_main_face
 
         classifier_obs = Observation(
-            source="face_classifier",
+            source="face.classify",
             frame_id=1,
             t_ns=1000000,
             signals={},
-            faces=[],
             metadata={},
             data=mock_data,
         )
@@ -358,7 +359,6 @@ class TestHighlightFusionMergedSignals:
             frame_id=1,
             t_ns=1000000,
             signals={"main_face_id": 42},  # Different ID
-            faces=[],
             metadata={},
         )
 
@@ -376,32 +376,32 @@ class TestCudaConflictDetection:
         """Test that CUDA groups contain expected analyzers."""
         assert "onnxruntime" in _CUDA_GROUPS
         assert "torch" in _CUDA_GROUPS
-        assert "face" in _CUDA_GROUPS["onnxruntime"]
-        assert "pose" in _CUDA_GROUPS["torch"]
+        assert "face.detect" in _CUDA_GROUPS["onnxruntime"]
+        assert "body.pose" in _CUDA_GROUPS["torch"]
 
     def test_no_conflict_single_group(self):
         """No conflict when all analyzers are in the same CUDA group."""
-        isolated = FacemomentPipeline._detect_cuda_conflicts(["face", "expression"])
+        isolated = FacemomentPipeline._detect_cuda_conflicts(["face.detect", "face.expression"])
         assert isolated == set()
 
     def test_no_conflict_no_cuda_analyzers(self):
         """No conflict when analyzers don't belong to any CUDA group."""
-        isolated = FacemomentPipeline._detect_cuda_conflicts(["quality", "dummy"])
+        isolated = FacemomentPipeline._detect_cuda_conflicts(["frame.quality", "mock.dummy"])
         assert isolated == set()
 
     def test_conflict_face_and_pose(self):
         """Conflict detected when face (onnxruntime) + pose (torch) are both active."""
-        isolated = FacemomentPipeline._detect_cuda_conflicts(["face", "pose"])
-        # torch group (pose) is minority → should be isolated
-        assert isolated == {"pose"}
+        isolated = FacemomentPipeline._detect_cuda_conflicts(["face.detect", "body.pose"])
+        # torch group (body.pose) is minority → should be isolated
+        assert isolated == {"body.pose"}
 
     def test_conflict_multiple_onnxruntime_vs_pose(self):
         """Multiple onnxruntime analyzers vs single torch → torch isolated."""
         isolated = FacemomentPipeline._detect_cuda_conflicts(
-            ["face", "face_detect", "expression", "pose"]
+            ["face.detect", "face.expression", "body.pose"]
         )
-        # onnxruntime has 3 analyzers, torch has 1 → torch (pose) is minority
-        assert isolated == {"pose"}
+        # onnxruntime has 3 analyzers, torch has 1 → torch (body.pose) is minority
+        assert isolated == {"body.pose"}
 
     def test_no_conflict_without_zmq(self):
         """Returns empty set when pyzmq is unavailable."""
@@ -409,48 +409,48 @@ class TestCudaConflictDetection:
             # Force ImportError for zmq
             import importlib
             with patch("builtins.__import__", side_effect=lambda name, *a, **kw: (_ for _ in ()).throw(ImportError("no zmq")) if name == "zmq" else importlib.__import__(name, *a, **kw)):
-                isolated = FacemomentPipeline._detect_cuda_conflicts(["face", "pose"])
+                isolated = FacemomentPipeline._detect_cuda_conflicts(["face.detect", "body.pose"])
                 assert isolated == set()
 
     def test_pipeline_init_has_workers_dict(self):
         """Pipeline initializes with empty workers dict."""
-        pipeline = FacemomentPipeline(analyzers=["face"])
+        pipeline = FacemomentPipeline(analyzers=["face.detect"])
         assert pipeline._workers == {}
         assert pipeline.workers == {}
 
     def test_workers_property(self):
         """Workers property returns the _workers dict."""
-        pipeline = FacemomentPipeline(analyzers=["face"])
-        pipeline._workers = {"pose": Mock()}
-        assert "pose" in pipeline.workers
+        pipeline = FacemomentPipeline(analyzers=["face.detect"])
+        pipeline._workers = {"body.pose": Mock()}
+        assert "body.pose" in pipeline.workers
 
     def test_isolation_config_built_for_conflicts(self):
         """IsolationConfig is built when CUDA conflicts detected."""
         from facemoment.main import _build_isolation_config
 
-        config = _build_isolation_config(["face", "pose"])
+        config = _build_isolation_config(["face.detect", "body.pose"])
         if config is not None:
-            # pose should be isolated (minority group)
+            # body.pose should be isolated (minority group)
             from visualpath.core.isolation import IsolationLevel
-            assert config.get_level("pose") == IsolationLevel.PROCESS
+            assert config.get_level("body.pose") == IsolationLevel.PROCESS
 
     def test_no_isolation_config_without_conflicts(self):
         """No IsolationConfig when no CUDA conflicts."""
         from facemoment.main import _build_isolation_config
 
-        config = _build_isolation_config(["dummy"])
+        config = _build_isolation_config(["mock.dummy"])
         assert config is None
 
     def test_cleanup_resets_state(self):
         """cleanup() resets initialized state."""
-        pipeline = FacemomentPipeline(analyzers=["face"])
+        pipeline = FacemomentPipeline(analyzers=["face.detect"])
         pipeline._initialized = True
         pipeline.cleanup()
         assert not pipeline._initialized
 
     def test_initialize_loads_analyzers(self):
         """initialize() loads analyzers and fusion."""
-        pipeline = FacemomentPipeline(analyzers=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["mock.dummy"])
         pipeline.initialize()
         assert pipeline._initialized
         assert len(pipeline.analyzers) > 0

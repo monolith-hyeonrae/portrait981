@@ -17,8 +17,9 @@ from visualbase.ipc.interfaces import VideoReader, MessageSender
 from visualpath.analyzers.base import (
     BaseAnalyzer,
     Observation,
-    FaceObservation,
 )
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 from facemoment.moment_detector.fusion.base import BaseFusion
 from facemoment.process import (
     AnalyzerProcess,
@@ -41,12 +42,12 @@ class MockAnalyzer(BaseAnalyzer):
 
     def process(self, frame: Frame, deps=None):
         self._call_count += 1
-        if self._name == "face":
+        if self._name == "face.detect":
             return Observation(
-                source="face",
+                source="face.detect",
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
-                faces=[
+                data=FaceDetectOutput(faces=[
                     FaceObservation(
                         face_id=0,
                         confidence=0.95,
@@ -55,11 +56,11 @@ class MockAnalyzer(BaseAnalyzer):
                         yaw=5.0,
                         pitch=2.0,
                     ),
-                ],
+                ]),
             )
-        elif self._name == "pose":
+        elif self._name == "body.pose":
             return Observation(
-                source="pose",
+                source="body.pose",
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
                 signals={
@@ -69,9 +70,9 @@ class MockAnalyzer(BaseAnalyzer):
                     "confidence": 0.9,
                 },
             )
-        elif self._name == "quality":
+        elif self._name == "frame.quality":
             return Observation(
-                source="quality",
+                source="frame.quality",
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
                 signals={
@@ -217,7 +218,7 @@ class TestAnalyzerProcess:
 
     def test_observation_to_message_face(self):
         """Test conversion of face observation to OBS message using FacemomentMapper."""
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         mapper = FacemomentMapper()
 
         # Create a test frame
@@ -231,20 +232,20 @@ class TestAnalyzerProcess:
         # Convert to message using mapper
         msg = mapper.to_message(obs)
         assert msg is not None
-        assert msg.startswith("OBS src=face")
+        assert msg.startswith("OBS src=face.detect")
         assert "frame=1" in msg
         assert "faces=1" in msg
 
         # Parse it back
         parsed = parse_obs_message(msg)
         assert parsed is not None
-        assert parsed.src == "face"
+        assert parsed.src == "face.detect"
         assert len(parsed.faces) == 1
         assert parsed.faces[0].expr == pytest.approx(0.8, rel=1e-2)
 
     def test_observation_to_message_pose(self):
         """Test conversion of pose observation to OBS message using FacemomentMapper."""
-        analyzer = MockAnalyzer(name="pose")
+        analyzer = MockAnalyzer(name="body.pose")
         mapper = FacemomentMapper()
 
         data = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -254,12 +255,12 @@ class TestAnalyzerProcess:
         msg = mapper.to_message(obs)
 
         assert msg is not None
-        assert msg.startswith("OBS src=pose")
+        assert msg.startswith("OBS src=body.pose")
         assert "poses=1" in msg
 
     def test_observation_to_message_quality(self):
         """Test conversion of quality observation to OBS message using FacemomentMapper."""
-        analyzer = MockAnalyzer(name="quality")
+        analyzer = MockAnalyzer(name="frame.quality")
         mapper = FacemomentMapper()
 
         data = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -269,12 +270,12 @@ class TestAnalyzerProcess:
         msg = mapper.to_message(obs)
 
         assert msg is not None
-        assert msg.startswith("OBS src=quality")
+        assert msg.startswith("OBS src=frame.quality")
         assert "blur:100.0" in msg
 
     def test_get_stats(self):
         """Test stats retrieval."""
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         process = AnalyzerProcess(
             analyzer=analyzer,
             input_fifo="/tmp/test.fifo",
@@ -289,7 +290,7 @@ class TestAnalyzerProcess:
 
     def test_interface_based_initialization(self):
         """Test AnalyzerProcess with interface-based dependency injection."""
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         reader = MockVideoReader()
         sender = MockMessageSender()
 
@@ -307,7 +308,7 @@ class TestAnalyzerProcess:
 
     def test_interface_process_frames(self):
         """Test frame processing with interface-based dependencies."""
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         mapper = FacemomentMapper()
 
         # Create test frames
@@ -346,11 +347,11 @@ class TestAnalyzerProcess:
 
         # Verify OBS messages were sent correctly
         for msg in sender._messages:
-            assert msg.startswith("OBS src=face")
+            assert msg.startswith("OBS src=face.detect")
 
     def test_missing_reader_and_path_raises(self):
         """Test that missing both video_reader and input_fifo raises ValueError."""
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         sender = MockMessageSender()
 
         with pytest.raises(ValueError, match="Either video_reader or input_fifo"):
@@ -361,7 +362,7 @@ class TestAnalyzerProcess:
 
     def test_missing_sender_and_path_raises(self):
         """Test that missing both message_sender and obs_socket raises ValueError."""
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         reader = MockVideoReader()
 
         with pytest.raises(ValueError, match="Either message_sender or obs_socket"):
@@ -394,10 +395,10 @@ class TestFusionProcess:
         obs = mapper.from_message(msg)
 
         assert obs is not None
-        assert obs.source == "face"
+        assert obs.source == "face.detect"
         assert obs.frame_id == 1
-        assert len(obs.faces) == 1
-        assert obs.faces[0].expression == 0.8
+        assert len(obs.data.faces) == 1
+        assert obs.data.faces[0].expression == 0.8
 
     def test_obs_to_observation_pose(self):
         """Test conversion of pose OBS message to Observation using FacemomentMapper."""
@@ -417,7 +418,7 @@ class TestFusionProcess:
         obs = mapper.from_message(msg)
 
         assert obs is not None
-        assert obs.source == "pose"
+        assert obs.source == "body.pose"
         assert obs.signals.get("hand_raised") == 1.0
         assert obs.signals.get("hand_wave") == 0.0
 
@@ -437,7 +438,7 @@ class TestFusionProcess:
         obs = mapper.from_message(msg)
 
         assert obs is not None
-        assert obs.source == "quality"
+        assert obs.source == "frame.quality"
         assert obs.signals.get("blur_score") == 100.0
         assert obs.signals.get("quality_gate") == 1.0
 
@@ -502,20 +503,20 @@ class TestAnalyzerOrchestrator:
 
     def test_initialization(self):
         """Test orchestrator initialization."""
-        analyzers = [MockAnalyzer(name="face"), MockAnalyzer(name="pose")]
+        analyzers = [MockAnalyzer(name="face.detect"), MockAnalyzer(name="body.pose")]
         orchestrator = AnalyzerOrchestrator(analyzers)
 
         assert not orchestrator.is_initialized
         orchestrator.initialize()
         assert orchestrator.is_initialized
-        assert orchestrator.analyzer_names == ["face", "pose"]
+        assert orchestrator.analyzer_names == ["face.detect", "body.pose"]
 
         orchestrator.cleanup()
         assert not orchestrator.is_initialized
 
     def test_context_manager(self):
         """Test context manager interface."""
-        analyzers = [MockAnalyzer(name="face")]
+        analyzers = [MockAnalyzer(name="face.detect")]
 
         with AnalyzerOrchestrator(analyzers) as orchestrator:
             assert orchestrator.is_initialized
@@ -525,9 +526,9 @@ class TestAnalyzerOrchestrator:
     def test_analyze_all_parallel(self):
         """Test parallel extraction."""
         analyzers = [
-            MockAnalyzer(name="face"),
-            MockAnalyzer(name="pose"),
-            MockAnalyzer(name="quality"),
+            MockAnalyzer(name="face.detect"),
+            MockAnalyzer(name="body.pose"),
+            MockAnalyzer(name="frame.quality"),
         ]
 
         with AnalyzerOrchestrator(analyzers, max_workers=3) as orchestrator:
@@ -538,11 +539,11 @@ class TestAnalyzerOrchestrator:
 
             assert len(observations) == 3
             sources = {obs.source for obs in observations}
-            assert sources == {"face", "pose", "quality"}
+            assert sources == {"face.detect", "body.pose", "frame.quality"}
 
     def test_analyze_sequential(self):
         """Test sequential extraction."""
-        analyzers = [MockAnalyzer(name="face"), MockAnalyzer(name="pose")]
+        analyzers = [MockAnalyzer(name="face.detect"), MockAnalyzer(name="body.pose")]
 
         with AnalyzerOrchestrator(analyzers) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -554,7 +555,7 @@ class TestAnalyzerOrchestrator:
 
     def test_get_stats(self):
         """Test stats retrieval."""
-        analyzers = [MockAnalyzer(name="face")]
+        analyzers = [MockAnalyzer(name="face.detect")]
 
         with AnalyzerOrchestrator(analyzers) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -578,7 +579,7 @@ class TestAnalyzerOrchestrator:
 
     def test_not_initialized_raises(self):
         """Test that extract without initialize raises RuntimeError."""
-        analyzers = [MockAnalyzer(name="face")]
+        analyzers = [MockAnalyzer(name="face.detect")]
         orchestrator = AnalyzerOrchestrator(analyzers)
 
         data = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -589,7 +590,7 @@ class TestAnalyzerOrchestrator:
 
     def test_multiple_frames(self):
         """Test processing multiple frames."""
-        analyzers = [MockAnalyzer(name="face")]
+        analyzers = [MockAnalyzer(name="face.detect")]
 
         with AnalyzerOrchestrator(analyzers) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)

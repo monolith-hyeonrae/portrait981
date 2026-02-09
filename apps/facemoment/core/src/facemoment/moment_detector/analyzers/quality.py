@@ -1,5 +1,6 @@
 """Quality analyzer for image quality assessment."""
 
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 import logging
 
@@ -17,6 +18,20 @@ from visualpath.analyzers.base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class QualityOutput:
+    """Output from QualityAnalyzer.
+
+    Attributes:
+        blur_score: Laplacian variance (higher = sharper).
+        brightness: Mean brightness [0-255].
+        contrast: Standard deviation of brightness.
+    """
+    blur_score: float = 0.0
+    brightness: float = 0.0
+    contrast: float = 0.0
 
 
 class QualityAnalyzer(Module):
@@ -59,7 +74,7 @@ class QualityAnalyzer(Module):
 
     @property
     def name(self) -> str:
-        return "quality"
+        return "frame.quality"
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:
@@ -204,6 +219,11 @@ class QualityAnalyzer(Module):
             t_ns=frame.t_src_ns,
             signals=result["signals"],
             metadata=result["metadata"],
+            data=QualityOutput(
+                blur_score=blur_score,
+                brightness=brightness,
+                contrast=contrast,
+            ),
             timing=timing,
         )
 

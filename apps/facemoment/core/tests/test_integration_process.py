@@ -19,8 +19,9 @@ from visualbase.ipc.interfaces import VideoReader, MessageSender, MessageReceive
 from visualpath.analyzers.base import (
     BaseAnalyzer,
     Observation,
-    FaceObservation,
 )
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 from facemoment.moment_detector.fusion.base import BaseFusion, Trigger
 from facemoment.process import (
     AnalyzerProcess,
@@ -131,12 +132,12 @@ class MockAnalyzer(BaseAnalyzer):
 
     def process(self, frame: Frame, deps=None) -> Observation:
         self._call_count += 1
-        if self._name == "face":
+        if self._name == "face.detect":
             return Observation(
-                source="face",
+                source="face.detect",
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
-                faces=[
+                data=FaceDetectOutput(faces=[
                     FaceObservation(
                         face_id=0,
                         confidence=0.95,
@@ -145,11 +146,11 @@ class MockAnalyzer(BaseAnalyzer):
                         yaw=5.0,
                         pitch=2.0,
                     ),
-                ],
+                ]),
             )
-        elif self._name == "pose":
+        elif self._name == "body.pose":
             return Observation(
-                source="pose",
+                source="body.pose",
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
                 signals={
@@ -159,9 +160,9 @@ class MockAnalyzer(BaseAnalyzer):
                     "confidence": 0.9,
                 },
             )
-        elif self._name == "quality":
+        elif self._name == "frame.quality":
             return Observation(
-                source="quality",
+                source="frame.quality",
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
                 signals={
@@ -277,7 +278,7 @@ class TestAnalyzerProcessIntegration:
 
         reader = MockVideoReader(frames=frames)
         sender = MockMessageSender()
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         mapper = FacemomentMapper()
 
         process = AnalyzerProcess(
@@ -305,7 +306,7 @@ class TestAnalyzerProcessIntegration:
 
         # Verify message format
         for msg in sender._messages:
-            assert msg.startswith("OBS src=face")
+            assert msg.startswith("OBS src=face.detect")
             assert "faces=1" in msg
 
     def test_multiple_analyzer_types(self):
@@ -313,7 +314,7 @@ class TestAnalyzerProcessIntegration:
         data = np.zeros((480, 640, 3), dtype=np.uint8)
         frames = [Frame.from_array(data, frame_id=0, t_src_ns=0)]
 
-        for ext_type in ["face", "pose", "quality"]:
+        for ext_type in ["face.detect", "body.pose", "frame.quality"]:
             reader = MockVideoReader(frames=frames.copy())
             sender = MockMessageSender()
             analyzer = MockAnalyzer(name=ext_type)
@@ -347,7 +348,7 @@ class TestFusionProcessIntegration:
         """Test OBS messages trigger TRIG messages correctly."""
         # Create OBS messages for 5 frames (trigger on frame 5)
         obs_messages = [
-            f"OBS src=face frame={i} t={i*100_000_000} faces=1 "
+            f"OBS src=face.detect frame={i} t={i*100_000_000} faces=1 "
             f"id:0,conf:0.95,x:0.1,y:0.2,w:0.3,h:0.4,expr:0.8"
             for i in range(5)
         ]
@@ -383,9 +384,9 @@ class TestAnalyzerOrchestratorIntegration:
     def test_parallel_extraction(self):
         """Test parallel extraction produces correct results."""
         analyzers = [
-            MockAnalyzer(name="face"),
-            MockAnalyzer(name="pose"),
-            MockAnalyzer(name="quality"),
+            MockAnalyzer(name="face.detect"),
+            MockAnalyzer(name="body.pose"),
+            MockAnalyzer(name="frame.quality"),
         ]
 
         with AnalyzerOrchestrator(analyzers, max_workers=3) as orchestrator:
@@ -398,7 +399,7 @@ class TestAnalyzerOrchestratorIntegration:
                 # Should get observations from all 3 analyzers
                 assert len(observations) == 3
                 sources = {obs.source for obs in observations}
-                assert sources == {"face", "pose", "quality"}
+                assert sources == {"face.detect", "body.pose", "frame.quality"}
 
             stats = orchestrator.get_stats()
             assert stats["frames_processed"] == 5
@@ -406,7 +407,7 @@ class TestAnalyzerOrchestratorIntegration:
 
     def test_sequential_vs_parallel_consistency(self):
         """Test sequential and parallel modes produce same results."""
-        analyzers = [MockAnalyzer(name="face"), MockAnalyzer(name="pose")]
+        analyzers = [MockAnalyzer(name="face.detect"), MockAnalyzer(name="body.pose")]
 
         with AnalyzerOrchestrator(analyzers, max_workers=2) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -435,7 +436,7 @@ class TestEndToEndFlow:
         frame = Frame.from_array(data, frame_id=1, t_src_ns=100_000_000)
 
         # Extract and convert to message
-        analyzer = MockAnalyzer(name="face")
+        analyzer = MockAnalyzer(name="face.detect")
         reader = MockVideoReader(frames=[frame])
         sender = MockMessageSender()
         mapper = FacemomentMapper()
@@ -463,7 +464,7 @@ class TestEndToEndFlow:
         msg = sender._messages[0]
 
         # Verify message format
-        assert msg.startswith("OBS src=face")
+        assert msg.startswith("OBS src=face.detect")
         assert "frame=1" in msg
         assert "faces=1" in msg
 
@@ -471,16 +472,16 @@ class TestEndToEndFlow:
         from visualbase.ipc.messages import parse_obs_message
         parsed = parse_obs_message(msg)
         assert parsed is not None
-        assert parsed.src == "face"
+        assert parsed.src == "face.detect"
         assert parsed.frame_id == 1
         assert len(parsed.faces) == 1
 
     def test_orchestrator_produces_fusable_observations(self):
         """Test AnalyzerOrchestrator output can be used by Fusion."""
         analyzers = [
-            MockAnalyzer(name="face"),
-            MockAnalyzer(name="pose"),
-            MockAnalyzer(name="quality"),
+            MockAnalyzer(name="face.detect"),
+            MockAnalyzer(name="body.pose"),
+            MockAnalyzer(name="frame.quality"),
         ]
 
         fusion = MockFusion(trigger_interval=3)

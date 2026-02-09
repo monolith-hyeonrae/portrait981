@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.entry-points."visualpath.analyzers"]
-face_detect = "vpx.face_detect:FaceDetectionAnalyzer"
+"face.detect" = "vpx.face_detect:FaceDetectionAnalyzer"
 
 [build-system]
 requires = ["hatchling"]

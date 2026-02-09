@@ -7,11 +7,12 @@ from facemoment.pipeline.frame_processor import process_frame, FrameResult
 from helpers import create_mock_frame
 
 
-def _make_extractor(name, depends=None, obs=None):
+def _make_extractor(name, depends=None, optional_depends=None, obs=None):
     """Create a mock analyzer with given name and depends."""
     ext = Mock()
     ext.name = name
     ext.depends = depends or []
+    ext.optional_depends = optional_depends or []
     if obs is not None:
         ext.process.return_value = obs
     else:
@@ -83,27 +84,27 @@ class TestDepsAccumulation:
         assert call_args[0][1] == {}
 
 
-class TestFaceDetectAlias:
-    """Test that composite 'face' obs satisfies 'face_detect' dependency."""
+class TestFaceDetectDeps:
+    """Test that face.detect obs satisfies face.detect dependency."""
 
-    def test_face_detect_alias(self):
-        """depends=['face_detect'] + 'face' obs → 'face' obs passed as dep."""
+    def test_face_detect_deps(self):
+        """depends=['face.detect'] + 'face.detect' obs → passed as dep."""
         frame = create_mock_frame()
 
-        face_obs = _make_obs("face")
-        ext_face = _make_extractor("face", obs=face_obs)
+        face_obs = _make_obs("face.detect")
+        ext_face = _make_extractor("face.detect", obs=face_obs)
 
-        expr_obs = _make_obs("expression")
-        ext_expr = _make_extractor("expression", depends=["face_detect"], obs=expr_obs)
+        expr_obs = _make_obs("face.expression")
+        ext_expr = _make_extractor("face.expression", depends=["face.detect"], obs=expr_obs)
 
         result = process_frame(frame, [ext_face, ext_expr])
 
-        assert "face" in result.observations
-        assert "expression" in result.observations
-        # expression should have received face obs (aliased)
+        assert "face.detect" in result.observations
+        assert "face.expression" in result.observations
+        # expression should have received face.detect obs as dep
         ext_expr.process.assert_called_once()
         call_args = ext_expr.process.call_args
-        assert call_args[0][1] == {"face": face_obs}
+        assert call_args[0][1] == {"face.detect": face_obs}
 
 
 class TestWorkerProcessing:
@@ -113,29 +114,29 @@ class TestWorkerProcessing:
         """Mock worker's observation should appear in results."""
         frame = create_mock_frame()
 
-        worker_obs = _make_obs("pose")
+        worker_obs = _make_obs("body.pose")
         worker = Mock()
         worker_result = Mock()
         worker_result.observation = worker_obs
         worker.process.return_value = worker_result
 
-        result = process_frame(frame, [], workers={"pose": worker})
+        result = process_frame(frame, [], workers={"body.pose": worker})
 
-        assert "pose" in result.observations
-        assert result.observations["pose"] is worker_obs
+        assert "body.pose" in result.observations
+        assert result.observations["body.pose"] is worker_obs
 
     def test_worker_error_isolation(self):
         """Worker error should not crash processing."""
         frame = create_mock_frame()
 
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
         worker = Mock()
         worker.process.side_effect = RuntimeError("worker died")
 
-        result = process_frame(frame, [ext], workers={"pose": worker})
+        result = process_frame(frame, [ext], workers={"body.pose": worker})
 
-        assert "face" in result.observations
-        assert "pose" not in result.observations
+        assert "face.detect" in result.observations
+        assert "body.pose" not in result.observations
 
 
 class TestMonitorHooks:
@@ -146,7 +147,7 @@ class TestMonitorHooks:
         frame = create_mock_frame()
         monitor = Mock()
 
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
         result = process_frame(frame, [ext], monitor=monitor)
 
         # Expected order: begin_frame → begin_analyzer → end_analyzer → end_frame
@@ -161,7 +162,7 @@ class TestMonitorHooks:
         frame = create_mock_frame()
         monitor = Mock()
 
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
         fusion = Mock()
         fusion.update.return_value = Mock(should_trigger=False)
         fusion.is_gate_open = False
@@ -184,11 +185,11 @@ class TestMonitorHooks:
     def test_no_monitor(self):
         """monitor=None should not cause errors."""
         frame = create_mock_frame()
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
 
         result = process_frame(frame, [ext], monitor=None)
 
-        assert "face" in result.observations
+        assert "face.detect" in result.observations
 
 
 class TestFusion:
@@ -198,7 +199,7 @@ class TestFusion:
         """fusion.update(merged_obs, classifier_obs=) should be called."""
         frame = create_mock_frame()
 
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
         fusion = Mock()
         fusion_result = Mock(should_trigger=True)
         fusion.update.return_value = fusion_result
@@ -224,10 +225,10 @@ class TestFusion:
         """Fusion should receive classifier_obs when present."""
         frame = create_mock_frame()
 
-        cls_obs = _make_obs("face_classifier")
-        classifier = _make_extractor("face_classifier", obs=cls_obs)
+        cls_obs = _make_obs("face.classify")
+        classifier = _make_extractor("face.classify", obs=cls_obs)
 
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
         fusion = Mock()
         fusion.update.return_value = Mock(should_trigger=False)
         fusion.is_gate_open = False
@@ -251,7 +252,7 @@ class TestFusion:
     def test_no_fusion(self):
         """Without fusion, fusion fields should be defaults."""
         frame = create_mock_frame()
-        ext = _make_extractor("face")
+        ext = _make_extractor("face.detect")
 
         result = process_frame(frame, [ext])
 
@@ -304,11 +305,11 @@ class TestFrameResultFields:
         """All FrameResult fields should be correctly filled."""
         frame = create_mock_frame()
 
-        face_obs = _make_obs("face", timing={"detect_ms": 5.0})
-        ext = _make_extractor("face", obs=face_obs)
+        face_obs = _make_obs("face.detect", timing={"detect_ms": 5.0})
+        ext = _make_extractor("face.detect", obs=face_obs)
 
-        cls_obs = _make_obs("face_classifier")
-        classifier = _make_extractor("face_classifier", obs=cls_obs)
+        cls_obs = _make_obs("face.classify")
+        classifier = _make_extractor("face.classify", obs=cls_obs)
 
         fusion = Mock()
         fusion_result = Mock(should_trigger=False)
@@ -323,7 +324,7 @@ class TestFrameResultFields:
         )
 
         assert isinstance(result, FrameResult)
-        assert result.observations == {"face": face_obs, "face_classifier": cls_obs}
+        assert result.observations == {"face.detect": face_obs, "face.classify": cls_obs}
         assert result.classifier_obs is cls_obs
         assert result.fusion_result is fusion_result
         assert result.is_gate_open is True
@@ -333,7 +334,7 @@ class TestFrameResultFields:
     def test_frame_result_no_timing(self):
         """timing_info should be None when face obs has no timing."""
         frame = create_mock_frame()
-        ext = _make_extractor("pose")  # not face, so no timing_info
+        ext = _make_extractor("body.pose")  # not face, so no timing_info
 
         result = process_frame(frame, [ext])
 

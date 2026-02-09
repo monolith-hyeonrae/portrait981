@@ -1,5 +1,11 @@
-"""Face analyzer using pluggable backends."""
+"""Face analyzer using pluggable backends.
 
+.. deprecated::
+    FaceAnalyzer (composite) is deprecated.
+    Use FaceDetectionAnalyzer + ExpressionAnalyzer instead.
+"""
+
+import warnings
 from typing import Optional, Dict, List
 import logging
 import time
@@ -11,16 +17,14 @@ from visualbase import Frame
 from visualpath.analyzers.base import (
     Module,
     Observation,
-    FaceObservation,
     ProcessingStep,
     processing_step,
     get_processing_steps,
 )
-from visualpath.analyzers.backends.base import (
-    FaceDetectionBackend,
-    ExpressionBackend,
-    DetectedFace,
-)
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.backends.base import FaceDetectionBackend, DetectedFace
+from vpx.face_detect.output import FaceDetectOutput
+from vpx.expression.backends.base import ExpressionBackend
 from visualpath.observability import ObservabilityHub, TraceLevel
 from visualpath.observability.records import FrameAnalyzeRecord, TimingRecord
 
@@ -54,7 +58,7 @@ class FaceAnalyzer(Module):
         >>> analyzer = FaceAnalyzer()
         >>> with analyzer:
         ...     obs = analyzer.process(frame)
-        ...     for face in obs.faces:
+        ...     for face in obs.data.faces:
         ...         print(f"Face {face.face_id}: expression={face.expression:.2f}")
     """
 
@@ -79,6 +83,12 @@ class FaceAnalyzer(Module):
                  Default (0.3, 0.1, 0.7, 0.6) = center 40% width, top 50% height.
                  Set to (0, 0, 1, 1) for full frame.
         """
+        warnings.warn(
+            "FaceAnalyzer (composite) is deprecated. "
+            "Use FaceDetectionAnalyzer + ExpressionAnalyzer instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self._device = device
         self._track_faces = track_faces
         self._iou_threshold = iou_threshold
@@ -422,7 +432,7 @@ class FaceAnalyzer(Module):
                     "expression_angry": 0.0,
                     "expression_neutral": 1.0,
                 },
-                faces=[],
+                data=FaceDetectOutput(faces=[], detected_faces=[], image_size=(w, h)),
                 timing=timing,
             )
 
@@ -462,7 +472,11 @@ class FaceAnalyzer(Module):
                 "expression_angry": metrics["max_angry"],
                 "expression_neutral": metrics["min_neutral"],
             },
-            faces=face_observations,
+            data=FaceDetectOutput(
+                faces=face_observations,
+                detected_faces=detected_faces,
+                image_size=(w, h),
+            ),
             timing=timing,
         )
 

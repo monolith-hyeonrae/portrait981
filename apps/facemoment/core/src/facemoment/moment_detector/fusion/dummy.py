@@ -9,6 +9,13 @@ from visualpath.analyzers.base import Observation
 from facemoment.moment_detector.fusion.base import Module
 
 
+def _get_faces(obs):
+    """Get faces from observation data."""
+    if obs.data and hasattr(obs.data, 'faces'):
+        return obs.data.faces
+    return []
+
+
 class DummyFusion(Module):
     """Dummy fusion that triggers on high expression values.
 
@@ -27,12 +34,12 @@ class DummyFusion(Module):
 
     Example:
         >>> fusion = DummyFusion(expression_threshold=0.8)
-        >>> result = fusion.process(frame, {"face": observation})
+        >>> result = fusion.process(frame, {"face.detect": observation})
         >>> if result.should_trigger:
         ...     print(f"Trigger! Score: {result.trigger_score}")
     """
 
-    depends = ["face"]
+    depends = ["face.detect"]
 
     def __init__(
         self,
@@ -77,7 +84,6 @@ class DummyFusion(Module):
                         "trigger_reason": "",
                         "observations_used": self._observation_count,
                     },
-                    faces=observation.faces,
                     metadata={"state": "cooldown"},
                 )
 
@@ -95,7 +101,6 @@ class DummyFusion(Module):
                     "trigger_reason": "",
                     "observations_used": self._observation_count,
                 },
-                faces=observation.faces,
                 metadata={"state": "gate_closed"},
             )
 
@@ -143,7 +148,6 @@ class DummyFusion(Module):
                     "trigger_reason": "expression_spike",
                     "observations_used": self._observation_count,
                 },
-                faces=observation.faces,
                 metadata={
                     "trigger": trigger,
                     "consecutive_frames": self._consecutive_required,
@@ -160,7 +164,6 @@ class DummyFusion(Module):
                 "trigger_reason": "",
                 "observations_used": self._observation_count,
             },
-            faces=observation.faces,
             metadata={
                 "state": "monitoring",
                 "consecutive_high": self._consecutive_high,
@@ -177,7 +180,7 @@ class DummyFusion(Module):
             return False
 
         # Check each face is well-positioned
-        for face in observation.faces:
+        for face in _get_faces(observation):
             # Must be inside frame
             if not face.inside_frame:
                 return False
@@ -231,7 +234,7 @@ class DummyFusion(Module):
             )
 
         # Get observation from deps
-        observation = deps.get("face") or deps.get("dummy")
+        observation = deps.get("face.detect") or deps.get("mock.dummy")
         if observation is None:
             for obs in deps.values():
                 if hasattr(obs, 'signals'):

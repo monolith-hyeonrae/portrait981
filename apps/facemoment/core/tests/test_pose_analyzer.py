@@ -7,8 +7,8 @@ import pytest
 from visualbase import Frame
 
 from vpx.pose import PoseAnalyzer
-from visualpath.analyzers.types import KeypointIndex
-from visualpath.analyzers.backends.base import PoseKeypoints
+from vpx.pose.types import KeypointIndex
+from vpx.pose.backends.base import PoseKeypoints
 
 
 class MockPoseBackend:
@@ -68,7 +68,7 @@ class TestPoseAnalyzer:
         obs = analyzer.process(frame)
 
         assert obs is not None
-        assert obs.source == "pose"
+        assert obs.source == "body.pose"
         assert obs.signals["person_count"] == 0
         assert obs.signals["hands_raised_count"] == 0
         assert obs.signals["hand_wave_detected"] == 0.0

@@ -35,7 +35,9 @@ from visualbase.ipc.messages import (
 )
 from visualpath.process.mapper import ObservationMapper, CompositeMapper
 
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 
 
 class FaceObservationMapper:
@@ -49,7 +51,7 @@ class FaceObservationMapper:
 
     Example:
         >>> mapper = FaceObservationMapper()
-        >>> obs = FaceObservation(source="face", frame_id=1, ...)
+        >>> obs = FaceObservation(source="face_detect", frame_id=1, ...)
         >>> message = mapper.to_message(obs)  # -> "OBS src=face ..."
         >>> restored = mapper.from_message(message)
     """
@@ -58,16 +60,17 @@ class FaceObservationMapper:
         """Convert a face Observation to FaceOBS message.
 
         Args:
-            observation: Observation with source="face".
+            observation: Observation with source="face_detect".
 
         Returns:
-            Serialized FaceOBS message string, or None if not a face observation.
+            Serialized FaceOBS message string, or None if not a face_detect observation.
         """
-        if observation.source != "face":
+        if observation.source != "face.detect":
             return None
 
         faces = []
-        for face_obs in observation.faces:
+        obs_faces = observation.data.faces if observation.data and hasattr(observation.data, 'faces') else []
+        for face_obs in obs_faces:
             x, y, w, h = face_obs.bbox
             faces.append(FaceData(
                 id=face_obs.face_id,
@@ -97,17 +100,18 @@ class FaceObservationMapper:
             Observation with face data, or None if not parseable.
         """
         obs_msg = parse_obs_message(message)
-        if obs_msg is None or obs_msg.src != "face":
+        if obs_msg is None or obs_msg.src != "face.detect":
             return None
 
         obs = Observation(
-            source="face",
+            source="face.detect",
             frame_id=obs_msg.frame_id,
             t_ns=obs_msg.t_ns,
         )
 
+        face_list = []
         for face in obs_msg.faces:
-            obs.faces.append(FaceObservation(
+            face_list.append(FaceObservation(
                 face_id=face.id,
                 confidence=face.conf,
                 bbox=(face.x, face.y, face.w, face.h),
@@ -115,6 +119,7 @@ class FaceObservationMapper:
                 pitch=face.pitch,
                 expression=face.expr,
             ))
+        obs.data = FaceDetectOutput(faces=face_list)
 
         return obs
 
@@ -130,7 +135,7 @@ class PoseObservationMapper:
 
     Example:
         >>> mapper = PoseObservationMapper()
-        >>> obs = Observation(source="pose", signals={"hand_raised": 1.0}, ...)
+        >>> obs = Observation(source="body.pose", signals={"hand_raised": 1.0}, ...)
         >>> message = mapper.to_message(obs)
     """
 
@@ -138,12 +143,12 @@ class PoseObservationMapper:
         """Convert a pose Observation to PoseOBS message.
 
         Args:
-            observation: Observation with source="pose".
+            observation: Observation with source="body.pose".
 
         Returns:
             Serialized PoseOBS message string, or None if not a pose observation.
         """
-        if observation.source != "pose":
+        if observation.source != "body.pose":
             return None
 
         # Extract pose data from signals
@@ -176,11 +181,11 @@ class PoseObservationMapper:
             Observation with pose signals, or None if not parseable.
         """
         obs_msg = parse_obs_message(message)
-        if obs_msg is None or obs_msg.src != "pose":
+        if obs_msg is None or obs_msg.src != "body.pose":
             return None
 
         obs = Observation(
-            source="pose",
+            source="body.pose",
             frame_id=obs_msg.frame_id,
             t_ns=obs_msg.t_ns,
         )
@@ -205,7 +210,7 @@ class QualityObservationMapper:
 
     Example:
         >>> mapper = QualityObservationMapper()
-        >>> obs = Observation(source="quality", signals={"blur_score": 100}, ...)
+        >>> obs = Observation(source="frame.quality", signals={"blur_score": 100}, ...)
         >>> message = mapper.to_message(obs)
     """
 
@@ -213,12 +218,12 @@ class QualityObservationMapper:
         """Convert a quality Observation to QualityOBS message.
 
         Args:
-            observation: Observation with source="quality".
+            observation: Observation with source="frame.quality".
 
         Returns:
             Serialized QualityOBS message string, or None if not a quality observation.
         """
-        if observation.source != "quality":
+        if observation.source != "frame.quality":
             return None
 
         blur = observation.signals.get("blur_score", 0)
@@ -247,11 +252,11 @@ class QualityObservationMapper:
             Observation with quality signals, or None if not parseable.
         """
         obs_msg = parse_obs_message(message)
-        if obs_msg is None or obs_msg.src != "quality":
+        if obs_msg is None or obs_msg.src != "frame.quality":
             return None
 
         obs = Observation(
-            source="quality",
+            source="frame.quality",
             frame_id=obs_msg.frame_id,
             t_ns=obs_msg.t_ns,
         )

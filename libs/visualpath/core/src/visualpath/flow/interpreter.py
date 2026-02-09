@@ -343,14 +343,51 @@ class SimpleInterpreter:
     # Modules (unified analyzer/fusion processing)
     # -----------------------------------------------------------------
 
+    def _toposort_modules(self, modules: tuple) -> list:
+        """Topologically sort modules based on their depends/optional_depends.
+
+        Uses Kahn's algorithm. Only considers dependencies that are
+        present within the given set of modules (external deps are ignored).
+        Falls back to original order for any unresolvable cycles.
+        """
+        from collections import defaultdict, deque
+
+        name_to_mod = {m.name: m for m in modules}
+        available = set(name_to_mod.keys())
+        in_degree = {m.name: 0 for m in modules}
+        dependents = defaultdict(list)
+
+        for m in modules:
+            for dep in list(getattr(m, 'depends', [])) + list(getattr(m, 'optional_depends', [])):
+                if dep in available:
+                    in_degree[m.name] += 1
+                    dependents[dep].append(m.name)
+
+        queue = deque(n for n, d in in_degree.items() if d == 0)
+        result = []
+        while queue:
+            name = queue.popleft()
+            result.append(name_to_mod[name])
+            for dep_name in dependents[name]:
+                in_degree[dep_name] -= 1
+                if in_degree[dep_name] == 0:
+                    queue.append(dep_name)
+
+        if len(result) != len(modules):
+            # Cycle detected — append remaining modules in original order
+            seen = {m.name for m in result}
+            result.extend(m for m in modules if m.name not in seen)
+
+        return result
+
     def _interpret_modules(
         self, node: FlowNode, spec: ModuleSpec, data: FlowData
     ) -> List[FlowData]:
         """Run modules on the frame.
 
-        Modules are processed in order. Each module can depend on
-        previous modules' outputs. Observations with should_trigger=True
-        are added to results.
+        Modules are topologically sorted by dependencies, then processed
+        in order. Each module can depend on previous modules' outputs.
+        Observations with should_trigger=True are added to results.
         """
         from visualpath.core.observation import Observation
 
@@ -370,13 +407,14 @@ class SimpleInterpreter:
         observations: List["Observation"] = []
         results: List["Observation"] = []
 
-        for module in spec.modules:
+        for module in self._toposort_modules(spec.modules):
             # Collect dependencies for this module
             module_deps = None
-            if hasattr(module, 'depends') and module.depends:
+            all_dep_names = list(getattr(module, 'depends', [])) + list(getattr(module, 'optional_depends', []))
+            if all_dep_names:
                 module_deps = {
                     name: deps[name]
-                    for name in module.depends
+                    for name in all_dep_names
                     if name in deps
                 }
 

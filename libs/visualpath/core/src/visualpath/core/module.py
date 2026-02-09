@@ -107,12 +107,16 @@ class Module(ABC):
     - obs.trigger -> metadata["trigger"]
 
     Attributes:
-        depends: List of module names this module depends on.
+        depends: List of module names this module depends on (required).
                  Dependencies are passed to process() as the deps dict.
+        optional_depends: List of module names this module can optionally use.
+                          These are also passed via deps if available, but
+                          are not validated at graph construction time.
     """
 
     # Class attribute: list of module names this module depends on
     depends: List[str] = []
+    optional_depends: List[str] = []
 
     @property
     @abstractmethod

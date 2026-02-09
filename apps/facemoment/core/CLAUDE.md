@@ -67,8 +67,8 @@ A: Video Input (visualbase)
      │ Frame
      ▼
 B* Analyzers (VenvWorker/InlineWorker)
-     face_detect ─deps─▶ expression, face_classifier
-     pose, gesture, quality
+     face.detect ─deps─▶ face.expression, face.classify
+     body.pose, hand.gesture, frame.quality
      │ Observations
      ▼
 C: HighlightFusion (main_only=True)
@@ -82,11 +82,11 @@ A: Clip Output → clips/highlight_001.mp4
 Analyzer 간 데이터 전달. `depends` 선언 → 실행 시 `deps` dict로 이전 결과 수신:
 
 ```python
-class ExpressionAnalyzer(BaseAnalyzer):
-    depends = ["face_detect"]
+class ExpressionAnalyzer(Module):
+    depends = ["face.detect"]
 
-    def analyze(self, frame, deps=None):
-        face_obs = deps["face_detect"] if deps else None
+    def process(self, frame, deps=None):
+        face_obs = deps["face.detect"] if deps else None
 ```
 
 모든 실행 경로 (Pathway, Simple, Worker, VenvWorker ZMQ)에서 동일한 deps 누적 패턴 적용.
@@ -94,20 +94,20 @@ class ExpressionAnalyzer(BaseAnalyzer):
 
 ## Analyzer 전체 목록
 
-| Analyzer | depends | 패키지 | Backend | Steps |
-|----------|---------|--------|---------|-------|
-| FaceDetectionAnalyzer | - | vpx-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
-| ExpressionAnalyzer | face_detect | vpx-expression | HSEmotion | expression → aggregation |
-| FaceClassifierAnalyzer | face_detect | facemoment (core) | 내장 로직 | track_update → classify → role_assignment |
-| FaceAnalyzer | - | vpx-face | InsightFace + HSEmotion | detect → expression/tracking → roi_filter |
-| PoseAnalyzer | - | vpx-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
-| GestureAnalyzer | - | vpx-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
-| QualityAnalyzer | - | facemoment (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
-| DummyAnalyzer | - | facemoment (core) | - | 테스트용 |
+| Analyzer | name | depends | 패키지 | Backend | Steps |
+|----------|------|---------|--------|---------|-------|
+| FaceDetectionAnalyzer | `face.detect` | - | vpx-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
+| ExpressionAnalyzer | `face.expression` | face.detect | vpx-expression | HSEmotion | expression → aggregation |
+| FaceClassifierAnalyzer | `face.classify` | face.detect | facemoment (core) | 내장 로직 | track_update → classify → role_assignment |
+| FaceAnalyzer | `face` | - | vpx-face | InsightFace + HSEmotion | detect → expression/tracking → roi_filter |
+| PoseAnalyzer | `body.pose` | - | vpx-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
+| GestureAnalyzer | `hand.gesture` | - | vpx-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
+| QualityAnalyzer | `frame.quality` | - | facemoment (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
+| DummyAnalyzer | `mock.dummy` | - | facemoment (core) | - | 테스트용 |
 
 ## FaceClassifierAnalyzer
 
-탑승자 역할 분류 (core 패키지, ML 의존성 없음). depends=["face_detect"].
+탑승자 역할 분류 (core 패키지, ML 의존성 없음). depends=["face.detect"].
 
 | 역할 | 조건 | 인원 |
 |------|------|------|

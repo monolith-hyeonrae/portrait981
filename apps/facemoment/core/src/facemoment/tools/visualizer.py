@@ -8,7 +8,8 @@ import numpy as np
 
 from visualbase import Frame, FrameViewer
 from facemoment.moment_detector import MomentDetector
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
 
 
 class DetectorVisualizer:
@@ -115,7 +116,8 @@ class DetectorVisualizer:
         """Draw face bounding boxes and labels."""
         h, w = image.shape[:2]
 
-        for face in obs.faces:
+        faces = obs.data.faces if obs.data and hasattr(obs.data, 'faces') else []
+        for face in faces:
             x, y, fw, fh = face.bbox
             x1, y1 = int(x * w), int(y * h)
             x2, y2 = int((x + fw) * w), int((y + fh) * h)

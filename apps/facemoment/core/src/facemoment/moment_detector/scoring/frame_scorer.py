@@ -24,6 +24,13 @@ from visualpath.analyzers.base import Observation
 logger = logging.getLogger(__name__)
 
 
+def _get_faces(obs):
+    """Get faces from observation data."""
+    if obs.data and hasattr(obs.data, 'faces'):
+        return obs.data.faces
+    return []
+
+
 @dataclass
 class ScoringConfig:
     """Configuration for frame scoring weights and thresholds.
@@ -170,9 +177,9 @@ class FrameScorer:
 
         # Low face confidence
         def confidence_filter(face_obs, pose_obs, quality_obs):
-            if face_obs is None or not face_obs.faces:
+            if face_obs is None or not _get_faces(face_obs):
                 return False, ""  # Handled by no_face filter
-            main_face = face_obs.faces[0]
+            main_face = _get_faces(face_obs)[0]
             if main_face.confidence < self._config.min_face_confidence:
                 return True, f"low_confidence ({main_face.confidence:.2f} < {self._config.min_face_confidence})"
             return False, ""
@@ -181,9 +188,9 @@ class FrameScorer:
 
         # Head cut-off (face not fully inside frame)
         def cutoff_filter(face_obs, pose_obs, quality_obs):
-            if face_obs is None or not face_obs.faces:
+            if face_obs is None or not _get_faces(face_obs):
                 return False, ""
-            main_face = face_obs.faces[0]
+            main_face = _get_faces(face_obs)[0]
             if not main_face.inside_frame:
                 return True, "head_cutoff"
             return False, ""
@@ -304,8 +311,8 @@ class FrameScorer:
             scores.append(contrast_score)
 
         # Face region quality (if available)
-        if face_obs is not None and face_obs.faces:
-            main_face = face_obs.faces[0]
+        if face_obs is not None and _get_faces(face_obs):
+            main_face = _get_faces(face_obs)[0]
             # Confidence as quality proxy
             conf_score = main_face.confidence
             breakdown["face_confidence"] = conf_score
@@ -335,8 +342,8 @@ class FrameScorer:
         breakdown = {}
         scores = []
 
-        if face_obs is not None and face_obs.faces:
-            main_face = face_obs.faces[0]
+        if face_obs is not None and _get_faces(face_obs):
+            main_face = _get_faces(face_obs)[0]
 
             # Face direction score (prefer frontal or slight angle)
             yaw = abs(main_face.yaw) if main_face.yaw else 0
@@ -419,8 +426,8 @@ class FrameScorer:
         breakdown = {}
         scores = []
 
-        if face_obs is not None and face_obs.faces:
-            main_face = face_obs.faces[0]
+        if face_obs is not None and _get_faces(face_obs):
+            main_face = _get_faces(face_obs)[0]
 
             # Face detection stability (based on confidence)
             stability_score = main_face.confidence

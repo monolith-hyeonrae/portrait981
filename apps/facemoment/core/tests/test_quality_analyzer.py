@@ -12,7 +12,7 @@ class TestQualityAnalyzer:
     def test_analyzer_name(self):
         """Test analyzer name property."""
         analyzer = QualityAnalyzer()
-        assert analyzer.name == "quality"
+        assert analyzer.name == "frame.quality"
 
     def test_extract_sharp_image(self):
         """Test extraction on sharp image with edges."""
@@ -30,7 +30,7 @@ class TestQualityAnalyzer:
         obs = analyzer.process(frame)
 
         assert obs is not None
-        assert obs.source == "quality"
+        assert obs.source == "frame.quality"
         assert obs.signals["blur_score"] > 50.0  # Sharp image
         assert obs.signals["blur_quality"] >= 1.0
 

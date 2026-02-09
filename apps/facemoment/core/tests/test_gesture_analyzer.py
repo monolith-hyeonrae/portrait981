@@ -4,7 +4,7 @@ import pytest
 import numpy as np
 
 from vpx.gesture import GestureAnalyzer, GestureType, HandLandmarkIndex
-from visualpath.analyzers.backends.base import HandLandmarks
+from vpx.gesture.backends.base import HandLandmarks
 
 
 class MockHandBackend:
@@ -152,7 +152,7 @@ class TestGestureAnalyzer:
         """Test analyzer name."""
         backend = MockHandBackend()
         analyzer = GestureAnalyzer(hand_backend=backend)
-        assert analyzer.name == "gesture"
+        assert analyzer.name == "hand.gesture"
 
     def test_initialize_and_cleanup(self):
         """Test initialize and cleanup lifecycle."""
@@ -187,7 +187,7 @@ class TestGestureAnalyzer:
         obs = analyzer.process(frame)
 
         assert obs is not None
-        assert obs.source == "gesture"
+        assert obs.source == "hand.gesture"
         assert obs.signals["hand_count"] == 0
         assert obs.signals["gesture_detected"] == 0.0
         assert obs.metadata["gesture_type"] == ""

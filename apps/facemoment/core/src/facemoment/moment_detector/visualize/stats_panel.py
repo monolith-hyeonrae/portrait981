@@ -9,7 +9,8 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
 from facemoment.moment_detector.scoring.frame_scorer import ScoreResult
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,
@@ -27,6 +28,13 @@ from facemoment.moment_detector.visualize.components import (
     DebugLayer,
     LayerState,
 )
+
+
+def _get_faces(obs):
+    """Get faces from observation data."""
+    if obs.data and hasattr(obs.data, 'faces'):
+        return obs.data.faces
+    return []
 
 
 class StatsPanel:
@@ -69,6 +77,7 @@ class StatsPanel:
         source_image: Optional[np.ndarray] = None,
         layers: Optional[LayerState] = None,
         score_result: Optional[ScoreResult] = None,
+        expression_obs: Optional[Observation] = None,
     ) -> None:
         """Draw stats panel content onto canvas.
 
@@ -121,7 +130,7 @@ class StatsPanel:
             if classifier_obs is not None:
                 y = self._draw_classifier_summary(canvas, x, y, classifier_obs)
             elif face_obs is not None:
-                y = self._draw_face_summary(canvas, x, y, face_obs)
+                y = self._draw_face_summary(canvas, x, y, face_obs, expression_obs=expression_obs)
 
         # Frame score (if available)
         if score_result is not None:
@@ -241,11 +250,15 @@ class StatsPanel:
         return y
 
     def _draw_face_summary(
-        self, canvas: np.ndarray, x: int, y: int, obs: Observation
+        self, canvas: np.ndarray, x: int, y: int, obs: Observation,
+        *, expression_obs: Optional[Observation] = None,
     ) -> int:
         """Draw basic face count and emotion summary."""
-        face_count = len(obs.faces)
-        happy = obs.signals.get("expression_happy", 0)
+        face_count = len(_get_faces(obs))
+        if expression_obs is not None:
+            happy = expression_obs.signals.get("expression_happy", 0)
+        else:
+            happy = obs.signals.get("expression_happy", 0)
         cv2.putText(canvas, f"Faces: {face_count}", (x, y), FONT, FONT_SMALL, COLOR_WHITE_BGR, 1)
         y += 14
         cv2.putText(canvas, f"Happy: {happy:.2f}", (x, y), FONT, FONT_SMALL, COLOR_HAPPY_BGR, 1)
@@ -429,11 +442,11 @@ class StatsPanel:
         reason: str,
     ) -> None:
         """Capture largest face as thumbnail on trigger."""
-        if source_image is None or face_obs is None or not face_obs.faces:
+        if source_image is None or face_obs is None or not _get_faces(face_obs):
             return
 
         h, w = source_image.shape[:2]
-        best = max(face_obs.faces, key=lambda f: f.bbox[2] * f.bbox[3])
+        best = max(_get_faces(face_obs), key=lambda f: f.bbox[2] * f.bbox[3])
 
         bx, by, bw, bh = best.bbox
         x1 = int(max(0, (bx - bw * 0.2) * w))

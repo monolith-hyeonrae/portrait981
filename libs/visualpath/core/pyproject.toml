@@ -38,7 +38,7 @@ all = [
 
 [project.entry-points."visualpath.analyzers"]
 # Test dummy analyzer for integration tests
-dummy = "visualpath.core.observation:DummyAnalyzer"
+"mock.dummy" = "visualpath.core.observation:DummyAnalyzer"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

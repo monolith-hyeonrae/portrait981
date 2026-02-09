@@ -329,7 +329,8 @@ class FlowGraph:
                 from_ancestors |= ancestor_available
             available_at[name] = own | from_ancestors
 
-        # Validate: each module's depends must be in available set
+        # Validate: each module's depends (required only) must be in available set.
+        # optional_depends are NOT validated — they are best-effort.
         unsatisfied: List[str] = []
         for name, node in self._nodes.items():
             spec = node.spec

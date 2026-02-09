@@ -7,7 +7,7 @@ import logging
 
 import numpy as np
 
-from visualpath.analyzers.backends.base import DetectedFace
+from vpx.face_detect.backends.base import DetectedFace
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,7 @@ from facemoment.pipeline import (
     PipelineStats,
     create_default_config,
 )
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
 from visualpath.core import IsolationLevel
 
 from helpers import create_test_video
@@ -27,38 +27,38 @@ class TestAnalyzerConfig:
 
     def test_basic_config(self):
         """Test basic config creation."""
-        config = AnalyzerConfig(name="face")
-        assert config.name == "face"
+        config = AnalyzerConfig(name="face.detect")
+        assert config.name == "face.detect"
         assert config.venv_path is None
         assert config.isolation == IsolationLevel.INLINE
         assert config.kwargs == {}
 
     def test_venv_path_sets_venv_isolation(self):
         """Test that venv_path implies VENV isolation."""
-        config = AnalyzerConfig(name="face", venv_path="/opt/venv-face")
+        config = AnalyzerConfig(name="face.detect", venv_path="/opt/venv-face")
         assert config.venv_path == "/opt/venv-face"
         assert config.isolation == IsolationLevel.VENV
 
     def test_explicit_isolation_override(self):
         """Test explicit isolation level."""
         config = AnalyzerConfig(
-            name="quality",
+            name="frame.quality",
             isolation=IsolationLevel.THREAD,
         )
         assert config.isolation == IsolationLevel.THREAD
 
     def test_effective_isolation(self):
         """Test effective_isolation property."""
-        config1 = AnalyzerConfig(name="face")
+        config1 = AnalyzerConfig(name="face.detect")
         assert config1.effective_isolation == IsolationLevel.INLINE
 
-        config2 = AnalyzerConfig(name="face", venv_path="/opt/venv")
+        config2 = AnalyzerConfig(name="face.detect", venv_path="/opt/venv")
         assert config2.effective_isolation == IsolationLevel.VENV
 
     def test_kwargs_passed(self):
         """Test kwargs are stored."""
         config = AnalyzerConfig(
-            name="face",
+            name="face.detect",
             kwargs={"device": "cuda:0", "batch_size": 4},
         )
         assert config.kwargs == {"device": "cuda:0", "batch_size": 4}
@@ -101,8 +101,8 @@ class TestPipelineConfig:
         """Test creating config from dictionary."""
         data = {
             "analyzers": [
-                {"name": "face", "venv_path": "/opt/venv-face"},
-                {"name": "quality", "isolation": "inline"},
+                {"name": "face.detect", "venv_path": "/opt/venv-face"},
+                {"name": "frame.quality", "isolation": "inline"},
             ],
             "fusion": {"name": "highlight", "cooldown_sec": 3.0},
             "clip_output_dir": "/tmp/clips",
@@ -112,9 +112,9 @@ class TestPipelineConfig:
         config = PipelineConfig.from_dict(data)
 
         assert len(config.analyzers) == 2
-        assert config.analyzers[0].name == "face"
+        assert config.analyzers[0].name == "face.detect"
         assert config.analyzers[0].venv_path == "/opt/venv-face"
-        assert config.analyzers[1].name == "quality"
+        assert config.analyzers[1].name == "frame.quality"
         assert config.analyzers[1].isolation == IsolationLevel.INLINE
         assert config.fusion.cooldown_sec == 3.0
         assert config.clip_output_dir == "/tmp/clips"
@@ -124,7 +124,7 @@ class TestPipelineConfig:
         """Test serializing config to dictionary."""
         config = PipelineConfig(
             analyzers=[
-                AnalyzerConfig(name="face", venv_path="/opt/venv-face"),
+                AnalyzerConfig(name="face.detect", venv_path="/opt/venv-face"),
             ],
             fusion=FusionConfig(cooldown_sec=2.5),
             clip_output_dir="./output",
@@ -133,7 +133,7 @@ class TestPipelineConfig:
 
         data = config.to_dict()
 
-        assert data["analyzers"][0]["name"] == "face"
+        assert data["analyzers"][0]["name"] == "face.detect"
         assert data["analyzers"][0]["venv_path"] == "/opt/venv-face"
         assert data["fusion"]["cooldown_sec"] == 2.5
         assert data["clip_output_dir"] == "./output"
@@ -150,9 +150,9 @@ class TestCreateDefaultConfig:
         # Should have face, pose, quality (no gesture without venv)
         assert len(config.analyzers) == 3
         names = [e.name for e in config.analyzers]
-        assert "face" in names
-        assert "pose" in names
-        assert "quality" in names
+        assert "face.detect" in names
+        assert "body.pose" in names
+        assert "frame.quality" in names
 
         # All should be inline
         for ext in config.analyzers:
@@ -165,9 +165,9 @@ class TestCreateDefaultConfig:
             venv_pose="/opt/venv-pose",
         )
 
-        face_config = next(e for e in config.analyzers if e.name == "face")
-        pose_config = next(e for e in config.analyzers if e.name == "pose")
-        quality_config = next(e for e in config.analyzers if e.name == "quality")
+        face_config = next(e for e in config.analyzers if e.name == "face.detect")
+        pose_config = next(e for e in config.analyzers if e.name == "body.pose")
+        quality_config = next(e for e in config.analyzers if e.name == "frame.quality")
 
         assert face_config.effective_isolation == IsolationLevel.VENV
         assert face_config.venv_path == "/opt/venv-face"
@@ -181,14 +181,14 @@ class TestCreateDefaultConfig:
         )
 
         names = [e.name for e in config.analyzers]
-        assert "gesture" in names
+        assert "hand.gesture" in names
 
     def test_without_gesture_venv(self):
         """Test gesture analyzer is not added without venv."""
         config = create_default_config()
 
         names = [e.name for e in config.analyzers]
-        assert "gesture" not in names
+        assert "hand.gesture" not in names
 
 
 class TestPipelineStats:
@@ -211,10 +211,10 @@ class TestPipelineStats:
             clips_extracted=4,
             processing_time_sec=10.5,
             avg_frame_time_ms=105.0,
-            worker_stats={"face": {"frames": 100, "total_ms": 5000.0}},
+            worker_stats={"face.detect": {"frames": 100, "total_ms": 5000.0}},
         )
         assert stats.frames_processed == 100
-        assert stats.worker_stats["face"]["frames"] == 100
+        assert stats.worker_stats["face.detect"]["frames"] == 100
 
 
 class TestPipelineOrchestrator:
@@ -228,7 +228,7 @@ class TestPipelineOrchestrator:
     def test_from_config(self):
         """Test creating orchestrator from PipelineConfig."""
         config = PipelineConfig(
-            analyzers=[AnalyzerConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="mock.dummy")],
             clip_output_dir="/tmp/clips",
         )
 
@@ -238,7 +238,7 @@ class TestPipelineOrchestrator:
     def test_callbacks(self):
         """Test callback setters."""
         orchestrator = PipelineOrchestrator(
-            analyzer_configs=[AnalyzerConfig(name="dummy")],
+            analyzer_configs=[AnalyzerConfig(name="mock.dummy")],
         )
 
         on_frame = Mock()
@@ -256,7 +256,7 @@ class TestPipelineOrchestrator:
     def test_initial_state(self):
         """Test initial orchestrator state."""
         orchestrator = PipelineOrchestrator(
-            analyzer_configs=[AnalyzerConfig(name="dummy")],
+            analyzer_configs=[AnalyzerConfig(name="mock.dummy")],
         )
 
         assert not orchestrator.is_initialized
@@ -285,7 +285,7 @@ class TestPipelineOrchestratorIntegration:
         from visualpath.backends.base import PipelineResult
 
         config = PipelineConfig(
-            analyzers=[AnalyzerConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="mock.dummy")],
             fusion=FusionConfig(cooldown_sec=1.0),
             clip_output_dir=str(output_dir),
             fps=10,
@@ -318,7 +318,7 @@ class TestPipelineOrchestratorIntegration:
     def test_run_stream_deprecated(self, test_video, output_dir):
         """Test stream mode is deprecated and returns empty iterator."""
         config = PipelineConfig(
-            analyzers=[AnalyzerConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="mock.dummy")],
             clip_output_dir=str(output_dir),
         )
 
@@ -339,7 +339,7 @@ class TestPipelineOrchestratorIntegration:
         from visualpath.backends.base import PipelineResult
 
         config = PipelineConfig(
-            analyzers=[AnalyzerConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="mock.dummy")],
             clip_output_dir=str(output_dir),
         )
 
@@ -385,10 +385,10 @@ class TestYAMLConfig:
         """Test loading valid YAML config."""
         yaml_content = """
 analyzers:
-  - name: face
+  - name: face.detect
     venv_path: /opt/venv-face
     isolation: venv
-  - name: quality
+  - name: frame.quality
     isolation: inline
 
 fusion:
@@ -406,7 +406,7 @@ fps: 15
             config = PipelineConfig.from_yaml(str(yaml_path))
 
             assert len(config.analyzers) == 2
-            assert config.analyzers[0].name == "face"
+            assert config.analyzers[0].name == "face.detect"
             assert config.analyzers[0].venv_path == "/opt/venv-face"
             assert config.fusion.cooldown_sec == 2.5
             assert config.fps == 15
@@ -422,7 +422,7 @@ class TestOrchestratorDelegation:
         from visualpath.backends.base import PipelineResult
 
         orchestrator = PipelineOrchestrator(
-            analyzer_configs=[AnalyzerConfig(name="dummy")],
+            analyzer_configs=[AnalyzerConfig(name="mock.dummy")],
         )
 
         mock_engine = Mock()

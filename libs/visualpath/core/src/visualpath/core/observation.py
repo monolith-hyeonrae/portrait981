@@ -123,7 +123,7 @@ class DummyAnalyzer:
 
     @property
     def name(self) -> str:
-        return "dummy"
+        return "mock.dummy"
 
     def process(
         self,

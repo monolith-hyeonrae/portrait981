@@ -173,7 +173,7 @@ def _print_pipeline_structure():
   │  ┌─────────┐ ┌─────────┐ ┌───────────┐  │
   │  │  Face   │ │  Pose   │ │  Quality  │  │
   │  │(detect+ │ │ (YOLO)  │ │(blur/bright)│ │
-  │  │express) │ │         │ │           │  │
+  │  │ expr)  │ │         │ │           │  │
   │  └────┬────┘ └────┬────┘ └─────┬─────┘  │
   │       │           │            │        │
   │       └───────────┴────────────┘        │
@@ -225,14 +225,13 @@ def _print_dependency_graph():
 
     # Define analyzers with their dependencies
     analyzers = [
-        ("face_detect", [], "Face detection (bbox, head pose)"),
-        ("face_classifier", ["face_detect"], "Face role classification (main/passenger/transient)"),
-        ("expression", ["face_detect"], "Expression analysis (emotions)"),
-        ("face", [], "Face composite (detect + expression)"),
-        ("pose", [], "Pose estimation (keypoints)"),
-        ("gesture", [], "Gesture detection (hand signs)"),
-        ("quality", [], "Quality metrics (blur, brightness)"),
-        ("dummy", [], "Dummy analyzer (testing)"),
+        ("face.detect", [], "Face detection (bbox, head pose)"),
+        ("face.classify", ["face.detect"], "Face role classification (main/passenger/transient)"),
+        ("face.expression", ["face.detect"], "Expression analysis (emotions)"),
+        ("body.pose", [], "Pose estimation (keypoints)"),
+        ("hand.gesture", [], "Gesture detection (hand signs)"),
+        ("frame.quality", [], "Quality metrics (blur, brightness)"),
+        ("mock.dummy", [], "Dummy analyzer (testing)"),
     ]
 
     # Build dependency graph
@@ -259,15 +258,15 @@ def _print_dependency_graph():
     print("[Recommended Execution Order]")
     print("-" * 60)
     print("  For face analysis pipeline:")
-    print("    1. face_detect     → 2. face_classifier → 3. expression → 4. fusion")
+    print("    1. face.detect     → 2. face_classifier → 3. face.expression → 4. fusion")
     print()
     print("  For full analysis pipeline:")
     print("    1. quality         (gate check)")
     print("    2. face_detect     (detection)")
     print("    3. face_classifier (depends on face_detect)")
-    print("    4. expression      (depends on face_detect)")
-    print("    5. pose            (independent)")
-    print("    6. gesture         (independent)")
+    print("    4. face.expression (depends on face.detect)")
+    print("    5. body.pose       (independent)")
+    print("    6. hand.gesture    (independent)")
     print("    7. fusion          (combines all)")
     print()
 
@@ -287,7 +286,7 @@ def _print_dependency_graph():
     │         │
     ▼         ▼
   ┌──────────────┐  ┌─────────────┐
-  │  classifier  │  │ expression  │  depends: [face_detect]
+  │  classifier  │  │  face.expr  │  depends: [face.detect]
   │ (main/pass)  │  │ (emotions)  │
   └──────┬───────┘  └──────┬──────┘
          │                 │
@@ -312,42 +311,42 @@ def _build_facemoment_flow_graph():
 
     # Define all facemoment analyzers with their dependencies
     analyzer_defs = [
-        ("quality", [], "QualityAnalyzer"),
-        ("face_detect", [], "FaceDetectionAnalyzer"),
-        ("face_classifier", ["face_detect"], "FaceClassifierAnalyzer"),
-        ("expression", ["face_detect"], "ExpressionAnalyzer"),
-        ("pose", [], "PoseAnalyzer"),
-        ("gesture", [], "GestureAnalyzer"),
+        ("frame.quality", [], "QualityAnalyzer"),
+        ("face.detect", [], "FaceDetectionAnalyzer"),
+        ("face.classify", ["face.detect"], "FaceClassifierAnalyzer"),
+        ("face.expression", ["face.detect"], "ExpressionAnalyzer"),
+        ("body.pose", [], "PoseAnalyzer"),
+        ("hand.gesture", [], "GestureAnalyzer"),
     ]
 
     # Check which analyzers are actually available
     availability = {}
-    availability["quality"] = True  # always available
+    availability["frame.quality"] = True  # always available
     try:
         from vpx.face_detect import FaceDetectionAnalyzer  # noqa: F401
-        availability["face_detect"] = True
+        availability["face.detect"] = True
     except ImportError:
-        availability["face_detect"] = False
+        availability["face.detect"] = False
     try:
         from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierAnalyzer  # noqa: F401
-        availability["face_classifier"] = True
+        availability["face.classify"] = True
     except ImportError:
-        availability["face_classifier"] = False
+        availability["face.classify"] = False
     try:
         from vpx.expression import ExpressionAnalyzer  # noqa: F401
-        availability["expression"] = True
+        availability["face.expression"] = True
     except ImportError:
-        availability["expression"] = False
+        availability["face.expression"] = False
     try:
         from vpx.pose import PoseAnalyzer  # noqa: F401
-        availability["pose"] = True
+        availability["body.pose"] = True
     except ImportError:
-        availability["pose"] = False
+        availability["body.pose"] = False
     try:
         from vpx.gesture import GestureAnalyzer  # noqa: F401
-        availability["gesture"] = True
+        availability["hand.gesture"] = True
     except ImportError:
-        availability["gesture"] = False
+        availability["hand.gesture"] = False
 
     # Build graph manually to show dependency structure
     from visualpath.flow.nodes.source import SourceNode
@@ -504,42 +503,42 @@ def _print_processing_steps():
     # Split Face analyzers
     try:
         from vpx.face_detect import FaceDetectionAnalyzer
-        analyzers_info.append(("FaceDetectionAnalyzer", "face_detect", _get_steps(FaceDetectionAnalyzer)))
+        analyzers_info.append(("FaceDetectionAnalyzer", "face.detect", _get_steps(FaceDetectionAnalyzer)))
     except (ImportError, AttributeError) as e:
-        analyzers_info.append(("FaceDetectionAnalyzer", "face_detect", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("FaceDetectionAnalyzer", "face.detect", f"NOT AVAILABLE: {e}"))
 
     try:
         from vpx.expression import ExpressionAnalyzer
-        analyzers_info.append(("ExpressionAnalyzer", "expression", _get_steps(ExpressionAnalyzer)))
+        analyzers_info.append(("ExpressionAnalyzer", "face.expression", _get_steps(ExpressionAnalyzer)))
     except (ImportError, AttributeError) as e:
-        analyzers_info.append(("ExpressionAnalyzer", "expression", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("ExpressionAnalyzer", "face.expression", f"NOT AVAILABLE: {e}"))
 
     try:
         from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierAnalyzer
-        analyzers_info.append(("FaceClassifierAnalyzer", "face_classifier", _get_steps(FaceClassifierAnalyzer)))
+        analyzers_info.append(("FaceClassifierAnalyzer", "face.classify", _get_steps(FaceClassifierAnalyzer)))
     except (ImportError, AttributeError) as e:
-        analyzers_info.append(("FaceClassifierAnalyzer", "face_classifier", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("FaceClassifierAnalyzer", "face.classify", f"NOT AVAILABLE: {e}"))
 
     # PoseAnalyzer
     try:
         from vpx.pose import PoseAnalyzer
-        analyzers_info.append(("PoseAnalyzer", "pose", _get_steps(PoseAnalyzer)))
+        analyzers_info.append(("PoseAnalyzer", "body.pose", _get_steps(PoseAnalyzer)))
     except (ImportError, AttributeError) as e:
-        analyzers_info.append(("PoseAnalyzer", "pose", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("PoseAnalyzer", "body.pose", f"NOT AVAILABLE: {e}"))
 
     # GestureAnalyzer
     try:
         from vpx.gesture import GestureAnalyzer
-        analyzers_info.append(("GestureAnalyzer", "gesture", _get_steps(GestureAnalyzer)))
+        analyzers_info.append(("GestureAnalyzer", "hand.gesture", _get_steps(GestureAnalyzer)))
     except (ImportError, AttributeError) as e:
-        analyzers_info.append(("GestureAnalyzer", "gesture", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("GestureAnalyzer", "hand.gesture", f"NOT AVAILABLE: {e}"))
 
     # QualityAnalyzer (decorator-based)
     try:
         from facemoment.moment_detector.analyzers.quality import QualityAnalyzer
-        analyzers_info.append(("QualityAnalyzer", "quality", _get_steps(QualityAnalyzer)))
+        analyzers_info.append(("QualityAnalyzer", "frame.quality", _get_steps(QualityAnalyzer)))
     except (ImportError, AttributeError) as e:
-        analyzers_info.append(("QualityAnalyzer", "quality", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("QualityAnalyzer", "frame.quality", f"NOT AVAILABLE: {e}"))
 
     # Print each analyzer's steps with DAG info
     for class_name, name, steps in analyzers_info:

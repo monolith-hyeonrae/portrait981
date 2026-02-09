@@ -611,7 +611,7 @@ class TestVenvWorkerIntegration:
         worker = VenvWorker(
             analyzer=None,
             venv_path=current_venv,
-            analyzer_name="dummy",
+            analyzer_name="mock.dummy",
             timeout_sec=10.0,
         )
 
@@ -625,7 +625,7 @@ class TestVenvWorkerIntegration:
 
             assert result.error is None, f"Error: {result.error}"
             assert result.observation is not None
-            assert result.observation.source == "dummy"
+            assert result.observation.source == "mock.dummy"
 
         finally:
             worker.stop()

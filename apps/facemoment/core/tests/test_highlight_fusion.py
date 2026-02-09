@@ -2,7 +2,9 @@
 
 import pytest
 
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 from facemoment.moment_detector.fusion.highlight import HighlightFusion
 
 
@@ -73,7 +75,7 @@ def create_observation(
             "hand_wave_detected": hand_wave,
             "hand_wave_confidence": hand_wave * 0.9,
         },
-        faces=faces,
+        data=FaceDetectOutput(faces=faces),
     )
 
 
@@ -566,7 +568,7 @@ class TestHighlightFusionPhase9:
                     "face_count": 2,
                     "quality_gate": 1.0,
                 },
-                faces=faces,
+                data=FaceDetectOutput(faces=faces),
             )
 
         # Open gate first with faces not looking at each other
@@ -635,7 +637,7 @@ class TestHighlightFusionPhase9:
             gesture_confidence: float,
         ) -> Observation:
             return Observation(
-                source="gesture",
+                source="hand.gesture",
                 frame_id=frame_id,
                 t_ns=t_ns,
                 signals={
@@ -644,7 +646,7 @@ class TestHighlightFusionPhase9:
                     "gesture_detected": 1.0 if gesture_confidence > 0 else 0.0,
                     "gesture_confidence": gesture_confidence,
                 },
-                faces=[
+                data=FaceDetectOutput(faces=[
                     FaceObservation(
                         face_id=0,
                         confidence=0.9,
@@ -656,7 +658,7 @@ class TestHighlightFusionPhase9:
                         center_distance=0.1,
                         expression=0.3,
                     )
-                ],
+                ]),
                 metadata={
                     "gesture_type": gesture_type,
                 },
@@ -700,7 +702,7 @@ class TestHighlightFusionPhase9:
             gesture_confidence: float,
         ) -> Observation:
             return Observation(
-                source="gesture",
+                source="hand.gesture",
                 frame_id=frame_id,
                 t_ns=t_ns,
                 signals={
@@ -709,7 +711,7 @@ class TestHighlightFusionPhase9:
                     "gesture_detected": 1.0 if gesture_confidence > 0 else 0.0,
                     "gesture_confidence": gesture_confidence,
                 },
-                faces=[
+                data=FaceDetectOutput(faces=[
                     FaceObservation(
                         face_id=0,
                         confidence=0.9,
@@ -721,7 +723,7 @@ class TestHighlightFusionPhase9:
                         center_distance=0.1,
                         expression=0.3,
                     )
-                ],
+                ]),
                 metadata={
                     "gesture_type": gesture_type,
                 },
@@ -841,7 +843,7 @@ class TestHighlightFusionMainOnly:
                 frame_id=frame_id,
                 t_ns=t_ns,
                 signals={"face_count": 2, "quality_gate": 1.0},
-                faces=[main_face, passenger_face],
+                data=FaceDetectOutput(faces=[main_face, passenger_face]),
             )
 
             # Create classifier output
@@ -867,7 +869,7 @@ class TestHighlightFusionMainOnly:
             )
 
             classifier_obs = Observation(
-                source="face_classifier",
+                source="face.classify",
                 frame_id=frame_id,
                 t_ns=t_ns,
                 signals={},
@@ -940,7 +942,7 @@ class TestHighlightFusionMainOnly:
                 frame_id=frame_id,
                 t_ns=t_ns,
                 signals={"face_count": 2, "quality_gate": 1.0},
-                faces=[main_face, passenger_face],
+                data=FaceDetectOutput(faces=[main_face, passenger_face]),
             )
 
             cf_main = ClassifiedFace(
@@ -950,7 +952,7 @@ class TestHighlightFusionMainOnly:
                 faces=[cf_main], main_face=cf_main, passenger_faces=[],
             )
             classifier_obs = Observation(
-                source="face_classifier", frame_id=frame_id, t_ns=t_ns, signals={}, data=classifier_data,
+                source="face.classify", frame_id=frame_id, t_ns=t_ns, signals={}, data=classifier_data,
             )
 
             return obs, classifier_obs

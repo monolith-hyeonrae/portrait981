@@ -9,16 +9,13 @@ from visualbase import Frame
 from visualpath.analyzers.base import (
     Module,
     Observation,
-    FaceObservation,
     ProcessingStep,
     processing_step,
     get_processing_steps,
 )
-from visualpath.analyzers.backends.base import (
-    FaceDetectionBackend,
-    DetectedFace,
-)
-from visualpath.analyzers.outputs import FaceDetectOutput
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.backends.base import FaceDetectionBackend, DetectedFace
+from vpx.face_detect.output import FaceDetectOutput
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +61,7 @@ class FaceDetectionAnalyzer(Module):
 
     @property
     def name(self) -> str:
-        return "face_detect"
+        return "face.detect"
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:

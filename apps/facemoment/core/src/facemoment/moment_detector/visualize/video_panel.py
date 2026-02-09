@@ -12,9 +12,12 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from visualpath.analyzers.base import Observation, FaceObservation
-from visualpath.analyzers.types import KeypointIndex, HandLandmarkIndex
-from visualpath.analyzers.outputs import PoseOutput, GestureOutput
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.pose.types import KeypointIndex
+from vpx.gesture.types import HandLandmarkIndex
+from vpx.pose.output import PoseOutput
+from vpx.gesture.output import GestureOutput
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,
     COLOR_WHITE_BGR,
@@ -29,6 +32,13 @@ from facemoment.moment_detector.visualize.components import (
     DebugLayer,
     LayerState,
 )
+
+
+def _get_faces(obs):
+    """Get faces from observation data."""
+    if obs.data and hasattr(obs.data, 'faces'):
+        return obs.data.faces
+    return []
 
 
 class VideoPanel:
@@ -92,7 +102,7 @@ class VideoPanel:
     def _draw_faces(self, image: np.ndarray, obs: Observation) -> None:
         """Draw basic face bboxes (no classifier data)."""
         h, w = image.shape[:2]
-        for face in obs.faces:
+        for face in _get_faces(obs):
             x1 = int(face.bbox[0] * w)
             y1 = int(face.bbox[1] * h)
             x2 = int((face.bbox[0] + face.bbox[2]) * w)

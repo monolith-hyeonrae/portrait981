@@ -143,7 +143,7 @@ class FaceOBS:
         """Serialize to OBS message format."""
         parts = [
             "OBS",
-            "src=face",
+            "src=face.detect",
             f"frame={self.frame_id}",
             f"t_ns={self.t_ns}",
             f"faces={len(self.faces)}",
@@ -165,7 +165,7 @@ class PoseOBS:
         """Serialize to OBS message format."""
         parts = [
             "OBS",
-            "src=pose",
+            "src=body.pose",
             f"frame={self.frame_id}",
             f"t_ns={self.t_ns}",
             f"poses={len(self.poses)}",
@@ -186,7 +186,7 @@ class QualityOBS:
     def to_message(self) -> str:
         """Serialize to OBS message format."""
         return (
-            f"OBS src=quality frame={self.frame_id} t_ns={self.t_ns} "
+            f"OBS src=frame.quality frame={self.frame_id} t_ns={self.t_ns} "
             f"{self.quality.to_string()}"
         )
 
@@ -262,7 +262,7 @@ def parse_obs_message(message: str) -> Optional[OBSMessage]:
             raw=message,
         )
 
-        if src == "face":
+        if src == "face.detect":
             # Parse face data
             num_faces = int(data.get("faces", 0))
             for i in range(num_faces):
@@ -270,7 +270,7 @@ def parse_obs_message(message: str) -> Optional[OBSMessage]:
                 if face_str:
                     obs.faces.append(FaceData.from_string(face_str))
 
-        elif src == "pose":
+        elif src == "body.pose":
             # Parse pose data
             num_poses = int(data.get("poses", 0))
             for i in range(num_poses):
@@ -278,7 +278,7 @@ def parse_obs_message(message: str) -> Optional[OBSMessage]:
                 if pose_str:
                     obs.poses.append(PoseData.from_string(pose_str))
 
-        elif src == "quality":
+        elif src == "frame.quality":
             # Parse quality data (inline, not in separate fields)
             # Quality data is embedded directly in the message
             quality_parts = {}

@@ -89,7 +89,7 @@ class AnalyzerVisualizer:
         self._video_panel._draw_faces(output, observation)
         # Also draw summary text on image for backward compat
         h, w = output.shape[:2]
-        face_count = len(observation.faces)
+        face_count = len(observation.data.faces) if observation.data and hasattr(observation.data, 'faces') else 0
         happy = observation.signals.get("expression_happy", 0)
         angry = observation.signals.get("expression_angry", 0)
         neutral = observation.signals.get("expression_neutral", 1)
@@ -201,10 +201,10 @@ class DebugVisualizer:
         """
         return self.create_debug_view(
             frame=ctx.frame,
-            face_obs=ctx.observations.get("face") or ctx.observations.get("dummy"),
-            pose_obs=ctx.observations.get("pose"),
-            gesture_obs=ctx.observations.get("gesture"),
-            quality_obs=ctx.observations.get("quality"),
+            face_obs=ctx.observations.get("face.detect") or ctx.observations.get("mock.dummy"),
+            pose_obs=ctx.observations.get("body.pose"),
+            gesture_obs=ctx.observations.get("hand.gesture"),
+            quality_obs=ctx.observations.get("frame.quality"),
             classifier_obs=ctx.classifier_obs,
             fusion_result=ctx.fusion_result,
             is_gate_open=ctx.is_gate_open,
@@ -213,6 +213,7 @@ class DebugVisualizer:
             roi=ctx.roi,
             monitor_stats=ctx.monitor_stats,
             backend_label=ctx.backend_label,
+            expression_obs=ctx.observations.get("face.expression"),
         )
 
     # --- Legacy API (backward compatible) ---
@@ -233,6 +234,7 @@ class DebugVisualizer:
         monitor_stats: Optional[Dict] = None,
         backend_label: str = "",
         score_result: Optional[ScoreResult] = None,
+        expression_obs: Optional[Observation] = None,
     ) -> np.ndarray:
         """Create combined debug visualization with panel layout.
 
@@ -300,6 +302,7 @@ class DebugVisualizer:
                 source_image=frame.data,
                 layers=self.layers,
                 score_result=score_result,
+                expression_obs=expression_obs,
             )
 
         # 4. Timeline panel: always update history, draw only if enabled
@@ -309,7 +312,7 @@ class DebugVisualizer:
             if adaptive_summary:
                 spike_threshold = adaptive_summary.get("threshold", 0.12)
 
-        self._timeline_panel.update(face_obs, fusion_result, is_gate_open)
+        self._timeline_panel.update(face_obs, fusion_result, is_gate_open, expression_obs=expression_obs)
         if self.layers[DebugLayer.TIMELINE]:
             self._timeline_panel.draw(canvas, self._layout.timeline_region(), threshold=spike_threshold)
 

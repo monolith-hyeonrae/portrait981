@@ -9,9 +9,11 @@ from facemoment.moment_detector.visualize import (
     DebugVisualizer,
     VisualizationConfig,
 )
-from visualpath.analyzers.base import Observation, FaceObservation
-from visualpath.analyzers.outputs import PoseOutput
-from visualpath.analyzers.types import KeypointIndex
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
+from vpx.pose.output import PoseOutput
+from vpx.pose.types import KeypointIndex
 
 
 class TestAnalyzerVisualizer:
@@ -30,11 +32,11 @@ class TestAnalyzerVisualizer:
     def sample_face_observation(self):
         """Create a sample face observation."""
         return Observation(
-            source="face",
+            source="face.detect",
             frame_id=1,
             t_ns=0,
             signals={"expression_happy": 0.8, "expression_angry": 0.1, "expression_neutral": 0.1},
-            faces=[
+            data=FaceDetectOutput(faces=[
                 FaceObservation(
                     face_id=1,
                     confidence=0.95,
@@ -46,7 +48,7 @@ class TestAnalyzerVisualizer:
                     area_ratio=0.06,
                     signals={"em_happy": 0.8, "em_angry": 0.1, "em_neutral": 0.1},
                 ),
-            ],
+            ]),
         )
 
     @pytest.fixture
@@ -68,7 +70,7 @@ class TestAnalyzerVisualizer:
         keypoints[KeypointIndex.RIGHT_WRIST] = [410, 320, 0.75]
 
         return Observation(
-            source="pose",
+            source="body.pose",
             frame_id=1,
             t_ns=0,
             signals={
@@ -98,11 +100,11 @@ class TestAnalyzerVisualizer:
     def test_draw_face_observation_no_faces(self, visualizer, sample_image):
         """Test drawing with no faces."""
         obs = Observation(
-            source="face",
+            source="face.detect",
             frame_id=1,
             t_ns=0,
             signals={},
-            faces=[],
+            data=FaceDetectOutput(faces=[]),
         )
         result = visualizer.draw_face_observation(sample_image, obs)
 
@@ -121,7 +123,7 @@ class TestAnalyzerVisualizer:
     def test_draw_pose_observation_no_keypoints(self, visualizer, sample_image):
         """Test drawing pose with no keypoints."""
         obs = Observation(
-            source="pose",
+            source="body.pose",
             frame_id=1,
             t_ns=0,
             signals={"person_count": 0.0},
@@ -135,7 +137,7 @@ class TestAnalyzerVisualizer:
     def test_draw_quality_observation(self, visualizer, sample_image):
         """Test drawing quality observation."""
         obs = Observation(
-            source="quality",
+            source="frame.quality",
             frame_id=1,
             t_ns=0,
             signals={
@@ -266,7 +268,7 @@ class TestFaceClassifierVisualization:
         )
 
         obs = Observation(
-            source="face_classifier",
+            source="face.classify",
             frame_id=1,
             t_ns=0,
             signals={},
@@ -283,7 +285,7 @@ class TestFaceClassifierVisualization:
     def test_draw_face_classifier_observation_no_data(self, visualizer, sample_image):
         """Test drawing with no classifier data."""
         obs = Observation(
-            source="face_classifier",
+            source="face.classify",
             frame_id=1,
             t_ns=0,
             signals={},

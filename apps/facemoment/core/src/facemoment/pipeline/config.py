@@ -9,9 +9,9 @@ Example:
     >>>
     >>> config = PipelineConfig(
     ...     analyzers=[
-    ...         AnalyzerConfig(name="face", venv_path="/opt/venv-face"),
-    ...         AnalyzerConfig(name="pose", venv_path="/opt/venv-pose"),
-    ...         AnalyzerConfig(name="quality", isolation=IsolationLevel.INLINE),
+    ...         AnalyzerConfig(name="face.detect", venv_path="/opt/venv-face"),
+    ...         AnalyzerConfig(name="body.pose", venv_path="/opt/venv-pose"),
+    ...         AnalyzerConfig(name="frame.quality", isolation=IsolationLevel.INLINE),
     ...     ],
     ...     clip_output_dir="./clips",
     ...     fps=10,
@@ -30,7 +30,7 @@ class AnalyzerConfig:
     """Configuration for a single analyzer in the pipeline.
 
     Attributes:
-        name: Entry point name of the analyzer (e.g., "face", "pose", "gesture").
+        name: Entry point name of the analyzer (e.g., "face.detect", "body.pose", "hand.gesture").
         venv_path: Path to virtual environment for VENV isolation.
             If provided and isolation is not set, defaults to VENV isolation.
         isolation: Isolation level for the analyzer. Defaults to INLINE if
@@ -40,13 +40,13 @@ class AnalyzerConfig:
     Example:
         >>> # Run face analyzer in a separate venv
         >>> config = AnalyzerConfig(
-        ...     name="face",
+        ...     name="face.detect",
         ...     venv_path="/opt/venvs/venv-face",
         ... )
         >>>
         >>> # Run quality analyzer inline (same process)
         >>> config = AnalyzerConfig(
-        ...     name="quality",
+        ...     name="frame.quality",
         ...     isolation=IsolationLevel.INLINE,
         ... )
     """
@@ -106,8 +106,8 @@ class PipelineConfig:
     Example:
         >>> config = PipelineConfig(
         ...     analyzers=[
-        ...         AnalyzerConfig(name="face", venv_path="/opt/venv-face"),
-        ...         AnalyzerConfig(name="pose", venv_path="/opt/venv-pose"),
+        ...         AnalyzerConfig(name="face.detect", venv_path="/opt/venv-face"),
+        ...         AnalyzerConfig(name="body.pose", venv_path="/opt/venv-pose"),
         ...     ],
         ...     fusion=FusionConfig(cooldown_sec=2.0),
         ...     clip_output_dir="./clips",
@@ -256,26 +256,26 @@ def create_default_config(
 
     # Face analyzer
     analyzers.append(AnalyzerConfig(
-        name="face",
+        name="face.detect",
         venv_path=venv_face,
     ))
 
     # Pose analyzer
     analyzers.append(AnalyzerConfig(
-        name="pose",
+        name="body.pose",
         venv_path=venv_pose,
     ))
 
     # Gesture analyzer (if venv provided)
     if venv_gesture:
         analyzers.append(AnalyzerConfig(
-            name="gesture",
+            name="hand.gesture",
             venv_path=venv_gesture,
         ))
 
     # Quality analyzer (always inline - lightweight)
     analyzers.append(AnalyzerConfig(
-        name="quality",
+        name="frame.quality",
         isolation=IsolationLevel.INLINE,
     ))
 

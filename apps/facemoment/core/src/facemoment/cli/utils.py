@@ -276,13 +276,13 @@ def create_video_stream(path: str, fps: float = 10.0, resolution: tuple = None):
 def check_ml_dependencies(module_name: str, require_expression: bool = False) -> bool:
     """Check if ML dependencies are available."""
     deps = {
-        "face": ["insightface", "onnxruntime"],
-        "face_expression": ["insightface", "onnxruntime", "feat"],
-        "pose": ["ultralytics"],
+        "face.detect": ["insightface", "onnxruntime"],
+        "face_detect_expression": ["insightface", "onnxruntime", "feat"],
+        "body.pose": ["ultralytics"],
     }
 
-    if module_name == "face" and require_expression:
-        module_name = "face_expression"
+    if module_name == "face.detect" and require_expression:
+        module_name = "face_detect_expression"
     missing = []
     for dep in deps.get(module_name, []):
         try:
@@ -390,27 +390,34 @@ def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
         roi: Optional ROI tuple for face analyzer.
 
     Returns:
-        Dict with keys "face", "pose", "gesture", "quality" (bool),
+        Dict with keys "face.detect", "body.pose", "hand.gesture", "frame.quality" (bool),
         "names" (list of available analyzer names),
         and "face_mode" ("enabled", "disabled", or "dummy").
     """
     result = {
-        "face": False,
-        "pose": False,
-        "gesture": False,
-        "quality": True,
+        "face.detect": False,
+        "body.pose": False,
+        "hand.gesture": False,
+        "frame.quality": True,
         "names": [],
         "face_mode": "disabled",
     }
 
     if use_ml is not False:
-        # Try face analyzer
+        # Try face_detect + expression analyzers
         try:
-            from vpx.face import FaceAnalyzer
-            FaceAnalyzer()
-            result["face"] = True
-            result["names"].append("face")
+            from vpx.face_detect import FaceDetectionAnalyzer
+            FaceDetectionAnalyzer()
+            result["face.detect"] = True
+            result["names"].append("face.detect")
             result["face_mode"] = "enabled"
+            # Also probe expression
+            try:
+                from vpx.expression import ExpressionAnalyzer
+                ExpressionAnalyzer()
+                result["names"].append("face.expression")
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -418,8 +425,8 @@ def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
         try:
             from vpx.pose import PoseAnalyzer
             PoseAnalyzer()
-            result["pose"] = True
-            result["names"].append("pose")
+            result["body.pose"] = True
+            result["names"].append("body.pose")
         except Exception:
             pass
 
@@ -427,17 +434,17 @@ def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
         try:
             from vpx.gesture import GestureAnalyzer
             GestureAnalyzer()
-            result["gesture"] = True
-            result["names"].append("gesture")
+            result["hand.gesture"] = True
+            result["names"].append("hand.gesture")
         except Exception:
             pass
 
     # Fall back to dummy if no face analyzer
-    if not result["face"]:
-        result["names"].insert(0, "dummy")
+    if not result["face.detect"]:
+        result["names"].insert(0, "mock.dummy")
         result["face_mode"] = "dummy" if use_ml is False else "disabled"
 
-    result["names"].append("quality")
+    result["names"].append("frame.quality")
 
     return result
 
@@ -472,7 +479,7 @@ def score_frame(scorer, observations):
     if scorer is None:
         return None
     return scorer.score(
-        face_obs=observations.get("face") or observations.get("dummy"),
-        pose_obs=observations.get("pose"),
-        quality_obs=observations.get("quality"),
+        face_obs=observations.get("face.detect") or observations.get("mock.dummy"),
+        pose_obs=observations.get("body.pose"),
+        quality_obs=observations.get("frame.quality"),
     )

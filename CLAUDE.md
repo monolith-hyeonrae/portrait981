@@ -109,7 +109,8 @@ portrait981/                    ← repo root
 # 공유 타입 (visualpath-analyzers-base)
 from visualpath.analyzers.base import Module, Observation, FaceObservation
 from visualpath.analyzers.types import KeypointIndex, GestureType
-from visualpath.analyzers.outputs import FaceDetectOutput, PoseOutput
+from vpx.face_detect.output import FaceDetectOutput
+from vpx.pose.output import PoseOutput
 from visualpath.analyzers.backends.base import DetectedFace, FaceDetectionBackend
 
 # Analyzer (vpx 패키지)

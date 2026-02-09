@@ -18,12 +18,12 @@ from visualbase import Frame
 from visualpath.analyzers.base import (
     Module,
     Observation,
-    FaceObservation,
     ProcessingStep,
     processing_step,
     get_processing_steps,
 )
-from visualpath.analyzers.outputs import FaceDetectOutput
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class FaceClassifierAnalyzer(Module):
     - transient: Appears for only a few frames
     - noise: Too small, edge of frame, or low confidence
 
-    depends: ["face_detect"]
+    depends: ["face.detect"]
 
     Args:
         min_track_frames: Minimum frames to be considered non-transient (default: 5)
@@ -76,7 +76,7 @@ class FaceClassifierAnalyzer(Module):
         ...     .build())
     """
 
-    depends = ["face_detect"]
+    depends = ["face.detect"]
 
     def __init__(
         self,
@@ -101,7 +101,7 @@ class FaceClassifierAnalyzer(Module):
 
     @property
     def name(self) -> str:
-        return "face_classifier"
+        return "face.classify"
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:
@@ -242,21 +242,17 @@ class FaceClassifierAnalyzer(Module):
         frame: Frame,
         deps: Optional[Dict[str, Observation]] = None,
     ) -> Optional[Observation]:
-        # Support both face_detect (split) and face (composite) analyzers
         face_obs = None
         faces = []
 
         if deps:
-            if "face_detect" in deps:
-                face_obs = deps["face_detect"]
+            if "face.detect" in deps:
+                face_obs = deps["face.detect"]
                 if face_obs.data and hasattr(face_obs.data, 'faces'):
                     faces = face_obs.data.faces
-            elif "face" in deps:
-                face_obs = deps["face"]
-                faces = face_obs.faces if face_obs.faces else []
 
         if face_obs is None:
-            logger.warning("FaceClassifierAnalyzer: no face_detect or face dependency")
+            logger.warning("FaceClassifierAnalyzer: no face_detect dependency")
             return None
 
         if not faces:

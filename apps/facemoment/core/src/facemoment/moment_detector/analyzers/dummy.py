@@ -8,8 +8,9 @@ from visualbase import Frame
 from visualpath.analyzers.base import (
     Module,
     Observation,
-    FaceObservation,
 )
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 
 
 class DummyAnalyzer(Module):
@@ -19,7 +20,7 @@ class DummyAnalyzer(Module):
     Useful for testing the pipeline without real ML models.
 
     Args:
-        name: Analyzer name (default: "dummy").
+        name: Analyzer name (default: "mock.dummy").
         num_faces: Number of faces to simulate (default: 1).
         spike_probability: Probability of generating a high reaction (default: 0.1).
         seed: Random seed for reproducibility (default: None).
@@ -27,12 +28,12 @@ class DummyAnalyzer(Module):
     Example:
         >>> analyzer = DummyAnalyzer(num_faces=2, spike_probability=0.2)
         >>> obs = analyzer.process(frame)
-        >>> print(f"Detected {len(obs.faces)} faces")
+        >>> print(f"Detected {len(obs.data.faces)} faces")
     """
 
     def __init__(
         self,
-        name: str = "dummy",
+        name: str = "mock.dummy",
         num_faces: int = 1,
         spike_probability: float = 0.1,
         seed: Optional[int] = None,
@@ -101,5 +102,5 @@ class DummyAnalyzer(Module):
                 "max_expression": max_expression,
                 "face_count": len(faces),
             },
-            faces=faces,
+            data=FaceDetectOutput(faces=faces),
         )

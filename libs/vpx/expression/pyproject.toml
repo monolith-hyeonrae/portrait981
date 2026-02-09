@@ -5,11 +5,12 @@ description = "Expression analysis analyzer (HSEmotion)"
 requires-python = ">=3.10"
 dependencies = [
     "visualpath-analyzers-base",
+    "vpx-face-detect",
     "hsemotion-onnx>=0.3",
 ]
 
 [project.entry-points."visualpath.analyzers"]
-expression = "vpx.expression:ExpressionAnalyzer"
+"face.expression" = "vpx.expression:ExpressionAnalyzer"
 
 [build-system]
 requires = ["hatchling"]
@@ -20,3 +21,4 @@ packages = ["src/vpx"]
 
 [tool.uv.sources]
 visualpath-analyzers-base = { workspace = true }
+vpx-face-detect = { workspace = true }

@@ -7,10 +7,8 @@ import pytest
 from visualbase import Frame
 
 from vpx.face import FaceAnalyzer
-from visualpath.analyzers.backends.base import (
-    DetectedFace,
-    FaceExpression,
-)
+from vpx.face_detect.backends.base import DetectedFace
+from vpx.expression.backends.base import FaceExpression
 
 
 class MockFaceBackend:
@@ -72,7 +70,7 @@ class TestFaceAnalyzer:
         assert obs.source == "face"
         assert obs.signals["face_count"] == 0
         assert obs.signals["max_expression"] == 0.0
-        assert len(obs.faces) == 0
+        assert len(obs.data.faces) == 0
 
         analyzer.cleanup()
 
@@ -112,9 +110,9 @@ class TestFaceAnalyzer:
         assert obs is not None
         assert obs.signals["face_count"] == 1
         assert obs.signals["max_expression"] == 0.75
-        assert len(obs.faces) == 1
+        assert len(obs.data.faces) == 1
 
-        face_obs = obs.faces[0]
+        face_obs = obs.data.faces[0]
         assert face_obs.confidence == 0.95
         assert face_obs.yaw == 5.0
         assert face_obs.pitch == -3.0
@@ -156,7 +154,7 @@ class TestFaceAnalyzer:
 
         assert obs.signals["face_count"] == 2
         assert obs.signals["max_expression"] == 0.9
-        assert len(obs.faces) == 2
+        assert len(obs.data.faces) == 2
 
         analyzer.cleanup()
 
@@ -182,7 +180,7 @@ class TestFaceAnalyzer:
             t_src_ns=0,
         )
         obs1 = analyzer.process(frame1)
-        first_face_id = obs1.faces[0].face_id
+        first_face_id = obs1.data.faces[0].face_id
 
         # Frame 2: Face at slightly moved position (should keep same ID)
         face2 = DetectedFace(bbox=(110, 105, 200, 200), confidence=0.9)
@@ -195,7 +193,7 @@ class TestFaceAnalyzer:
         )
         obs2 = analyzer.process(frame2)
 
-        assert obs2.faces[0].face_id == first_face_id  # Same ID due to IoU overlap
+        assert obs2.data.faces[0].face_id == first_face_id  # Same ID due to IoU overlap
 
         # Frame 3: Face at completely different position (should get new ID)
         face3 = DetectedFace(bbox=(400, 100, 100, 100), confidence=0.9)
@@ -208,7 +206,7 @@ class TestFaceAnalyzer:
         )
         obs3 = analyzer.process(frame3)
 
-        assert obs3.faces[0].face_id != first_face_id  # New ID, no overlap
+        assert obs3.data.faces[0].face_id != first_face_id  # New ID, no overlap
 
         analyzer.cleanup()
 
@@ -236,7 +234,7 @@ class TestFaceAnalyzer:
         obs = analyzer.process(frame)
 
         # Face at (0, 0) is not inside frame (needs margin)
-        assert obs.faces[0].inside_frame is False
+        assert obs.data.faces[0].inside_frame is False
 
         analyzer.cleanup()
 
@@ -302,7 +300,7 @@ class TestFaceAnalyzer:
 
         # Only center face should be included (corner face filtered out)
         assert obs.signals["face_count"] == 1
-        assert len(obs.faces) == 1
+        assert len(obs.data.faces) == 1
 
         analyzer.cleanup()
 

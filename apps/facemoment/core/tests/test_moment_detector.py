@@ -26,9 +26,9 @@ class TestDummyAnalyzer:
         obs = analyzer.process(frame)
 
         assert obs is not None
-        assert obs.source == "dummy"
+        assert obs.source == "mock.dummy"
         assert obs.frame_id == 0
-        assert len(obs.faces) == 2
+        assert len(obs.data.faces) == 2
         assert "max_expression" in obs.signals
         assert "face_count" in obs.signals
 
@@ -45,7 +45,7 @@ class TestDummyAnalyzer:
         frame = Frame.from_array(data, frame_id=0, t_src_ns=0)
 
         obs = analyzer.process(frame)
-        face = obs.faces[0]
+        face = obs.data.faces[0]
 
         assert 0 <= face.confidence <= 1
         assert len(face.bbox) == 4
@@ -69,7 +69,6 @@ class TestDummyFusion:
             frame_id=0,
             t_ns=0,
             signals={"max_expression": 0.3, "face_count": 1},
-            faces=[],
         )
 
         result = fusion.update(obs)
@@ -85,7 +84,6 @@ class TestDummyFusion:
                 frame_id=i,
                 t_ns=i * 100_000_000,
                 signals={"max_expression": 0.8, "face_count": 1},
-                faces=[],
             )
             fusion.update(obs)
 
@@ -219,7 +217,7 @@ class TestE2E:
         detector = MomentDetector(
             analyzers=[
                 DummyAnalyzer(
-                    name="face",
+                    name="face.detect",
                     num_faces=2,
                     spike_probability=0.3,
                     seed=123,

@@ -16,12 +16,9 @@ from visualpath.analyzers.base import (
     processing_step,
     get_processing_steps,
 )
-from visualpath.analyzers.types import KeypointIndex
-from visualpath.analyzers.outputs import PoseOutput
-from visualpath.analyzers.backends.base import (
-    PoseBackend,
-    PoseKeypoints,
-)
+from vpx.pose.types import KeypointIndex
+from vpx.pose.output import PoseOutput
+from vpx.pose.backends.base import PoseBackend, PoseKeypoints
 from visualpath.observability import ObservabilityHub, TraceLevel
 from visualpath.observability.records import FrameAnalyzeRecord, TimingRecord
 
@@ -86,7 +83,7 @@ class PoseAnalyzer(Module):
 
     @property
     def name(self) -> str:
-        return "pose"
+        return "body.pose"
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:

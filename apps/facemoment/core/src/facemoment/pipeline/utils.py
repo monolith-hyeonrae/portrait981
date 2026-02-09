@@ -7,6 +7,13 @@ from visualbase import Frame
 from visualpath.analyzers.base import Observation
 
 
+def _get_faces(obs):
+    """Get faces from observation data."""
+    if obs.data and hasattr(obs.data, 'faces'):
+        return obs.data.faces
+    return []
+
+
 def merge_observations(observations: List[Observation], frame: Frame) -> Observation:
     """Merge multiple observations into a single observation for fusion.
 
@@ -27,14 +34,13 @@ def merge_observations(observations: List[Observation], frame: Frame) -> Observa
             frame_id=frame.frame_id,
             t_ns=frame.t_src_ns,
             signals={},
-            faces=[],
             metadata={},
         )
 
     # Find the observation with face data
     base_obs = None
     for obs in observations:
-        if hasattr(obs, 'faces') and obs.faces:
+        if _get_faces(obs):
             base_obs = obs
             break
 
@@ -50,7 +56,7 @@ def merge_observations(observations: List[Observation], frame: Frame) -> Observa
         merged_metadata[obs.source] = obs.metadata
 
         # Copy classifier main_face_id to signals for fusion
-        if obs.source == "face_classifier" and obs.data is not None:
+        if obs.source == "face.classify" and obs.data is not None:
             if hasattr(obs.data, 'main_face') and obs.data.main_face is not None:
                 merged_signals["main_face_id"] = obs.data.main_face.face.face_id
 
@@ -59,6 +65,5 @@ def merge_observations(observations: List[Observation], frame: Frame) -> Observa
         frame_id=frame.frame_id,
         t_ns=frame.t_src_ns,
         signals=merged_signals,
-        faces=getattr(base_obs, 'faces', []),
         metadata=merged_metadata,
     )

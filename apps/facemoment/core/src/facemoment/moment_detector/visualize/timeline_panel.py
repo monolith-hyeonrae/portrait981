@@ -60,10 +60,14 @@ class TimelinePanel:
         face_obs: Optional[Observation],
         fusion_result: Optional[Observation],
         is_gate_open: bool,
+        *,
+        expression_obs: Optional[Observation] = None,
     ) -> None:
         """Record one frame's data into the history."""
         happy = 0.0
-        if face_obs is not None:
+        if expression_obs is not None:
+            happy = expression_obs.signals.get("expression_happy", 0)
+        elif face_obs is not None:
             happy = face_obs.signals.get("expression_happy", 0)
 
         self._happy_history.append(happy)

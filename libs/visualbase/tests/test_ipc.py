@@ -132,7 +132,7 @@ class TestPoseOBS:
             ],
         )
         msg = obs.to_message()
-        assert msg.startswith("OBS src=pose")
+        assert msg.startswith("OBS src=body.pose")
         assert "frame=1234" in msg
         assert "poses=1" in msg
         assert "p0=" in msg
@@ -148,7 +148,7 @@ class TestQualityOBS:
             quality=QualityData(blur=100.0, brightness=128.0, contrast=0.5),
         )
         msg = obs.to_message()
-        assert msg.startswith("OBS src=quality")
+        assert msg.startswith("OBS src=frame.quality")
         assert "frame=1234" in msg
         assert "blur:100.0" in msg
 
@@ -157,20 +157,20 @@ class TestParseOBSMessage:
     """Tests for parse_obs_message."""
 
     def test_parse_face_obs(self):
-        msg = "OBS src=face frame=1234 t_ns=1234567890 faces=1 f0=id:0,conf:0.95,x:0.1,y:0.2,w:0.3,h:0.4,expr:0.8"
+        msg = "OBS src=face.detect frame=1234 t_ns=1234567890 faces=1 f0=id:0,conf:0.95,x:0.1,y:0.2,w:0.3,h:0.4,expr:0.8"
         obs = parse_obs_message(msg)
         assert obs is not None
-        assert obs.src == "face"
+        assert obs.src == "face.detect"
         assert obs.frame_id == 1234
         assert len(obs.faces) == 1
         assert obs.faces[0].id == 0
         assert obs.faces[0].expr == 0.8
 
     def test_parse_pose_obs(self):
-        msg = "OBS src=pose frame=1234 t_ns=1234567890 poses=1 p0=id:0,conf:0.9,hr:1,hw:0"
+        msg = "OBS src=body.pose frame=1234 t_ns=1234567890 poses=1 p0=id:0,conf:0.9,hr:1,hw:0"
         obs = parse_obs_message(msg)
         assert obs is not None
-        assert obs.src == "pose"
+        assert obs.src == "body.pose"
         assert len(obs.poses) == 1
         assert obs.poses[0].hand_raised is True
 

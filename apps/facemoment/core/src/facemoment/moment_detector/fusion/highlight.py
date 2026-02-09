@@ -7,7 +7,8 @@ import logging
 
 from visualbase import Trigger
 
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
 from facemoment.moment_detector.fusion.base import Module
 from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierOutput
 from facemoment.observability import ObservabilityHub, TraceLevel
@@ -19,6 +20,14 @@ from facemoment.observability.records import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_faces(obs):
+    """Get faces from observation data."""
+    if obs.data and hasattr(obs.data, 'faces'):
+        return obs.data.faces
+    return []
+
 
 # Get the global observability hub
 _hub = ObservabilityHub.get_instance()
@@ -72,7 +81,7 @@ class HighlightFusion(Module):
     identify moments worth capturing. Uses a quality gate with
     hysteresis and detects various trigger events.
 
-    depends: ["face", "expression", "face_classifier"] (optional)
+    depends: ["face.detect"], optional_depends: ["face.expression", "face.classify"]
 
     Trigger Types:
     - expression_spike: Sudden increase in facial expression
@@ -111,13 +120,14 @@ class HighlightFusion(Module):
     Example:
         >>> fusion = HighlightFusion()
         >>> for obs in observations:
-        ...     result = fusion.process(frame, {"face": obs})
+        ...     result = fusion.process(frame, {"face_detect": obs})
         ...     if result.should_trigger:
         ...         print(f"Trigger: {result.trigger_reason}, score={result.trigger_score:.2f}")
     """
 
-    # Dependency declaration - uses observations from these modules
-    depends = ["face", "expression", "face_classifier"]
+    # Dependency declaration - face_detect is required; others are best-effort
+    depends = ["face.detect"]
+    optional_depends = ["face.expression", "face.classify"]
 
     def __init__(
         self,
@@ -273,7 +283,6 @@ class HighlightFusion(Module):
                     "trigger_reason": "",
                     "observations_used": self._observation_count,
                 },
-                faces=observation.faces,
                 metadata={"state": "cooldown", "adaptive_summary": self.get_adaptive_summary()},
             )
 
@@ -305,7 +314,6 @@ class HighlightFusion(Module):
                     "trigger_reason": "",
                     "observations_used": self._observation_count,
                 },
-                faces=observation.faces,
                 metadata={
                     "state": "gate_closed",
                     "conditions_met": gate_conditions_met,
@@ -337,7 +345,7 @@ class HighlightFusion(Module):
         hand_wave = observation.signals.get("hand_wave_detected", 0.0)
         if hand_wave > 0.5:
             wave_score = observation.signals.get("hand_wave_confidence", 0.8)
-            candidates.append({"reason": "hand_wave", "score": wave_score, "source": "pose"})
+            candidates.append({"reason": "hand_wave", "score": wave_score, "source": "body.pose"})
             if trigger_reason is None or wave_score > trigger_score:
                 trigger_reason = "hand_wave"
                 trigger_score = wave_score
@@ -443,7 +451,6 @@ class HighlightFusion(Module):
                     "trigger_reason": reason,
                     "observations_used": self._observation_count,
                 },
-                faces=observation.faces,
                 metadata={
                     "trigger": trigger,
                     "consecutive_frames": self._consecutive_required,
@@ -481,7 +488,6 @@ class HighlightFusion(Module):
                 "trigger_reason": "",
                 "observations_used": self._observation_count,
             },
-            faces=observation.faces,
             metadata={
                 "state": "monitoring",
                 "gate_open": self._gate_open,
@@ -500,7 +506,7 @@ class HighlightFusion(Module):
         Returns:
             True if all gate conditions are satisfied.
         """
-        faces = observation.faces
+        faces = _get_faces(observation)
         face_count = int(observation.signals.get("face_count", len(faces)))
 
         # Track individual conditions for observability
@@ -799,7 +805,7 @@ class HighlightFusion(Module):
         Returns:
             Tuple of (detected, score).
         """
-        faces = observation.faces
+        faces = _get_faces(observation)
         if len(faces) != 2:
             return False, 0.0
 
@@ -957,7 +963,7 @@ class HighlightFusion(Module):
         Returns:
             List of faces to analyze (main only if main_only mode).
         """
-        faces = observation.faces
+        faces = _get_faces(observation)
 
         if not self._main_only or self._main_face_id is None:
             # Not in main-only mode or no main face identified yet
@@ -990,7 +996,7 @@ class HighlightFusion(Module):
         Args:
             frame: Current frame (used for timing if no observations).
             deps: Dict of observations from dependency modules.
-                  Expected keys: "face", "expression", "face_classifier"
+                  Expected keys: "face.detect", "face.expression", "face.classify"
 
         Returns:
             Observation with trigger info in signals/metadata.
@@ -1003,12 +1009,12 @@ class HighlightFusion(Module):
                 signals={"should_trigger": False, "trigger_score": 0.0, "trigger_reason": ""},
             )
 
-        # Get main observation (prefer "face" or "expression")
-        observation = deps.get("face") or deps.get("expression")
+        # Get main observation (prefer "face.detect" or "face.expression")
+        observation = deps.get("face.detect") or deps.get("face.expression")
         if observation is None:
             # Try any observation with faces
             for obs in deps.values():
-                if hasattr(obs, 'faces') or hasattr(obs, 'signals'):
+                if hasattr(obs, 'signals'):
                     observation = obs
                     break
 
@@ -1021,7 +1027,7 @@ class HighlightFusion(Module):
             )
 
         # Get classifier observation if available
-        classifier_obs = deps.get("face_classifier")
+        classifier_obs = deps.get("face.classify")  # will be renamed in Phase 3
 
         return self.update(observation, classifier_obs)
 

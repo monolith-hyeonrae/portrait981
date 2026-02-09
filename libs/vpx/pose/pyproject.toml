@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.entry-points."visualpath.analyzers"]
-pose = "vpx.pose:PoseAnalyzer"
+"body.pose" = "vpx.pose:PoseAnalyzer"
 
 [build-system]
 requires = ["hatchling"]

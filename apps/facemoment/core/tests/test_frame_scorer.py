@@ -12,7 +12,9 @@ from facemoment.moment_detector.scoring import (
     SelectionConfig,
     ScoredFrame,
 )
-from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
 
 
 def make_face_obs(
@@ -45,11 +47,11 @@ def make_face_obs(
         )
 
     return Observation(
-        source="face",
+        source="face.detect",
         frame_id=0,
         t_ns=0,
         signals={"face_count": face_count, **(signals or {})},
-        faces=faces,
+        data=FaceDetectOutput(faces=faces),
     )
 
 
@@ -60,7 +62,7 @@ def make_quality_obs(
 ) -> Observation:
     """Create a mock quality observation."""
     return Observation(
-        source="quality",
+        source="frame.quality",
         frame_id=0,
         t_ns=0,
         signals={
@@ -77,7 +79,7 @@ def make_pose_obs(
 ) -> Observation:
     """Create a mock pose observation."""
     return Observation(
-        source="pose",
+        source="body.pose",
         frame_id=0,
         t_ns=0,
         signals={
@@ -290,8 +292,8 @@ class TestFrameScorer:
 
         # Add filter that rejects frames with low expression
         def low_expression_filter(face_obs, pose_obs, quality_obs):
-            if face_obs and face_obs.faces:
-                if face_obs.faces[0].expression < 0.2:
+            if face_obs and face_obs.data and face_obs.data.faces:
+                if face_obs.data.faces[0].expression < 0.2:
                     return True, "low_expression"
             return False, ""
 

@@ -9,13 +9,14 @@ from visualbase import Frame
 from visualpath.analyzers.base import (
     Module,
     Observation,
-    FaceObservation,
     ProcessingStep,
     processing_step,
     get_processing_steps,
 )
-from visualpath.analyzers.backends.base import ExpressionBackend
-from visualpath.analyzers.outputs import FaceDetectOutput, ExpressionOutput
+from vpx.face_detect.types import FaceObservation
+from vpx.face_detect.output import FaceDetectOutput
+from vpx.expression.backends.base import ExpressionBackend
+from vpx.expression.output import ExpressionOutput
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class ExpressionAnalyzer(Module):
     Depends on face_detect analyzer for face bounding boxes.
     Analyzes emotions and action units for detected faces.
 
-    depends: ["face_detect"]
+    depends: ["face.detect"]
 
     Outputs:
         - signals: max_expression, expression_happy, expression_angry, expression_neutral
@@ -42,7 +43,7 @@ class ExpressionAnalyzer(Module):
     """
 
     # Dependency declaration
-    depends = ["face_detect"]
+    depends = ["face.detect"]
 
     def __init__(
         self,
@@ -57,7 +58,7 @@ class ExpressionAnalyzer(Module):
 
     @property
     def name(self) -> str:
-        return "expression"
+        return "face.expression"
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:
@@ -198,7 +199,7 @@ class ExpressionAnalyzer(Module):
         deps: Optional[Dict[str, Observation]] = None,
     ) -> Optional[Observation]:
         # Get face_detect dependency (type-safe access)
-        face_obs = deps.get("face_detect") if deps else None
+        face_obs = deps.get("face.detect") if deps else None
         if face_obs is None:
             logger.warning("ExpressionAnalyzer: no face_detect dependency")
             return None

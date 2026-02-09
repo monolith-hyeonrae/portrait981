@@ -9,7 +9,7 @@ dependencies = [
 ]
 
 [project.entry-points."visualpath.analyzers"]
-gesture = "vpx.gesture:GestureAnalyzer"
+"hand.gesture" = "vpx.gesture:GestureAnalyzer"
 
 [build-system]
 requires = ["hatchling"]

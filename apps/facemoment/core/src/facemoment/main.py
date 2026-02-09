@@ -25,8 +25,8 @@ DEFAULT_BACKEND = 'pathway'
 # If analyzers from 2+ groups are active, the minority group must run in
 # a subprocess to avoid symbol conflicts (e.g. onnxruntime-gpu vs torch).
 _CUDA_GROUPS: Dict[str, Set[str]] = {
-    "onnxruntime": {"face", "face_detect", "expression"},
-    "torch": {"pose"},
+    "onnxruntime": {"face.detect", "face.expression"},
+    "torch": {"body.pose"},
 }
 
 
@@ -48,7 +48,7 @@ def build_modules(analyzers=None, *, cooldown=2.0, main_only=True):
     - 문자열 이름은 visualpath 플러그인 레지스트리에서 해석됨
 
     Args:
-        analyzers: Analyzer names. None = ["face", "pose", "gesture"].
+        analyzers: Analyzer names. None = ["face.detect", "face.expression", "body.pose", "hand.gesture"].
         cooldown: Seconds between triggers.
         main_only: Only trigger for main face.
 
@@ -57,11 +57,11 @@ def build_modules(analyzers=None, *, cooldown=2.0, main_only=True):
     """
     from facemoment.moment_detector.fusion import HighlightFusion
 
-    names = list(analyzers) if analyzers else ["face", "pose", "gesture"]
+    names = list(analyzers) if analyzers else ["face.detect", "face.expression", "body.pose", "hand.gesture"]
 
-    if any(n in ("face", "face_detect") for n in names):
-        if "face_classifier" not in names:
-            names.append("face_classifier")
+    if "face.detect" in names:
+        if "face.classify" not in names:
+            names.append("face.classify")
 
     fusion = HighlightFusion(cooldown_sec=cooldown, main_only=main_only)
 
@@ -201,7 +201,7 @@ def run(
 
     Args:
         video: Path to video file.
-        analyzers: Analyzer names ["face", "pose", "gesture", "quality"].
+        analyzers: Analyzer names ["face.detect", "face.expression", "body.pose", "hand.gesture", "quality"].
                    None = use all ML analyzers.
         output_dir: Directory for extracted clips. None = no clips.
         fps: Frames per second to process.
@@ -215,13 +215,13 @@ def run(
     Example:
         >>> result = fm.run("video.mp4")
         >>> result = fm.run("video.mp4", output_dir="./clips")
-        >>> result = fm.run("video.mp4", analyzers=["face", "pose"])
+        >>> result = fm.run("video.mp4", analyzers=["face", "body.pose"])
         >>> result = fm.run("video.mp4", backend="pathway")
     """
     from facemoment.cli.utils import create_video_stream
 
     # 1. Build analyzer name list
-    analyzer_names = list(analyzers) if analyzers else ["face", "pose", "gesture"]
+    analyzer_names = list(analyzers) if analyzers else ["face.detect", "face.expression", "body.pose", "hand.gesture"]
 
     # 2. Build modules (facemoment domain logic)
     modules = build_modules(analyzer_names, cooldown=cooldown)

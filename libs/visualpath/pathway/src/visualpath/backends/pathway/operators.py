@@ -58,14 +58,13 @@ def create_analyzer_udf(
         """Analyze observations from a frame."""
         try:
             analyzer_deps = None
-            if analyzer.depends and deps:
+            all_dep_names = list(getattr(analyzer, 'depends', [])) + list(getattr(analyzer, 'optional_depends', []))
+            if all_dep_names and deps:
                 analyzer_deps = {
                     name: deps[name]
-                    for name in analyzer.depends
+                    for name in all_dep_names
                     if name in deps
                 }
-                if "face_detect" in analyzer.depends and "face_detect" not in analyzer_deps and "face" in deps:
-                    analyzer_deps["face"] = deps["face"]
             observation = analyzer.process(frame, analyzer_deps)
             return [AnalyzerResult(
                 frame_id=frame.frame_id,
@@ -79,34 +78,67 @@ def create_analyzer_udf(
     return analyze_fn
 
 
+def _toposort_modules(modules: List["Module"]) -> List["Module"]:
+    """Topologically sort modules by depends/optional_depends."""
+    from collections import defaultdict, deque
+
+    name_to_mod = {m.name: m for m in modules}
+    available = set(name_to_mod.keys())
+    in_degree = {m.name: 0 for m in modules}
+    dependents = defaultdict(list)
+
+    for m in modules:
+        for dep in list(getattr(m, 'depends', [])) + list(getattr(m, 'optional_depends', [])):
+            if dep in available:
+                in_degree[m.name] += 1
+                dependents[dep].append(m.name)
+
+    queue = deque(n for n, d in in_degree.items() if d == 0)
+    result = []
+    while queue:
+        name = queue.popleft()
+        result.append(name_to_mod[name])
+        for dep_name in dependents[name]:
+            in_degree[dep_name] -= 1
+            if in_degree[dep_name] == 0:
+                queue.append(dep_name)
+
+    if len(result) != len(modules):
+        seen = {m.name for m in result}
+        result.extend(m for m in modules if m.name not in seen)
+
+    return result
+
+
 def create_multi_analyzer_udf(analyzers: List["Module"]):
     """Create a callable that runs multiple analyzers on each frame.
 
-    Analyzers are run in order with dependency resolution: each
-    analyzer receives observations from its dependencies via the
-    deps parameter.
+    Analyzers are topologically sorted by dependencies, then run
+    in order with dependency resolution: each analyzer receives
+    observations from its dependencies via the deps parameter.
 
     Args:
-        analyzers: List of analyzers to run (order matters for deps).
+        analyzers: List of analyzers to run.
 
     Returns:
         A function that takes a Frame and returns list of AnalyzerResults.
     """
+    sorted_analyzers = _toposort_modules(analyzers)
+
     def analyze_all(frame: "Frame") -> List[AnalyzerResult]:
         """Run all analyzers on a frame with deps accumulation."""
         results = []
         deps: Dict[str, "Observation"] = {}
-        for analyzer in analyzers:
+        for analyzer in sorted_analyzers:
             try:
                 analyzer_deps = None
-                if analyzer.depends:
+                all_dep_names = list(getattr(analyzer, 'depends', [])) + list(getattr(analyzer, 'optional_depends', []))
+                if all_dep_names:
                     analyzer_deps = {
                         name: deps[name]
-                        for name in analyzer.depends
+                        for name in all_dep_names
                         if name in deps
                     }
-                    if "face_detect" in analyzer.depends and "face_detect" not in analyzer_deps and "face" in deps:
-                        analyzer_deps["face"] = deps["face"]
                 observation = analyzer.process(frame, analyzer_deps)
                 results.append(AnalyzerResult(
                     frame_id=frame.frame_id,

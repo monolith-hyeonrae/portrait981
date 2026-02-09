@@ -5703,12 +5703,14 @@ source = { editable = "libs/vpx/expression" }
 dependencies = [
     { name = "hsemotion-onnx" },
     { name = "visualpath-analyzers-base" },
+    { name = "vpx-face-detect" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "hsemotion-onnx", specifier = ">=0.3" },
     { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
+    { name = "vpx-face-detect", editable = "libs/vpx/face-detect" },
 ]
 
 [[package]]

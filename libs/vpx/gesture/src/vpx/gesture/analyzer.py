@@ -15,12 +15,9 @@ from visualpath.analyzers.base import (
     processing_step,
     get_processing_steps,
 )
-from visualpath.analyzers.types import GestureType, HandLandmarkIndex
-from visualpath.analyzers.outputs import GestureOutput
-from visualpath.analyzers.backends.base import (
-    HandLandmarkBackend,
-    HandLandmarks,
-)
+from vpx.gesture.types import GestureType, HandLandmarkIndex
+from vpx.gesture.output import GestureOutput
+from vpx.gesture.backends.base import HandLandmarkBackend, HandLandmarks
 from visualpath.observability import ObservabilityHub, TraceLevel
 from visualpath.observability.records import FrameAnalyzeRecord, TimingRecord
 
@@ -76,7 +73,7 @@ class GestureAnalyzer(Module):
 
     @property
     def name(self) -> str:
-        return "gesture"
+        return "hand.gesture"
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:

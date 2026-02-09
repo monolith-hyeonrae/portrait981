@@ -15,8 +15,9 @@ Usage:
     # Or import base types (always available)
     from facemoment.moment_detector.analyzers import BaseAnalyzer, Observation
 
-    # Import type definitions
-    from visualpath.analyzers.types import KeypointIndex, GestureType
+    # Import type definitions (canonical)
+    from vpx.pose.types import KeypointIndex
+    from vpx.gesture.types import GestureType
 """
 
 # Base types - always available (no ML dependencies)
@@ -24,26 +25,19 @@ from visualpath.analyzers.base import (
     Module,
     BaseAnalyzer,  # Alias for Module
     Observation,
-    FaceObservation,
     IsolationLevel,
 )
-from visualpath.analyzers.types import (
-    KeypointIndex,
-    HandLandmarkIndex,
-    GestureType,
-    COCO_KEYPOINT_NAMES,
-)
+from vpx.face_detect.types import FaceObservation
+from vpx.pose.types import KeypointIndex, COCO_KEYPOINT_NAMES
+from vpx.gesture.types import HandLandmarkIndex, GestureType
 from facemoment.moment_detector.analyzers.dummy import DummyAnalyzer
 from facemoment.moment_detector.analyzers.quality import QualityAnalyzer
-from visualpath.analyzers.outputs import (
-    FaceDetectOutput,
-    ExpressionOutput,
-    PoseOutput,
-    GestureOutput,
-    QualityOutput,
-    ClassifiedFaceInfo,
-    FaceClassifierOutput,
-)
+from vpx.face_detect.output import FaceDetectOutput
+from vpx.expression.output import ExpressionOutput
+from vpx.pose.output import PoseOutput
+from vpx.gesture.output import GestureOutput
+from facemoment.moment_detector.analyzers.quality import QualityOutput
+from facemoment.moment_detector.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
 
 __all__ = [
     # Base types (always available)
@@ -62,7 +56,7 @@ __all__ = [
     "PoseOutput",
     "GestureOutput",
     "QualityOutput",
-    "ClassifiedFaceInfo",
+    "ClassifiedFace",
     "FaceClassifierOutput",
     # Analyzers (always available)
     "DummyAnalyzer",

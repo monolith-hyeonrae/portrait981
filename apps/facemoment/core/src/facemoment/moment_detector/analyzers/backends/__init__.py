@@ -7,7 +7,8 @@ Each backend can be imported independently to avoid dependency conflicts.
 
 Usage:
     # Import base types (always available)
-    from visualpath.analyzers.backends import DetectedFace, FaceExpression
+    from vpx.face_detect.backends.base import DetectedFace, FaceDetectionBackend
+    from vpx.expression.backends.base import FaceExpression, ExpressionBackend
 
     # Import specific backends (requires corresponding dependencies)
     from vpx.face_detect.backends.insightface import InsightFaceSCRFD
@@ -17,17 +18,11 @@ Usage:
     from vpx.gesture.backends.mediapipe_hands import MediaPipeHandsBackend
 """
 
-# Base types - always available (no ML dependencies)
-from visualpath.analyzers.backends.base import (
-    FaceDetectionBackend,
-    ExpressionBackend,
-    PoseBackend,
-    HandLandmarkBackend,
-    DetectedFace,
-    FaceExpression,
-    PoseKeypoints,
-    HandLandmarks,
-)
+# Base types - re-exported from vpx packages
+from vpx.face_detect.backends.base import FaceDetectionBackend, DetectedFace
+from vpx.expression.backends.base import ExpressionBackend, FaceExpression
+from vpx.pose.backends.base import PoseBackend, PoseKeypoints
+from vpx.gesture.backends.base import HandLandmarkBackend, HandLandmarks
 
 __all__ = [
     # Protocols
