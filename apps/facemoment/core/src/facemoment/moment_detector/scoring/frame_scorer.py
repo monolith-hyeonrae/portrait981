@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 import logging
 
-from visualpath.extractors.base import Observation
+from visualpath.analyzers.base import Observation
 
 logger = logging.getLogger(__name__)
 

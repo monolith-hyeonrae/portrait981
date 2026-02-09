@@ -4,14 +4,14 @@ This module provides configuration dataclasses for setting up
 the A-B*-C-A distributed processing pipeline.
 
 Example:
-    >>> from facemoment.pipeline import ExtractorConfig, PipelineConfig
+    >>> from facemoment.pipeline import AnalyzerConfig, PipelineConfig
     >>> from visualpath.core import IsolationLevel
     >>>
     >>> config = PipelineConfig(
-    ...     extractors=[
-    ...         ExtractorConfig(name="face", venv_path="/opt/venv-face"),
-    ...         ExtractorConfig(name="pose", venv_path="/opt/venv-pose"),
-    ...         ExtractorConfig(name="quality", isolation=IsolationLevel.INLINE),
+    ...     analyzers=[
+    ...         AnalyzerConfig(name="face", venv_path="/opt/venv-face"),
+    ...         AnalyzerConfig(name="pose", venv_path="/opt/venv-pose"),
+    ...         AnalyzerConfig(name="quality", isolation=IsolationLevel.INLINE),
     ...     ],
     ...     clip_output_dir="./clips",
     ...     fps=10,
@@ -26,26 +26,26 @@ from visualpath.core import IsolationLevel
 
 
 @dataclass
-class ExtractorConfig:
-    """Configuration for a single extractor in the pipeline.
+class AnalyzerConfig:
+    """Configuration for a single analyzer in the pipeline.
 
     Attributes:
-        name: Entry point name of the extractor (e.g., "face", "pose", "gesture").
+        name: Entry point name of the analyzer (e.g., "face", "pose", "gesture").
         venv_path: Path to virtual environment for VENV isolation.
             If provided and isolation is not set, defaults to VENV isolation.
-        isolation: Isolation level for the extractor. Defaults to INLINE if
+        isolation: Isolation level for the analyzer. Defaults to INLINE if
             no venv_path is provided, or VENV if venv_path is provided.
-        kwargs: Additional keyword arguments passed to the extractor constructor.
+        kwargs: Additional keyword arguments passed to the analyzer constructor.
 
     Example:
-        >>> # Run face extractor in a separate venv
-        >>> config = ExtractorConfig(
+        >>> # Run face analyzer in a separate venv
+        >>> config = AnalyzerConfig(
         ...     name="face",
         ...     venv_path="/opt/venvs/venv-face",
         ... )
         >>>
-        >>> # Run quality extractor inline (same process)
-        >>> config = ExtractorConfig(
+        >>> # Run quality analyzer inline (same process)
+        >>> config = AnalyzerConfig(
         ...     name="quality",
         ...     isolation=IsolationLevel.INLINE,
         ... )
@@ -97,7 +97,7 @@ class PipelineConfig:
     """Complete configuration for the facemoment pipeline.
 
     Attributes:
-        extractors: List of extractor configurations.
+        analyzers: List of analyzer configurations.
         fusion: Fusion module configuration.
         clip_output_dir: Directory for extracted clips.
         fps: Analysis frame rate.
@@ -105,9 +105,9 @@ class PipelineConfig:
 
     Example:
         >>> config = PipelineConfig(
-        ...     extractors=[
-        ...         ExtractorConfig(name="face", venv_path="/opt/venv-face"),
-        ...         ExtractorConfig(name="pose", venv_path="/opt/venv-pose"),
+        ...     analyzers=[
+        ...         AnalyzerConfig(name="face", venv_path="/opt/venv-face"),
+        ...         AnalyzerConfig(name="pose", venv_path="/opt/venv-pose"),
         ...     ],
         ...     fusion=FusionConfig(cooldown_sec=2.0),
         ...     clip_output_dir="./clips",
@@ -116,7 +116,7 @@ class PipelineConfig:
         ... )
     """
 
-    extractors: List[ExtractorConfig] = field(default_factory=list)
+    analyzers: List[AnalyzerConfig] = field(default_factory=list)
     fusion: FusionConfig = field(default_factory=FusionConfig)
     clip_output_dir: str = "./clips"
     fps: int = 10
@@ -138,14 +138,14 @@ class PipelineConfig:
             ...     data = yaml.safe_load(f)
             >>> config = PipelineConfig.from_dict(data)
         """
-        extractors = []
-        for ext_data in data.get("extractors", []):
+        analyzers = []
+        for ext_data in data.get("analyzers", []):
             isolation_str = ext_data.get("isolation")
             isolation = None
             if isolation_str:
                 isolation = IsolationLevel.from_string(isolation_str)
 
-            extractors.append(ExtractorConfig(
+            analyzers.append(AnalyzerConfig(
                 name=ext_data["name"],
                 venv_path=ext_data.get("venv_path"),
                 isolation=isolation,
@@ -160,7 +160,7 @@ class PipelineConfig:
         )
 
         return cls(
-            extractors=extractors,
+            analyzers=analyzers,
             fusion=fusion,
             clip_output_dir=data.get("clip_output_dir", data.get("output", {}).get("clip_dir", "./clips")),
             fps=data.get("fps", data.get("output", {}).get("fps", 10)),
@@ -201,14 +201,14 @@ class PipelineConfig:
             Dictionary representation of the config.
         """
         return {
-            "extractors": [
+            "analyzers": [
                 {
                     "name": ext.name,
                     "venv_path": ext.venv_path,
                     "isolation": ext.effective_isolation.name.lower(),
                     "kwargs": ext.kwargs,
                 }
-                for ext in self.extractors
+                for ext in self.analyzers
             ],
             "fusion": {
                 "name": self.fusion.name,
@@ -233,18 +233,18 @@ def create_default_config(
     """Create a default pipeline configuration.
 
     Creates a configuration with face, pose, and optionally gesture
-    extractors based on provided venv paths.
+    analyzers based on provided venv paths.
 
     Args:
-        venv_face: Path to venv for face extractor. If None, runs inline.
-        venv_pose: Path to venv for pose extractor. If None, runs inline.
-        venv_gesture: Path to venv for gesture extractor. If provided, adds gesture extractor.
+        venv_face: Path to venv for face analyzer. If None, runs inline.
+        venv_pose: Path to venv for pose analyzer. If None, runs inline.
+        venv_gesture: Path to venv for gesture analyzer. If provided, adds gesture analyzer.
         clip_output_dir: Directory for extracted clips.
         fps: Analysis frame rate.
         cooldown_sec: Cooldown between triggers.
 
     Returns:
-        PipelineConfig with the specified extractors.
+        PipelineConfig with the specified analyzers.
 
     Example:
         >>> config = create_default_config(
@@ -252,35 +252,35 @@ def create_default_config(
         ...     venv_pose="/opt/venvs/venv-pose",
         ... )
     """
-    extractors = []
+    analyzers = []
 
-    # Face extractor
-    extractors.append(ExtractorConfig(
+    # Face analyzer
+    analyzers.append(AnalyzerConfig(
         name="face",
         venv_path=venv_face,
     ))
 
-    # Pose extractor
-    extractors.append(ExtractorConfig(
+    # Pose analyzer
+    analyzers.append(AnalyzerConfig(
         name="pose",
         venv_path=venv_pose,
     ))
 
-    # Gesture extractor (if venv provided)
+    # Gesture analyzer (if venv provided)
     if venv_gesture:
-        extractors.append(ExtractorConfig(
+        analyzers.append(AnalyzerConfig(
             name="gesture",
             venv_path=venv_gesture,
         ))
 
-    # Quality extractor (always inline - lightweight)
-    extractors.append(ExtractorConfig(
+    # Quality analyzer (always inline - lightweight)
+    analyzers.append(AnalyzerConfig(
         name="quality",
         isolation=IsolationLevel.INLINE,
     ))
 
     return PipelineConfig(
-        extractors=extractors,
+        analyzers=analyzers,
         fusion=FusionConfig(cooldown_sec=cooldown_sec),
         clip_output_dir=clip_output_dir,
         fps=fps,

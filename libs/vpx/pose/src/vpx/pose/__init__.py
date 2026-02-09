@@ -1,3 +1,3 @@
-from vpx.pose.extractor import PoseExtractor
+from vpx.pose.analyzer import PoseAnalyzer
 
-__all__ = ["PoseExtractor"]
+__all__ = ["PoseAnalyzer"]

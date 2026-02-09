@@ -9,7 +9,7 @@ import pytest
 from visualpath.config import (
     ConfigSchema,
     PipelineSchema,
-    ExtractorSchema,
+    AnalyzerSchema,
     FusionSchema,
     ObservabilitySchema,
     SinkSchema,
@@ -109,24 +109,24 @@ class TestSchemaValidation:
         assert sink.type == "console"
         assert sink.path is None
 
-    def test_extractor_schema_venv_requires_path(self):
+    def test_analyzer_schema_venv_requires_path(self):
         """Test that venv isolation requires venv_path."""
         with pytest.raises(ValueError, match="venv_path"):
-            ExtractorSchema(name="test", isolation="venv")
+            AnalyzerSchema(name="test", isolation="venv")
 
-    def test_extractor_schema_venv_with_path(self):
-        """Test valid venv extractor config."""
-        ext = ExtractorSchema(
+    def test_analyzer_schema_venv_with_path(self):
+        """Test valid venv analyzer config."""
+        ext = AnalyzerSchema(
             name="test",
             isolation="venv",
             venv_path="/opt/venv",
         )
         assert ext.venv_path == "/opt/venv"
 
-    def test_extractor_schema_container_requires_image(self):
+    def test_analyzer_schema_container_requires_image(self):
         """Test that container isolation requires container_image."""
         with pytest.raises(ValueError, match="container_image"):
-            ExtractorSchema(name="test", isolation="container")
+            AnalyzerSchema(name="test", isolation="container")
 
     def test_config_schema_version_validation(self):
         """Test that invalid version is rejected."""
@@ -135,7 +135,7 @@ class TestSchemaValidation:
                 version="2.0",
                 pipelines={
                     "test": PipelineSchema(
-                        extractors=[ExtractorSchema(name="dummy")],
+                        analyzers=[AnalyzerSchema(name="dummy")],
                         fusion=FusionSchema(name="simple"),
                     )
                 },
@@ -146,11 +146,11 @@ class TestSchemaValidation:
         with pytest.raises(ValueError):
             ConfigSchema(version="1.0", pipelines={})
 
-    def test_pipeline_schema_requires_extractors(self):
-        """Test that at least one extractor is required."""
+    def test_pipeline_schema_requires_analyzers(self):
+        """Test that at least one analyzer is required."""
         with pytest.raises(ValueError):
             PipelineSchema(
-                extractors=[],
+                analyzers=[],
                 fusion=FusionSchema(name="simple"),
             )
 
@@ -164,7 +164,7 @@ class TestLoadYamlConfig:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
         isolation: inline
     fusion:
@@ -175,8 +175,8 @@ pipelines:
         config = load_yaml_string(yaml_content)
         assert config.version == "1.0"
         assert "test" in config.pipelines
-        assert len(config.pipelines["test"].extractors) == 1
-        assert config.pipelines["test"].extractors[0].name == "dummy"
+        assert len(config.pipelines["test"].analyzers) == 1
+        assert config.pipelines["test"].analyzers[0].name == "dummy"
 
     def test_load_config_with_env_vars(self):
         """Test loading config with environment variable substitution."""
@@ -186,7 +186,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: face
         isolation: inline
         config:
@@ -195,7 +195,7 @@ pipelines:
       name: simple
 """
             config = load_yaml_string(yaml_content)
-            assert config.pipelines["test"].extractors[0].config["device"] == "cuda:1"
+            assert config.pipelines["test"].analyzers[0].config["device"] == "cuda:1"
         finally:
             del os.environ["TEST_DEVICE"]
 
@@ -206,7 +206,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: simple
@@ -225,7 +225,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: simple
@@ -267,7 +267,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors: []
+    analyzers: []
     fusion:
       name: simple
 """
@@ -287,7 +287,7 @@ globals:
 
 pipelines:
   face_analysis:
-    extractors:
+    analyzers:
       - name: face
         isolation: venv
         venv_path: /opt/venvs/face
@@ -319,15 +319,15 @@ pipelines:
         assert config.globals["env"] == "production"
 
         pipeline = config.pipelines["face_analysis"]
-        assert len(pipeline.extractors) == 2
+        assert len(pipeline.analyzers) == 2
 
-        face_ext = pipeline.extractors[0]
+        face_ext = pipeline.analyzers[0]
         assert face_ext.name == "face"
         assert face_ext.isolation == "venv"
         assert face_ext.venv_path == "/opt/venvs/face"
         assert face_ext.config["device"] == "cuda:0"
 
-        quality_ext = pipeline.extractors[1]
+        quality_ext = pipeline.analyzers[1]
         assert quality_ext.name == "quality"
         assert quality_ext.isolation == "process"
 

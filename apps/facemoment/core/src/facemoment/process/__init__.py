@@ -1,37 +1,37 @@
 """Process module for A-B*-C architecture.
 
-This module provides process wrappers for running extractors and fusion
+This module provides process wrappers for running analyzers and fusion
 as independent processes with IPC communication.
 
 The generic IPC classes are provided by visualpath, and facemoment provides
 domain-specific observation mappers for serialization.
 
 Components:
-- ExtractorProcess: Wraps a BaseExtractor for standalone IPC execution
+- AnalyzerProcess: Wraps a BaseAnalyzer for standalone IPC execution
 - FusionProcess: Wraps a BaseFusion for standalone IPC execution
-- ExtractorOrchestrator: Thread-parallel extractor execution for Library mode
+- AnalyzerOrchestrator: Thread-parallel analyzer execution for Library mode
 - FacemomentMapper: Domain-specific Observation ↔ Message mappers
 
 Factory Functions:
-- create_extractor_process: Create ExtractorProcess with facemoment mapper
+- create_analyzer_process: Create AnalyzerProcess with facemoment mapper
 - create_fusion_process: Create FusionProcess with facemoment mapper
 
 Example (using factory functions):
-    >>> from facemoment.process import create_extractor_process
-    >>> from facemoment.moment_detector.extractors.face import FaceExtractor
+    >>> from facemoment.process import create_analyzer_process
+    >>> from facemoment.moment_detector.analyzers.face import FaceAnalyzer
     >>>
-    >>> process = create_extractor_process(
-    ...     extractor=FaceExtractor(),
+    >>> process = create_analyzer_process(
+    ...     analyzer=FaceAnalyzer(),
     ...     input_fifo="/tmp/vid_face.mjpg",
     ...     obs_socket="/tmp/obs.sock",
     ... )
     >>> process.run()
 
 Example (direct use with custom mapper):
-    >>> from facemoment.process import ExtractorProcess, FacemomentMapper
+    >>> from facemoment.process import AnalyzerProcess, FacemomentMapper
     >>>
-    >>> process = ExtractorProcess(
-    ...     extractor=FaceExtractor(),
+    >>> process = AnalyzerProcess(
+    ...     analyzer=FaceAnalyzer(),
     ...     observation_mapper=FacemomentMapper(),
     ...     video_reader=reader,
     ...     message_sender=sender,
@@ -42,9 +42,9 @@ from typing import Optional, Callable
 
 # Re-export from visualpath
 from visualpath.process import (
-    ExtractorProcess,
+    AnalyzerProcess,
     FusionProcess,
-    ExtractorOrchestrator,
+    AnalyzerOrchestrator,
     ALIGNMENT_WINDOW_NS,
     # Mappers
     ObservationMapper,
@@ -62,17 +62,17 @@ from facemoment.process.mappers import (
 
 # Re-export base types for convenience
 from visualpath.core.module import Module
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualbase.ipc.interfaces import VideoReader, MessageSender, MessageReceiver
 from visualbase import Frame
 
 # Backwards compatibility aliases
-BaseExtractor = Module
+BaseAnalyzer = Module
 BaseFusion = Module
 
 
-def create_extractor_process(
-    extractor: BaseExtractor,
+def create_analyzer_process(
+    analyzer: BaseAnalyzer,
     video_reader: Optional[VideoReader] = None,
     message_sender: Optional[MessageSender] = None,
     input_fifo: Optional[str] = None,
@@ -81,14 +81,14 @@ def create_extractor_process(
     message_transport: str = "uds",
     reconnect: bool = True,
     on_frame: Optional[Callable[[Frame, Observation], None]] = None,
-) -> ExtractorProcess:
-    """Create an ExtractorProcess with facemoment-specific mapper.
+) -> AnalyzerProcess:
+    """Create an AnalyzerProcess with facemoment-specific mapper.
 
     This is a convenience factory that automatically uses FacemomentMapper
     for Observation ↔ Message serialization.
 
     Args:
-        extractor: The extractor instance to use.
+        analyzer: The analyzer instance to use.
         video_reader: VideoReader instance for receiving frames.
         message_sender: MessageSender instance for sending OBS messages.
         input_fifo: (Legacy) Path to the FIFO for receiving frames.
@@ -99,21 +99,21 @@ def create_extractor_process(
         on_frame: Optional callback for each processed frame.
 
     Returns:
-        ExtractorProcess configured with FacemomentMapper.
+        AnalyzerProcess configured with FacemomentMapper.
 
     Example:
-        >>> from facemoment.process import create_extractor_process
-        >>> from facemoment.moment_detector.extractors.face import FaceExtractor
+        >>> from facemoment.process import create_analyzer_process
+        >>> from facemoment.moment_detector.analyzers.face import FaceAnalyzer
         >>>
-        >>> process = create_extractor_process(
-        ...     extractor=FaceExtractor(),
+        >>> process = create_analyzer_process(
+        ...     analyzer=FaceAnalyzer(),
         ...     input_fifo="/tmp/vid_face.mjpg",
         ...     obs_socket="/tmp/obs.sock",
         ... )
         >>> process.run()
     """
-    return ExtractorProcess(
-        extractor=extractor,
+    return AnalyzerProcess(
+        analyzer=analyzer,
         observation_mapper=FacemomentMapper(),
         video_reader=video_reader,
         message_sender=message_sender,
@@ -180,9 +180,9 @@ def create_fusion_process(
 
 __all__ = [
     # Process wrappers (from visualpath)
-    "ExtractorProcess",
+    "AnalyzerProcess",
     "FusionProcess",
-    "ExtractorOrchestrator",
+    "AnalyzerOrchestrator",
     "ALIGNMENT_WINDOW_NS",
     # Mappers (from visualpath)
     "ObservationMapper",
@@ -194,6 +194,6 @@ __all__ = [
     "QualityObservationMapper",
     "FacemomentMapper",
     # Factory functions
-    "create_extractor_process",
+    "create_analyzer_process",
     "create_fusion_process",
 ]

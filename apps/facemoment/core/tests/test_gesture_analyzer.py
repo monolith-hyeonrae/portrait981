@@ -1,10 +1,10 @@
-"""Tests for GestureExtractor (Phase 9)."""
+"""Tests for GestureAnalyzer (Phase 9)."""
 
 import pytest
 import numpy as np
 
-from vpx.gesture import GestureExtractor, GestureType, HandLandmarkIndex
-from visualpath.extractors.backends.base import HandLandmarks
+from vpx.gesture import GestureAnalyzer, GestureType, HandLandmarkIndex
+from visualpath.analyzers.backends.base import HandLandmarks
 
 
 class MockHandBackend:
@@ -147,30 +147,30 @@ def create_hand_landmarks(
     )
 
 
-class TestGestureExtractor:
+class TestGestureAnalyzer:
     def test_name(self):
-        """Test extractor name."""
+        """Test analyzer name."""
         backend = MockHandBackend()
-        extractor = GestureExtractor(hand_backend=backend)
-        assert extractor.name == "gesture"
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        assert analyzer.name == "gesture"
 
     def test_initialize_and_cleanup(self):
         """Test initialize and cleanup lifecycle."""
         backend = MockHandBackend()
-        extractor = GestureExtractor(hand_backend=backend)
+        analyzer = GestureAnalyzer(hand_backend=backend)
 
-        extractor.initialize()
+        analyzer.initialize()
         assert backend._initialized
 
-        extractor.cleanup()
+        analyzer.cleanup()
         assert not backend._initialized
 
     def test_context_manager(self):
         """Test context manager protocol."""
         backend = MockHandBackend()
-        extractor = GestureExtractor(hand_backend=backend)
+        analyzer = GestureAnalyzer(hand_backend=backend)
 
-        with extractor:
+        with analyzer:
             assert backend._initialized
 
         assert not backend._initialized
@@ -180,11 +180,11 @@ class TestGestureExtractor:
         backend = MockHandBackend()
         backend.set_hands([])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert obs.source == "gesture"
@@ -204,11 +204,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["hand_count"] == 1
         assert obs.signals["gesture_detected"] == 1.0
@@ -227,11 +227,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["gesture_detected"] == 1.0
         assert obs.metadata["gesture_type"] == "thumbs_up"
@@ -249,11 +249,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["gesture_detected"] == 1.0
         assert obs.metadata["gesture_type"] == "open_palm"
@@ -271,11 +271,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["gesture_detected"] == 1.0
         assert obs.metadata["gesture_type"] == "fist"
@@ -293,11 +293,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["gesture_detected"] == 1.0
         assert obs.metadata["gesture_type"] == "pointing"
@@ -326,11 +326,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand1, hand2])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["hand_count"] == 2
         assert obs.signals["gesture_detected"] == 1.0
@@ -347,14 +347,14 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(
+        analyzer = GestureAnalyzer(
             hand_backend=backend,
             min_gesture_confidence=0.6,  # Require higher confidence
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         # Hand is detected but gesture confidence is too low
         assert obs.signals["hand_count"] == 1
@@ -374,11 +374,11 @@ class TestGestureExtractor:
         )
         backend.set_hands([hand])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=0, t_src_ns=1000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["gesture_detected"] == 1.0
         assert obs.metadata["gesture_type"] == "thumbs_up"
@@ -388,11 +388,11 @@ class TestGestureExtractor:
         backend = MockHandBackend()
         backend.set_hands([])
 
-        extractor = GestureExtractor(hand_backend=backend)
-        extractor.initialize()
+        analyzer = GestureAnalyzer(hand_backend=backend)
+        analyzer.initialize()
 
         frame = MockFrame(frame_id=42, t_src_ns=123456789)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.frame_id == 42
         assert obs.t_ns == 123456789
@@ -400,12 +400,12 @@ class TestGestureExtractor:
     def test_extract_without_initialization_raises(self):
         """Test that extract raises error without initialization."""
         backend = MockHandBackend()
-        extractor = GestureExtractor(hand_backend=backend)
+        analyzer = GestureAnalyzer(hand_backend=backend)
 
         frame = MockFrame()
 
         with pytest.raises(RuntimeError, match="not initialized"):
-            extractor.process(frame)
+            analyzer.process(frame)
 
 
 class TestGestureType:

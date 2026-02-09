@@ -12,18 +12,19 @@ Other:
 - PathOrchestrator: Orchestrates multiple Paths
 """
 
-from visualpath.core.module import Module
-from visualpath.core.extractor import Observation, DummyExtractor
+from visualpath.core.module import Module, RuntimeInfo
+from visualpath.core.observation import Observation, DummyAnalyzer
 from visualpath.core.isolation import IsolationLevel, IsolationConfig
 from visualpath.core.path import Path, PathConfig, PathOrchestrator
 
 __all__ = [
     # Primary interface
     "Module",
+    "RuntimeInfo",
     # Data types
     "Observation",
     # Testing
-    "DummyExtractor",
+    "DummyAnalyzer",
     # Isolation
     "IsolationLevel",
     "IsolationConfig",

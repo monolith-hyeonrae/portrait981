@@ -1,14 +1,14 @@
 """Subprocess entry point for VenvWorker.
 
 This module provides the subprocess side of VenvWorker's ZMQ-based
-IPC mechanism. It loads an extractor via entry points and processes
+IPC mechanism. It loads an analyzer via entry points and processes
 frames received over ZMQ.
 
 Usage:
-    python -m visualpath.process.worker --extractor face --ipc-address ipc:///tmp/xxx.sock
+    python -m visualpath.process.worker --analyzer face --ipc-address ipc:///tmp/xxx.sock
 
 Or via the entry point:
-    visualpath-worker --extractor face --ipc-address ipc:///tmp/xxx.sock
+    visualpath-worker --analyzer face --ipc-address ipc:///tmp/xxx.sock
 """
 
 import argparse
@@ -60,18 +60,18 @@ def _deserialize_observation_in_worker(data: Dict[str, Any]) -> "Observation":
     return deserialize_observation(data)
 
 
-def run_worker(extractor_name: str, ipc_address: str) -> int:
+def run_worker(analyzer_name: str, ipc_address: str) -> int:
     """Run the worker process main loop.
 
     Args:
-        extractor_name: Name of the extractor to load via entry points.
+        analyzer_name: Name of the analyzer to load via entry points.
         ipc_address: ZMQ IPC address to bind to.
 
     Returns:
         Exit code (0 for success, non-zero for error).
     """
     import zmq
-    from visualpath.plugin import create_extractor
+    from visualpath.plugin import create_analyzer
     from visualpath.core import Observation  # noqa: F401 - used in type hints
 
     # Create ZMQ socket (REP pattern - reply to requests)
@@ -85,13 +85,13 @@ def run_worker(extractor_name: str, ipc_address: str) -> int:
         logger.error(f"Failed to bind to {ipc_address}: {e}")
         return 1
 
-    # Load and initialize extractor
+    # Load and initialize analyzer
     try:
-        extractor = create_extractor(extractor_name)
-        extractor.initialize()
-        logger.info(f"Loaded extractor: {extractor_name}")
+        analyzer = create_analyzer(analyzer_name)
+        analyzer.initialize()
+        logger.info(f"Loaded analyzer: {analyzer_name}")
     except Exception as e:
-        logger.error(f"Failed to load extractor '{extractor_name}': {e}")
+        logger.error(f"Failed to load analyzer '{analyzer_name}': {e}")
         socket.close()
         context.term()
         return 1
@@ -109,7 +109,7 @@ def run_worker(extractor_name: str, ipc_address: str) -> int:
 
             if msg_type == "ping":
                 # Handshake
-                socket.send_json({"type": "pong", "extractor": extractor_name})
+                socket.send_json({"type": "pong", "analyzer": analyzer_name})
                 continue
 
             if msg_type == "shutdown":
@@ -118,26 +118,26 @@ def run_worker(extractor_name: str, ipc_address: str) -> int:
                 logger.info("Received shutdown signal")
                 break
 
-            if msg_type == "extract":
+            if msg_type == "analyze":
                 # Process frame
                 try:
                     frame = _deserialize_frame(message["frame"])
 
                     # Deserialize deps if present
-                    extractor_deps = None
+                    analyzer_deps = None
                     if "deps" in message and message["deps"]:
-                        extractor_deps = {}
+                        analyzer_deps = {}
                         for name, obs_data in message["deps"].items():
                             if obs_data is not None:
-                                extractor_deps[name] = _deserialize_observation_in_worker(obs_data)
+                                analyzer_deps[name] = _deserialize_observation_in_worker(obs_data)
 
-                    observation = extractor.process(frame, extractor_deps)
+                    observation = analyzer.process(frame, analyzer_deps)
 
                     socket.send_json({
                         "observation": serialize_observation(observation),
                     })
                 except Exception as e:
-                    logger.error(f"Extraction error: {e}")
+                    logger.error(f"Analysis error: {e}")
                     socket.send_json({
                         "error": str(e),
                         "traceback": traceback.format_exc(),
@@ -151,7 +151,7 @@ def run_worker(extractor_name: str, ipc_address: str) -> int:
     finally:
         # Cleanup
         try:
-            extractor.cleanup()
+            analyzer.cleanup()
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
@@ -169,9 +169,9 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--extractor",
+        "--analyzer",
         required=True,
-        help="Name of the extractor to load (via entry points)",
+        help="Name of the analyzer to load (via entry points)",
     )
     parser.add_argument(
         "--ipc-address",
@@ -194,7 +194,7 @@ def main() -> int:
         stream=sys.stderr,
     )
 
-    return run_worker(args.extractor, args.ipc_address)
+    return run_worker(args.analyzer, args.ipc_address)
 
 
 if __name__ == "__main__":

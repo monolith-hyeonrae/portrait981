@@ -61,14 +61,14 @@ class TestPluginsCommand:
         result = main(["plugins", "list"])
         assert result == 0
         captured = capsys.readouterr()
-        assert "Available Extractors:" in captured.out
+        assert "Available Analyzers:" in captured.out
         assert "Available Fusions:" in captured.out
 
     def test_plugins_list_shows_dummy(self, capsys):
-        """Test that dummy extractor is listed."""
+        """Test that dummy analyzer is listed."""
         main(["plugins", "list"])
         captured = capsys.readouterr()
-        # The dummy extractor is registered in pyproject.toml
+        # The dummy analyzer is registered in pyproject.toml
         assert "dummy" in captured.out
 
 
@@ -81,7 +81,7 @@ class TestValidateCommand:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: simple
@@ -112,7 +112,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors: []
+    analyzers: []
     fusion:
       name: simple
 """
@@ -135,7 +135,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: nonexistent_fusion
@@ -163,7 +163,7 @@ class TestRunCommand:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
         isolation: inline
         config:
@@ -188,7 +188,7 @@ pipelines:
                 captured = capsys.readouterr()
                 assert "Dry run" in captured.out
                 assert "test" in captured.out  # Pipeline name
-                assert "dummy" in captured.out  # Extractor name
+                assert "dummy" in captured.out  # Analyzer name
             finally:
                 os.unlink(f.name)
 
@@ -205,12 +205,12 @@ pipelines:
 version: "1.0"
 pipelines:
   pipeline1:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: simple
   pipeline2:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: simple
@@ -239,7 +239,7 @@ pipelines:
 version: "1.0"
 pipelines:
   test:
-    extractors:
+    analyzers:
       - name: dummy
     fusion:
       name: simple

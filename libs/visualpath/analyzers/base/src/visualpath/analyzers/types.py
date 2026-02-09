@@ -1,7 +1,7 @@
-"""Type definitions for extractors.
+"""Type definitions for analyzers.
 
 Contains keypoint indices, gesture types, and other constants used
-by multiple extractors.
+by multiple analyzers.
 """
 
 from enum import Enum
@@ -75,10 +75,10 @@ class HandLandmarkIndex:
 class GestureType(Enum):
     """Recognized gesture types.
 
-    Used by GestureExtractor to classify hand gestures.
+    Used by GestureAnalyzer to classify hand gestures.
 
     Example:
-        >>> gesture, confidence = extractor._classify_gesture(hand)
+        >>> gesture, confidence = analyzer._classify_gesture(hand)
         >>> if gesture == GestureType.V_SIGN:
         ...     print("Peace sign detected!")
     """

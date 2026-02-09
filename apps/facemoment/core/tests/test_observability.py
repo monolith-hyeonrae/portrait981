@@ -18,8 +18,8 @@ from facemoment.observability import (
 )
 from facemoment.observability.records import (
     TraceRecord,
-    FrameExtractRecord,
-    FaceExtractDetail,
+    FrameAnalyzeRecord,
+    FaceAnalyzeDetail,
     GateChangeRecord,
     GateConditionRecord,
     TriggerDecisionRecord,
@@ -129,7 +129,7 @@ class TestObservabilityHub:
         hub.emit(trigger_record)
 
         # VERBOSE level record should not be emitted
-        detail_record = FaceExtractDetail(frame_id=1, face_id=0)
+        detail_record = FaceAnalyzeDetail(frame_id=1, face_id=0)
         hub.emit(detail_record)
 
         records = sink.get_records()
@@ -165,7 +165,7 @@ class TestTraceRecords:
 
     def test_base_record_serialization(self):
         """Test TraceRecord to_dict and to_json."""
-        record = FrameExtractRecord(
+        record = FrameAnalyzeRecord(
             frame_id=100,
             t_ns=1000000000,
             source="face",
@@ -174,7 +174,7 @@ class TestTraceRecords:
         )
 
         d = record.to_dict()
-        assert d["record_type"] == "frame_extract"
+        assert d["record_type"] == "frame_analyze"
         assert d["frame_id"] == 100
         assert d["source"] == "face"
         assert d["face_count"] == 2
@@ -532,7 +532,7 @@ class TestIntegration:
 
             for frame_id in range(10):
                 # Extract record
-                hub.emit(FrameExtractRecord(
+                hub.emit(FrameAnalyzeRecord(
                     frame_id=frame_id,
                     source="face",
                     face_count=1,

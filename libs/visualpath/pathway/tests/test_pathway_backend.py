@@ -36,8 +36,8 @@ class MockFrame:
     data: np.ndarray
 
 
-class CountingExtractor(Module):
-    """Extractor that counts calls for testing."""
+class CountingAnalyzer(Module):
+    """Analyzer that counts calls for testing."""
 
     def __init__(self, name: str, return_value: float = 0.5):
         self._name = name
@@ -181,18 +181,18 @@ class TestExecutionBackend:
 class TestSimpleBackend:
     """Tests for SimpleBackend.execute() with FlowGraph."""
 
-    def test_run_single_extractor(self):
-        """Test running with a single extractor."""
+    def test_run_single_analyzer(self):
+        """Test running with a single analyzer."""
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        extractor = CountingExtractor("test", return_value=0.3)
-        graph = FlowGraph.from_modules([extractor])
+        analyzer = CountingAnalyzer("test", return_value=0.3)
+        graph = FlowGraph.from_modules([analyzer])
         frames = make_frames(5)
 
         result = backend.execute(iter(frames), graph)
 
-        assert extractor._process_count == 5
+        assert analyzer._process_count == 5
         assert len(result.triggers) == 0  # No fusion
 
     def test_run_with_fusion(self):
@@ -200,14 +200,14 @@ class TestSimpleBackend:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        extractor = CountingExtractor("test", return_value=0.7)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
-        graph = FlowGraph.from_modules([extractor, fusion])
+        graph = FlowGraph.from_modules([analyzer, fusion])
         frames = make_frames(5)
 
         result = backend.execute(iter(frames), graph)
 
-        assert extractor._process_count == 5
+        assert analyzer._process_count == 5
         assert fusion._update_count == 5
         assert len(result.triggers) == 5  # All frames trigger
 
@@ -216,9 +216,9 @@ class TestSimpleBackend:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        extractor = CountingExtractor("test", return_value=0.7)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
-        graph = FlowGraph.from_modules([extractor, fusion])
+        graph = FlowGraph.from_modules([analyzer, fusion])
         frames = make_frames(3)
 
         callback_data = []
@@ -229,13 +229,13 @@ class TestSimpleBackend:
         assert len(callback_data) == 3
         assert len(result.triggers) == 3
 
-    def test_run_multiple_extractors(self):
-        """Test running with multiple extractors."""
+    def test_run_multiple_analyzers(self):
+        """Test running with multiple analyzers."""
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext1 = CountingExtractor("ext1", return_value=0.3)
-        ext2 = CountingExtractor("ext2", return_value=0.7)
+        ext1 = CountingAnalyzer("ext1", return_value=0.3)
+        ext2 = CountingAnalyzer("ext2", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="ext1")
         graph = FlowGraph.from_modules([ext1, ext2, fusion])
         frames = make_frames(3)
@@ -274,7 +274,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test", return_value=0.3)
+        ext = CountingAnalyzer("test", return_value=0.3)
         graph = FlowGraph.from_modules([ext])
         frames = make_frames(5)
 
@@ -289,7 +289,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test", return_value=0.7)
+        ext = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
         graph = FlowGraph.from_modules([ext, fusion])
         frames = make_frames(3)
@@ -411,22 +411,22 @@ class TestVideoConnectorSubject:
 class TestPathwayExecution:
     """Tests that verify actual Pathway engine execution."""
 
-    def test_run_single_extractor(self):
-        """Test PathwayBackend.execute() with a single extractor through Pathway engine."""
+    def test_run_single_analyzer(self):
+        """Test PathwayBackend.execute() with a single analyzer through Pathway engine."""
         from visualpath.backends.pathway import PathwayBackend
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        extractor = CountingExtractor("test", return_value=0.3)
-        graph = FlowGraph.from_modules([extractor])
+        analyzer = CountingAnalyzer("test", return_value=0.3)
+        graph = FlowGraph.from_modules([analyzer])
         frames = make_frames(5)
 
         result = backend.execute(iter(frames), graph)
 
         # No fusion = no triggers
         assert len(result.triggers) == 0
-        # Extractor should have been called for each frame
-        assert extractor._process_count == 5
+        # Analyzer should have been called for each frame
+        assert analyzer._process_count == 5
 
     def test_run_with_fusion_triggers(self):
         """Test PathwayBackend.execute() with fusion that fires triggers."""
@@ -434,16 +434,16 @@ class TestPathwayExecution:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        extractor = CountingExtractor("test", return_value=0.7)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
-        graph = FlowGraph.from_modules([extractor, fusion])
+        graph = FlowGraph.from_modules([analyzer, fusion])
         frames = make_frames(5)
 
         result = backend.execute(iter(frames), graph)
 
         # All frames should trigger (value 0.7 > threshold 0.5)
         assert len(result.triggers) == 5
-        assert extractor._process_count == 5
+        assert analyzer._process_count == 5
         assert fusion._update_count == 5
 
     def test_run_with_fusion_no_trigger(self):
@@ -452,26 +452,26 @@ class TestPathwayExecution:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        extractor = CountingExtractor("test", return_value=0.3)
+        analyzer = CountingAnalyzer("test", return_value=0.3)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
-        graph = FlowGraph.from_modules([extractor, fusion])
+        graph = FlowGraph.from_modules([analyzer, fusion])
         frames = make_frames(3)
 
         result = backend.execute(iter(frames), graph)
 
         # value 0.3 < threshold 0.5 → no triggers
         assert len(result.triggers) == 0
-        assert extractor._process_count == 3
+        assert analyzer._process_count == 3
         assert fusion._update_count == 3
 
-    def test_run_multiple_extractors(self):
-        """Test PathwayBackend.execute() with multiple extractors."""
+    def test_run_multiple_analyzers(self):
+        """Test PathwayBackend.execute() with multiple analyzers."""
         from visualpath.backends.pathway import PathwayBackend
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext1 = CountingExtractor("ext1", return_value=0.3)
-        ext2 = CountingExtractor("ext2", return_value=0.7)
+        ext1 = CountingAnalyzer("ext1", return_value=0.3)
+        ext2 = CountingAnalyzer("ext2", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="ext2")
         graph = FlowGraph.from_modules([ext1, ext2, fusion])
         frames = make_frames(3)
@@ -491,9 +491,9 @@ class TestPathwayExecution:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        extractor = CountingExtractor("test", return_value=0.7)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
-        graph = FlowGraph.from_modules([extractor, fusion])
+        graph = FlowGraph.from_modules([analyzer, fusion])
         frames = make_frames(3)
 
         callback_data = []
@@ -505,11 +505,11 @@ class TestPathwayExecution:
         assert len(result.triggers) == 3
 
     def test_run_cleanup_on_error(self):
-        """Test that cleanup happens even if extraction errors."""
+        """Test that cleanup happens even if analysis errors."""
         from visualpath.backends.pathway import PathwayBackend
         from visualpath.flow.graph import FlowGraph
 
-        class ErrorExtractor(Module):
+        class ErrorAnalyzer(Module):
             _name = "error"
             _initialized = False
             _cleaned_up = False
@@ -528,7 +528,7 @@ class TestPathwayExecution:
                 self._cleaned_up = True
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = ErrorExtractor()
+        ext = ErrorAnalyzer()
         graph = FlowGraph.from_modules([ext])
         frames = make_frames(2)
 
@@ -552,7 +552,7 @@ class TestPathwayBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.3)
+        ext = CountingAnalyzer("test", return_value=0.3)
         graph = FlowGraph.from_modules([ext])
         frames = make_frames(5)
 
@@ -569,7 +569,7 @@ class TestPathwayBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.7)
+        ext = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
         graph = FlowGraph.from_modules([ext, fusion])
         frames = make_frames(3)
@@ -585,7 +585,7 @@ class TestPathwayBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.5)
+        ext = CountingAnalyzer("test", return_value=0.5)
         graph = FlowGraph.from_modules([ext])
         frames = make_frames(5)
 
@@ -611,14 +611,14 @@ class TestBackendComparison:
 
         # Simple backend
         simple = SimpleBackend()
-        ext_s = CountingExtractor("test", return_value=0.7)
+        ext_s = CountingAnalyzer("test", return_value=0.7)
         fusion_s = ThresholdFusion(threshold=0.5, depends_on="test")
         graph_s = FlowGraph.from_modules([ext_s, fusion_s])
         simple_result = simple.execute(iter(make_frames(5)), graph_s)
 
         # Pathway backend
         pathway = PathwayBackend(autocommit_ms=10)
-        ext_p = CountingExtractor("test", return_value=0.7)
+        ext_p = CountingAnalyzer("test", return_value=0.7)
         fusion_p = ThresholdFusion(threshold=0.5, depends_on="test")
         graph_p = FlowGraph.from_modules([ext_p, fusion_p])
         pathway_result = pathway.execute(iter(make_frames(5)), graph_p)
@@ -626,15 +626,15 @@ class TestBackendComparison:
         assert len(simple_result.triggers) == len(pathway_result.triggers)
 
     def test_same_process_count(self):
-        """Test both backends call extractors the same number of times."""
+        """Test both backends call analyzers the same number of times."""
         from visualpath.backends.pathway import PathwayBackend
         from visualpath.flow.graph import FlowGraph
 
-        ext_s = CountingExtractor("test", return_value=0.5)
+        ext_s = CountingAnalyzer("test", return_value=0.5)
         graph_s = FlowGraph.from_modules([ext_s])
         SimpleBackend().execute(iter(make_frames(10)), graph_s)
 
-        ext_p = CountingExtractor("test", return_value=0.5)
+        ext_p = CountingAnalyzer("test", return_value=0.5)
         graph_p = FlowGraph.from_modules([ext_p])
         PathwayBackend(autocommit_ms=10).execute(iter(make_frames(10)), graph_p)
 
@@ -645,12 +645,12 @@ class TestBackendComparison:
         from visualpath.backends.pathway import PathwayBackend
         from visualpath.flow.graph import FlowGraph
 
-        ext_s = CountingExtractor("test", return_value=0.2)
+        ext_s = CountingAnalyzer("test", return_value=0.2)
         fusion_s = ThresholdFusion(threshold=0.5, depends_on="test")
         graph_s = FlowGraph.from_modules([ext_s, fusion_s])
         simple_result = SimpleBackend().execute(iter(make_frames(5)), graph_s)
 
-        ext_p = CountingExtractor("test", return_value=0.2)
+        ext_p = CountingAnalyzer("test", return_value=0.2)
         fusion_p = ThresholdFusion(threshold=0.5, depends_on="test")
         graph_p = FlowGraph.from_modules([ext_p, fusion_p])
         pathway_result = PathwayBackend(autocommit_ms=10).execute(
@@ -670,12 +670,12 @@ class TestBackendComparison:
 class TestPathwayOperators:
     """Tests for Pathway operators."""
 
-    def test_create_extractor_udf(self):
-        """Test creating extractor UDF."""
-        from visualpath.backends.pathway.operators import create_extractor_udf
+    def test_create_analyzer_udf(self):
+        """Test creating analyzer UDF."""
+        from visualpath.backends.pathway.operators import create_analyzer_udf
 
-        extractor = CountingExtractor("test", return_value=0.5)
-        udf = create_extractor_udf(extractor)
+        analyzer = CountingAnalyzer("test", return_value=0.5)
+        udf = create_analyzer_udf(analyzer)
 
         frame = make_frame()
         results = udf(frame)
@@ -684,13 +684,13 @@ class TestPathwayOperators:
         assert results[0].source == "test"
         assert results[0].observation is not None
 
-    def test_create_multi_extractor_udf(self):
-        """Test creating multi-extractor UDF."""
-        from visualpath.backends.pathway.operators import create_multi_extractor_udf
+    def test_create_multi_analyzer_udf(self):
+        """Test creating multi-analyzer UDF."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
-        ext1 = CountingExtractor("ext1", return_value=0.3)
-        ext2 = CountingExtractor("ext2", return_value=0.7)
-        udf = create_multi_extractor_udf([ext1, ext2])
+        ext1 = CountingAnalyzer("ext1", return_value=0.3)
+        ext2 = CountingAnalyzer("ext2", return_value=0.7)
+        udf = create_multi_analyzer_udf([ext1, ext2])
 
         frame = make_frame()
         results = udf(frame)
@@ -699,16 +699,16 @@ class TestPathwayOperators:
         sources = {r.source for r in results}
         assert sources == {"ext1", "ext2"}
 
-    def test_apply_extractors_pathway_table(self):
-        """Test apply_extractors creates a valid Pathway table pipeline."""
+    def test_apply_analyzers_pathway_table(self):
+        """Test apply_analyzers creates a valid Pathway table pipeline."""
         from visualpath.backends.pathway.connector import (
             VideoConnectorSubject,
             FrameSchema,
         )
-        from visualpath.backends.pathway.operators import apply_extractors
+        from visualpath.backends.pathway.operators import apply_analyzers
 
-        ext1 = CountingExtractor("ext1", return_value=0.5)
-        ext2 = CountingExtractor("ext2", return_value=0.8)
+        ext1 = CountingAnalyzer("ext1", return_value=0.5)
+        ext2 = CountingAnalyzer("ext2", return_value=0.8)
         frames = make_frames(3)
 
         subject = VideoConnectorSubject(iter(frames))
@@ -716,7 +716,7 @@ class TestPathwayOperators:
             subject, schema=FrameSchema, autocommit_duration_ms=10,
         )
 
-        obs_table = apply_extractors(frames_table, [ext1, ext2])
+        obs_table = apply_analyzers(frames_table, [ext1, ext2])
 
         collected = []
         pw.io.subscribe(
@@ -790,8 +790,8 @@ class TestAPIBackendParameter:
 # =============================================================================
 
 
-class UpstreamExtractor(Module):
-    """Extractor that produces observations used by dependent extractors."""
+class UpstreamAnalyzer(Module):
+    """Analyzer that produces observations used by dependent analyzers."""
 
     def __init__(self, name: str = "upstream"):
         self._name = name
@@ -817,8 +817,8 @@ class UpstreamExtractor(Module):
         pass
 
 
-class DependentExtractor(Module):
-    """Extractor that depends on upstream and records received deps."""
+class DependentAnalyzer(Module):
+    """Analyzer that depends on upstream and records received deps."""
 
     depends = ["upstream"]
 
@@ -854,16 +854,16 @@ class DependentExtractor(Module):
         pass
 
 
-class TestMultiExtractorUDFWithDeps:
-    """Tests for create_multi_extractor_udf with deps accumulation."""
+class TestMultiAnalyzerUDFWithDeps:
+    """Tests for create_multi_analyzer_udf with deps accumulation."""
 
-    def test_deps_passed_to_dependent_extractor(self):
-        """Test that UDF passes deps from upstream to dependent extractor."""
-        from visualpath.backends.pathway.operators import create_multi_extractor_udf
+    def test_deps_passed_to_dependent_analyzer(self):
+        """Test that UDF passes deps from upstream to dependent analyzer."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
-        upstream = UpstreamExtractor()
-        dependent = DependentExtractor()
-        udf = create_multi_extractor_udf([upstream, dependent])
+        upstream = UpstreamAnalyzer()
+        dependent = DependentAnalyzer()
+        udf = create_multi_analyzer_udf([upstream, dependent])
 
         frame = make_frame()
         results = udf(frame)
@@ -875,12 +875,12 @@ class TestMultiExtractorUDFWithDeps:
         assert dependent.received_deps[-1]["upstream"].signals["upstream_value"] == 42
 
     def test_deps_not_passed_when_no_depends(self):
-        """Test that extractors without depends don't get deps."""
-        from visualpath.backends.pathway.operators import create_multi_extractor_udf
+        """Test that analyzers without depends don't get deps."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
-        ext1 = CountingExtractor("ext1")
-        ext2 = CountingExtractor("ext2")
-        udf = create_multi_extractor_udf([ext1, ext2])
+        ext1 = CountingAnalyzer("ext1")
+        ext2 = CountingAnalyzer("ext2")
+        udf = create_multi_analyzer_udf([ext1, ext2])
 
         frame = make_frame()
         results = udf(frame)
@@ -889,9 +889,9 @@ class TestMultiExtractorUDFWithDeps:
 
     def test_deps_accumulate_across_chain(self):
         """Test deps accumulate for multi-level dependency chains."""
-        from visualpath.backends.pathway.operators import create_multi_extractor_udf
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
-        class Level2Extractor(Module):
+        class Level2Analyzer(Module):
             depends = ["dependent"]
 
             def __init__(self):
@@ -917,10 +917,10 @@ class TestMultiExtractorUDFWithDeps:
             def cleanup(self):
                 pass
 
-        upstream = UpstreamExtractor()
-        dependent = DependentExtractor()
-        level2 = Level2Extractor()
-        udf = create_multi_extractor_udf([upstream, dependent, level2])
+        upstream = UpstreamAnalyzer()
+        dependent = DependentAnalyzer()
+        level2 = Level2Analyzer()
+        udf = create_multi_analyzer_udf([upstream, dependent, level2])
 
         frame = make_frame()
         results = udf(frame)
@@ -941,8 +941,8 @@ class TestPathwayDepsExecution:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        upstream = UpstreamExtractor()
-        dependent = DependentExtractor()
+        upstream = UpstreamAnalyzer()
+        dependent = DependentAnalyzer()
         graph = FlowGraph.from_modules([upstream, dependent])
         frames = make_frames(3)
 
@@ -1042,13 +1042,13 @@ class TestPathwayStats:
 
         stats = PathwayStats()
         assert stats.frames_ingested == 0
-        assert stats.frames_extracted == 0
-        assert stats.extractions_completed == 0
-        assert stats.extractions_failed == 0
+        assert stats.frames_analyzed == 0
+        assert stats.analyses_completed == 0
+        assert stats.analyses_failed == 0
         assert stats.triggers_fired == 0
         assert stats.observations_output == 0
-        assert stats.total_extraction_ms == 0.0
-        assert stats.per_extractor_time_ms == {}
+        assert stats.total_analysis_ms == 0.0
+        assert stats.per_analyzer_time_ms == {}
         assert stats.pipeline_start_ns == 0
         assert stats.pipeline_end_ns == 0
 
@@ -1062,39 +1062,39 @@ class TestPathwayStats:
         stats.record_ingestion()
         assert stats.frames_ingested == 3
 
-    def test_record_extraction_success(self):
-        """Test recording successful extractions."""
+    def test_record_analysis_success(self):
+        """Test recording successful analyses."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
-        stats.record_extraction("face", 10.0, success=True)
-        stats.record_extraction("pose", 20.0, success=True)
-        assert stats.extractions_completed == 2
-        assert stats.extractions_failed == 0
-        assert stats.total_extraction_ms == 30.0
+        stats.record_analysis("face", 10.0, success=True)
+        stats.record_analysis("pose", 20.0, success=True)
+        assert stats.analyses_completed == 2
+        assert stats.analyses_failed == 0
+        assert stats.total_analysis_ms == 30.0
 
-    def test_record_extraction_failure(self):
-        """Test recording failed extractions."""
+    def test_record_analysis_failure(self):
+        """Test recording failed analyses."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
-        stats.record_extraction("face", 5.0, success=False)
-        assert stats.extractions_completed == 0
-        assert stats.extractions_failed == 1
-        assert stats.total_extraction_ms == 5.0
+        stats.record_analysis("face", 5.0, success=False)
+        assert stats.analyses_completed == 0
+        assert stats.analyses_failed == 1
+        assert stats.total_analysis_ms == 5.0
 
-    def test_per_extractor_ema(self):
-        """Test EMA calculation for per-extractor times."""
+    def test_per_analyzer_ema(self):
+        """Test EMA calculation for per-analyzer times."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
         # First call sets the initial value
-        stats.record_extraction("face", 10.0)
-        assert stats.per_extractor_time_ms["face"] == 10.0
+        stats.record_analysis("face", 10.0)
+        assert stats.per_analyzer_time_ms["face"] == 10.0
 
         # Second call applies EMA: 0.3 * 20 + 0.7 * 10 = 13.0
-        stats.record_extraction("face", 20.0)
-        assert abs(stats.per_extractor_time_ms["face"] - 13.0) < 0.01
+        stats.record_analysis("face", 20.0)
+        assert abs(stats.per_analyzer_time_ms["face"] - 13.0) < 0.01
 
     def test_record_trigger(self):
         """Test recording triggers."""
@@ -1113,41 +1113,41 @@ class TestPathwayStats:
         stats.record_observation_output()
         assert stats.observations_output == 1
 
-    def test_record_frame_extracted(self):
-        """Test recording frame extraction completion."""
+    def test_record_frame_analyzed(self):
+        """Test recording frame analysis completion."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
-        stats.record_frame_extracted()
-        stats.record_frame_extracted()
-        assert stats.frames_extracted == 2
+        stats.record_frame_analyzed()
+        stats.record_frame_analyzed()
+        assert stats.frames_analyzed == 2
 
-    def test_avg_extraction_ms(self):
-        """Test average extraction time."""
+    def test_avg_analysis_ms(self):
+        """Test average analysis time."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
-        stats.record_extraction("a", 10.0)
-        stats.record_extraction("b", 20.0)
-        assert abs(stats.avg_extraction_ms - 15.0) < 0.01
+        stats.record_analysis("a", 10.0)
+        stats.record_analysis("b", 20.0)
+        assert abs(stats.avg_analysis_ms - 15.0) < 0.01
 
-    def test_avg_extraction_ms_empty(self):
-        """Test average extraction time when empty."""
+    def test_avg_analysis_ms_empty(self):
+        """Test average analysis time when empty."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
-        assert stats.avg_extraction_ms == 0.0
+        assert stats.avg_analysis_ms == 0.0
 
-    def test_p95_extraction_ms(self):
-        """Test p95 extraction time."""
+    def test_p95_analysis_ms(self):
+        """Test p95 analysis time."""
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
         # Add 20 values: 1..20
         for i in range(1, 21):
-            stats.record_extraction("ext", float(i))
+            stats.record_analysis("ext", float(i))
         # p95 of 1..20 → index 19 (0-based), value 19 or 20
-        p95 = stats.p95_extraction_ms
+        p95 = stats.p95_analysis_ms
         assert p95 >= 19.0
 
     def test_p95_empty(self):
@@ -1155,7 +1155,7 @@ class TestPathwayStats:
         from visualpath.backends.pathway.stats import PathwayStats
 
         stats = PathwayStats()
-        assert stats.p95_extraction_ms == 0.0
+        assert stats.p95_analysis_ms == 0.0
 
     def test_pipeline_duration(self):
         """Test pipeline duration calculation."""
@@ -1183,7 +1183,7 @@ class TestPathwayStats:
         stats = PathwayStats()
         stats.mark_pipeline_start()
         for _ in range(10):
-            stats.record_frame_extracted()
+            stats.record_frame_analyzed()
         import time
         time.sleep(0.01)
         stats.mark_pipeline_end()
@@ -1202,18 +1202,18 @@ class TestPathwayStats:
 
         stats = PathwayStats()
         stats.record_ingestion()
-        stats.record_extraction("face", 10.0)
+        stats.record_analysis("face", 10.0)
         stats.record_trigger()
 
         d = stats.to_dict()
         assert d["frames_ingested"] == 1
-        assert d["extractions_completed"] == 1
+        assert d["analyses_completed"] == 1
         assert d["triggers_fired"] == 1
-        assert d["total_extraction_ms"] == 10.0
-        assert "face" in d["per_extractor_time_ms"]
+        assert d["total_analysis_ms"] == 10.0
+        assert "face" in d["per_analyzer_time_ms"]
         assert "throughput_fps" in d
-        assert "avg_extraction_ms" in d
-        assert "p95_extraction_ms" in d
+        assert "avg_analysis_ms" in d
+        assert "p95_analysis_ms" in d
         assert "pipeline_duration_sec" in d
 
     def test_reset(self):
@@ -1222,23 +1222,23 @@ class TestPathwayStats:
 
         stats = PathwayStats()
         stats.record_ingestion()
-        stats.record_extraction("face", 10.0)
+        stats.record_analysis("face", 10.0)
         stats.record_trigger()
         stats.record_observation_output()
-        stats.record_frame_extracted()
+        stats.record_frame_analyzed()
         stats.mark_pipeline_start()
         stats.mark_pipeline_end()
 
         stats.reset()
 
         assert stats.frames_ingested == 0
-        assert stats.frames_extracted == 0
-        assert stats.extractions_completed == 0
-        assert stats.extractions_failed == 0
+        assert stats.frames_analyzed == 0
+        assert stats.analyses_completed == 0
+        assert stats.analyses_failed == 0
         assert stats.triggers_fired == 0
         assert stats.observations_output == 0
-        assert stats.total_extraction_ms == 0.0
-        assert stats.per_extractor_time_ms == {}
+        assert stats.total_analysis_ms == 0.0
+        assert stats.per_analyzer_time_ms == {}
         assert stats.pipeline_start_ns == 0
         assert stats.pipeline_end_ns == 0
 
@@ -1254,8 +1254,8 @@ class TestPathwayStats:
         def worker():
             for _ in range(n_ops):
                 stats.record_ingestion()
-                stats.record_extraction("ext", 1.0)
-                stats.record_frame_extracted()
+                stats.record_analysis("ext", 1.0)
+                stats.record_frame_analyzed()
 
         threads = [threading.Thread(target=worker) for _ in range(n_threads)]
         for t in threads:
@@ -1264,8 +1264,8 @@ class TestPathwayStats:
             t.join()
 
         assert stats.frames_ingested == n_threads * n_ops
-        assert stats.extractions_completed == n_threads * n_ops
-        assert stats.frames_extracted == n_threads * n_ops
+        assert stats.analyses_completed == n_threads * n_ops
+        assert stats.frames_analyzed == n_threads * n_ops
 
 
 # =============================================================================
@@ -1284,7 +1284,7 @@ class TestPathwayBackendStats:
         backend = PathwayBackend()
         s = backend.get_stats()
         assert s["frames_ingested"] == 0
-        assert s["frames_extracted"] == 0
+        assert s["frames_analyzed"] == 0
 
     def test_get_stats_after_run(self):
         """Test get_stats after running pipeline."""
@@ -1292,17 +1292,17 @@ class TestPathwayBackendStats:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        extractor = CountingExtractor("test", return_value=0.5)
-        graph = FlowGraph.from_modules([extractor])
+        analyzer = CountingAnalyzer("test", return_value=0.5)
+        graph = FlowGraph.from_modules([analyzer])
         frames = make_frames(5)
 
         backend.execute(iter(frames), graph)
 
         s = backend.get_stats()
         assert s["frames_ingested"] == 5
-        assert s["frames_extracted"] == 5
-        assert s["extractions_completed"] == 5
-        assert s["extractions_failed"] == 0
+        assert s["frames_analyzed"] == 5
+        assert s["analyses_completed"] == 5
+        assert s["analyses_failed"] == 0
         assert s["observations_output"] == 5
         assert s["pipeline_duration_sec"] > 0
         assert s["throughput_fps"] > 0
@@ -1313,9 +1313,9 @@ class TestPathwayBackendStats:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        extractor = CountingExtractor("test", return_value=0.7)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
-        graph = FlowGraph.from_modules([extractor, fusion])
+        graph = FlowGraph.from_modules([analyzer, fusion])
         frames = make_frames(3)
 
         backend.execute(iter(frames), graph)
@@ -1323,22 +1323,22 @@ class TestPathwayBackendStats:
         s = backend.get_stats()
         assert s["triggers_fired"] == 3
 
-    def test_get_stats_per_extractor_time(self):
-        """Test per-extractor time tracking."""
+    def test_get_stats_per_analyzer_time(self):
+        """Test per-analyzer time tracking."""
         from visualpath.backends.pathway import PathwayBackend
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext1 = CountingExtractor("ext1", return_value=0.3)
-        ext2 = CountingExtractor("ext2", return_value=0.7)
+        ext1 = CountingAnalyzer("ext1", return_value=0.3)
+        ext2 = CountingAnalyzer("ext2", return_value=0.7)
         graph = FlowGraph.from_modules([ext1, ext2])
         frames = make_frames(3)
 
         backend.execute(iter(frames), graph)
 
         s = backend.get_stats()
-        assert "ext1" in s["per_extractor_time_ms"]
-        assert "ext2" in s["per_extractor_time_ms"]
+        assert "ext1" in s["per_analyzer_time_ms"]
+        assert "ext2" in s["per_analyzer_time_ms"]
 
     def test_stats_reset_between_runs(self):
         """Test that stats reset between consecutive runs."""
@@ -1346,7 +1346,7 @@ class TestPathwayBackendStats:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.5)
+        ext = CountingAnalyzer("test", return_value=0.5)
 
         # First run
         graph1 = FlowGraph.from_modules([ext])
@@ -1355,7 +1355,7 @@ class TestPathwayBackendStats:
         assert s1["frames_ingested"] == 5
 
         # Second run - stats should be fresh
-        ext2 = CountingExtractor("test", return_value=0.5)
+        ext2 = CountingAnalyzer("test", return_value=0.5)
         graph2 = FlowGraph.from_modules([ext2])
         backend.execute(iter(make_frames(3)), graph2)
         s2 = backend.get_stats()
@@ -1367,16 +1367,16 @@ class TestPathwayBackendStats:
         from visualpath.flow.graph import FlowGraph
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.5)
+        ext = CountingAnalyzer("test", return_value=0.5)
         graph = FlowGraph.from_modules([ext])
         frames = make_frames(5)
 
         backend.execute(iter(frames), graph)
 
         s = backend.get_stats()
-        assert s["total_extraction_ms"] > 0
-        assert s["avg_extraction_ms"] > 0
-        assert s["p95_extraction_ms"] >= 0
+        assert s["total_analysis_ms"] > 0
+        assert s["avg_analysis_ms"] > 0
+        assert s["p95_analysis_ms"] >= 0
 
 
 # =============================================================================
@@ -1409,7 +1409,7 @@ class TestPathwayObservabilityHub:
         hub.configure(level=TraceLevel.MINIMAL, sinks=[sink])
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.5)
+        ext = CountingAnalyzer("test", return_value=0.5)
         graph = FlowGraph.from_modules([ext])
         backend.execute(iter(make_frames(3)), graph)
 
@@ -1434,7 +1434,7 @@ class TestPathwayObservabilityHub:
         hub.configure(level=TraceLevel.NORMAL, sinks=[sink])
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.5)
+        ext = CountingAnalyzer("test", return_value=0.5)
         graph = FlowGraph.from_modules([ext])
         backend.execute(iter(make_frames(3)), graph)
 
@@ -1458,7 +1458,7 @@ class TestPathwayObservabilityHub:
         hub.add_sink(sink)
 
         backend = PathwayBackend(autocommit_ms=10)
-        ext = CountingExtractor("test", return_value=0.5)
+        ext = CountingAnalyzer("test", return_value=0.5)
         graph = FlowGraph.from_modules([ext])
         backend.execute(iter(make_frames(3)), graph)
 
@@ -1474,12 +1474,12 @@ class TestSplitByDependency:
     """Tests for FlowGraphConverter._split_by_dependency."""
 
     def test_all_independent(self):
-        """All extractors are independent -> one group each."""
+        """All analyzers are independent -> one group each."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
 
-        ext1 = CountingExtractor("face")
-        ext2 = CountingExtractor("pose")
-        ext3 = CountingExtractor("scene")
+        ext1 = CountingAnalyzer("face")
+        ext2 = CountingAnalyzer("pose")
+        ext3 = CountingAnalyzer("scene")
 
         groups = FlowGraphConverter._split_by_dependency([ext1, ext2, ext3])
 
@@ -1487,13 +1487,13 @@ class TestSplitByDependency:
         assert [g[0].name for g in groups] == ["face", "pose", "scene"]
 
     def test_all_chained(self):
-        """All extractors form a chain -> single group."""
+        """All analyzers form a chain -> single group."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
 
-        ext1 = CountingExtractor("face_detect")
-        ext2 = CountingExtractor("face_expression")
+        ext1 = CountingAnalyzer("face_detect")
+        ext2 = CountingAnalyzer("face_expression")
         ext2.depends = ["face_detect"]
-        ext3 = CountingExtractor("face_emotion")
+        ext3 = CountingAnalyzer("face_emotion")
         ext3.depends = ["face_expression"]
 
         groups = FlowGraphConverter._split_by_dependency([ext1, ext2, ext3])
@@ -1502,13 +1502,13 @@ class TestSplitByDependency:
         assert len(groups[0]) == 3
 
     def test_mixed_deps(self):
-        """Mix of dependent and independent extractors."""
+        """Mix of dependent and independent analyzers."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
 
-        face = CountingExtractor("face_detect")
-        expression = CountingExtractor("face_expression")
+        face = CountingAnalyzer("face_detect")
+        expression = CountingAnalyzer("face_expression")
         expression.depends = ["face_detect"]
-        pose = CountingExtractor("pose_detect")
+        pose = CountingAnalyzer("pose_detect")
 
         groups = FlowGraphConverter._split_by_dependency([face, expression, pose])
 
@@ -1517,22 +1517,22 @@ class TestSplitByDependency:
         assert ["face_detect", "face_expression"] in group_names
         assert ["pose_detect"] in group_names
 
-    def test_single_extractor(self):
-        """Single extractor -> single group."""
+    def test_single_analyzer(self):
+        """Single analyzer -> single group."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
 
-        ext = CountingExtractor("face")
+        ext = CountingAnalyzer("face")
         groups = FlowGraphConverter._split_by_dependency([ext])
 
         assert len(groups) == 1
         assert len(groups[0]) == 1
 
     def test_preserves_order_within_group(self):
-        """Extractors within a group maintain insertion order."""
+        """Analyzers within a group maintain insertion order."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
 
-        ext1 = CountingExtractor("face_detect")
-        ext2 = CountingExtractor("face_expression")
+        ext1 = CountingAnalyzer("face_detect")
+        ext2 = CountingAnalyzer("face_expression")
         ext2.depends = ["face_detect"]
 
         groups = FlowGraphConverter._split_by_dependency([ext1, ext2])

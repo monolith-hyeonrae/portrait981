@@ -55,7 +55,7 @@ from visualpath.flow.specs import (
 )
 
 if TYPE_CHECKING:
-    from visualpath.core.extractor import Observation
+    from visualpath.core.observation import Observation
 
 
 # Comparison operators for signal filters
@@ -340,7 +340,7 @@ class SimpleInterpreter:
         return [data]
 
     # -----------------------------------------------------------------
-    # Modules (unified extractor/fusion processing)
+    # Modules (unified analyzer/fusion processing)
     # -----------------------------------------------------------------
 
     def _interpret_modules(
@@ -352,7 +352,7 @@ class SimpleInterpreter:
         previous modules' outputs. Observations with should_trigger=True
         are added to results.
         """
-        from visualpath.core.extractor import Observation
+        from visualpath.core.observation import Observation
 
         frame = data.frame
         if frame is None:

@@ -9,7 +9,7 @@ GR차량 시나리오 특화 기능 포함.
 ```
 src/facemoment/
 ├── __init__.py                # fm.run() high-level API
-├── main.py                    # run(), Result, EXTRACTORS, FUSIONS 상수
+├── main.py                    # run(), Result, ANALYZERS, FUSIONS 상수
 ├── cli/
 │   ├── __init__.py            # main(), argparse
 │   ├── utils.py               # visualbase 호환성 레이어
@@ -19,20 +19,20 @@ src/facemoment/
 │       ├── process.py         # facemoment process
 │       └── benchmark.py       # facemoment benchmark
 ├── pipeline/
-│   ├── config.py              # ExtractorConfig, PipelineConfig
+│   ├── config.py              # AnalyzerConfig, PipelineConfig
 │   ├── orchestrator.py        # PipelineOrchestrator (Distributed 모드)
 │   └── pathway_pipeline.py    # FacemomentPipeline (Pathway 통합)
 ├── moment_detector/
 │   ├── detector.py            # MomentDetector (Library 모드)
 │   ├── visualize/             # DebugVisualizer, 타이밍 오버레이, stats_panel
-│   ├── extractors/
+│   ├── analyzers/
 │   │   ├── __init__.py        # Lazy import, Output 타입 re-export
 │   │   ├── base.py            # Module, @processing_step, ProcessingStep
 │   │   ├── outputs.py         # FaceDetectOutput, ExpressionOutput 등
 │   │   ├── types.py           # FaceObservation, DetectedFace 등
-│   │   ├── quality.py         # QualityExtractor
-│   │   ├── face_classifier.py # FaceClassifierExtractor
-│   │   ├── dummy.py           # DummyExtractor
+│   │   ├── quality.py         # QualityAnalyzer
+│   │   ├── face_classifier.py # FaceClassifierAnalyzer
+│   │   ├── dummy.py           # DummyAnalyzer
 │   │   └── source.py          # SourceProcessor, BackendPreprocessor
 │   ├── fusion/
 │   │   ├── highlight.py       # HighlightFusion
@@ -47,7 +47,7 @@ src/facemoment/
     └── mappers.py             # FacemomentMapper
 ```
 
-ML 의존성이 필요한 extractor는 별도 패키지로 분리됨 (face_detect, expression, face, pose, gesture).
+ML 의존성이 필요한 analyzer는 별도 패키지로 분리됨 (face_detect, expression, face, pose, gesture).
 
 ## High-Level API
 
@@ -66,7 +66,7 @@ result = fm.run("video.mp4", fps=10, cooldown=3.0, backend="pathway", output_dir
 A: Video Input (visualbase)
      │ Frame
      ▼
-B* Extractors (VenvWorker/InlineWorker)
+B* Analyzers (VenvWorker/InlineWorker)
      face_detect ─deps─▶ expression, face_classifier
      pose, gesture, quality
      │ Observations
@@ -79,33 +79,33 @@ A: Clip Output → clips/highlight_001.mp4
 
 ## deps 패턴
 
-Extractor 간 데이터 전달. `depends` 선언 → 실행 시 `deps` dict로 이전 결과 수신:
+Analyzer 간 데이터 전달. `depends` 선언 → 실행 시 `deps` dict로 이전 결과 수신:
 
 ```python
-class ExpressionExtractor(BaseExtractor):
+class ExpressionAnalyzer(BaseAnalyzer):
     depends = ["face_detect"]
 
-    def extract(self, frame, deps=None):
+    def analyze(self, frame, deps=None):
         face_obs = deps["face_detect"] if deps else None
 ```
 
 모든 실행 경로 (Pathway, Simple, Worker, VenvWorker ZMQ)에서 동일한 deps 누적 패턴 적용.
 의존성 순서는 Path 초기화 시 자동 검증.
 
-## Extractor 전체 목록
+## Analyzer 전체 목록
 
-| Extractor | depends | 패키지 | Backend | Steps |
-|-----------|---------|--------|---------|-------|
-| FaceDetectionExtractor | - | facemoment-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
-| ExpressionExtractor | face_detect | facemoment-expression | HSEmotion | expression → aggregation |
-| FaceClassifierExtractor | face_detect | facemoment (core) | 내장 로직 | track_update → classify → role_assignment |
-| FaceExtractor | - | facemoment-face | InsightFace + HSEmotion | detect → expression/tracking → roi_filter |
-| PoseExtractor | - | facemoment-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
-| GestureExtractor | - | facemoment-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
-| QualityExtractor | - | facemoment (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
-| DummyExtractor | - | facemoment (core) | - | 테스트용 |
+| Analyzer | depends | 패키지 | Backend | Steps |
+|----------|---------|--------|---------|-------|
+| FaceDetectionAnalyzer | - | vpx-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
+| ExpressionAnalyzer | face_detect | vpx-expression | HSEmotion | expression → aggregation |
+| FaceClassifierAnalyzer | face_detect | facemoment (core) | 내장 로직 | track_update → classify → role_assignment |
+| FaceAnalyzer | - | vpx-face | InsightFace + HSEmotion | detect → expression/tracking → roi_filter |
+| PoseAnalyzer | - | vpx-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
+| GestureAnalyzer | - | vpx-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
+| QualityAnalyzer | - | facemoment (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
+| DummyAnalyzer | - | facemoment (core) | - | 테스트용 |
 
-## FaceClassifierExtractor
+## FaceClassifierAnalyzer
 
 탑승자 역할 분류 (core 패키지, ML 의존성 없음). depends=["face_detect"].
 
@@ -122,13 +122,13 @@ class ExpressionExtractor(BaseExtractor):
 
 | 트리거 | 소스 | 설명 |
 |--------|------|------|
-| expression_spike | FaceExtractor | 표정 급변 |
-| head_turn | FaceExtractor | 빠른 머리 회전 |
-| hand_wave | PoseExtractor | 손 흔들기 |
+| expression_spike | FaceAnalyzer | 표정 급변 |
+| head_turn | FaceAnalyzer | 빠른 머리 회전 |
+| hand_wave | PoseAnalyzer | 손 흔들기 |
 | camera_gaze | HighlightFusion | 카메라 응시 (gokart) |
 | passenger_interaction | HighlightFusion | 동승자 상호작용 (gokart) |
-| gesture_vsign | GestureExtractor | V사인 (gokart) |
-| gesture_thumbsup | GestureExtractor | 엄지척 (gokart) |
+| gesture_vsign | GestureAnalyzer | V사인 (gokart) |
+| gesture_thumbsup | GestureAnalyzer | 엄지척 (gokart) |
 
 HighlightFusion `main_only=True` (기본): 주탑승자만 트리거. 동승자 표정/헤드턴 무시.
 
@@ -163,11 +163,11 @@ HighlightFusion `main_only=True` (기본): 주탑승자만 트리거. 동승자 
 ## CLI 명령어
 
 ```bash
-facemoment info                              # extractor/backend 상태
+facemoment info                              # analyzer/backend 상태
 facemoment info --deps                       # 의존성 그래프
 facemoment info --steps                      # 처리 단계 DAG
 
-facemoment debug video.mp4                   # 모든 extractor (inline)
+facemoment debug video.mp4                   # 모든 analyzer (inline)
 facemoment debug video.mp4 -e face           # face만 (+ classifier 자동)
 facemoment debug video.mp4 -e pose           # pose만
 facemoment debug video.mp4 -e face,pose      # 복수 선택

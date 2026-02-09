@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Optional
 from facemoment.observability import ObservabilityHub, TraceLevel
 from facemoment.observability.records import (
     BackpressureRecord,
-    ExtractorTimingRecord,
+    AnalyzerTimingRecord,
     ObservationMergeRecord,
     PathwayFrameRecord,
     PipelineStatsRecord,
@@ -28,7 +28,7 @@ class PathwayMonitor:
     """Real-time monitoring for Pathway pipeline.
 
     Responsibilities:
-    1. Collect per-extractor timing (time.perf_counter_ns)
+    1. Collect per-analyzer timing (time.perf_counter_ns)
     2. Maintain rolling statistics (deque, last N frames)
     3. Provide overlay stats (get_frame_stats, get_rolling_stats)
     4. Emit TraceRecords when hub is enabled
@@ -54,8 +54,8 @@ class PathwayMonitor:
         self._frame_id: int = 0
         self._frame_t_ns: int = 0
         self._frame_start_ns: int = 0
-        self._extractor_start_ns: int = 0
-        self._extractor_timings: Dict[str, float] = {}  # name -> ms
+        self._analyzer_start_ns: int = 0
+        self._analyzer_timings: Dict[str, float] = {}  # name -> ms
         self._observations_produced: List[str] = []
         self._observations_failed: List[str] = []
         self._fusion_start_ns: int = 0
@@ -70,10 +70,10 @@ class PathwayMonitor:
         self._total_frames: int = 0
         self._total_triggers: int = 0
         self._session_start_ns: int = 0
-        self._all_extractor_timings: Dict[str, List[float]] = collections.defaultdict(list)
+        self._all_analyzer_timings: Dict[str, List[float]] = collections.defaultdict(list)
         self._all_fusion_timings: List[float] = []
         self._gate_open_count: int = 0
-        self._extractor_error_counts: Dict[str, int] = collections.defaultdict(int)
+        self._analyzer_error_counts: Dict[str, int] = collections.defaultdict(int)
 
         # --- Backpressure tracking ---
         self._report_start_ns: int = 0
@@ -95,7 +95,7 @@ class PathwayMonitor:
         self._frame_t_ns = getattr(frame, "t_src_ns", 0)
 
         # Reset per-frame accumulators
-        self._extractor_timings.clear()
+        self._analyzer_timings.clear()
         self._observations_produced.clear()
         self._observations_failed.clear()
         self._fusion_ms = 0.0
@@ -123,7 +123,7 @@ class PathwayMonitor:
         frame_stats = {
             "frame_id": self._frame_id,
             "t_ns": self._frame_t_ns,
-            "extractor_timings_ms": dict(self._extractor_timings),
+            "analyzer_timings_ms": dict(self._analyzer_timings),
             "total_frame_ms": total_ms,
             "observations_produced": list(self._observations_produced),
             "observations_failed": list(self._observations_failed),
@@ -137,8 +137,8 @@ class PathwayMonitor:
             self._total_triggers += 1
 
         # Accumulate for session stats
-        for name, ms in self._extractor_timings.items():
-            self._all_extractor_timings[name].append(ms)
+        for name, ms in self._analyzer_timings.items():
+            self._all_analyzer_timings[name].append(ms)
         if self._fusion_ms > 0:
             self._all_fusion_timings.append(self._fusion_ms)
 
@@ -147,7 +147,7 @@ class PathwayMonitor:
             self._hub.emit(PathwayFrameRecord(
                 frame_id=self._frame_id,
                 t_ns=self._frame_t_ns,
-                extractor_timings_ms=dict(self._extractor_timings),
+                analyzer_timings_ms=dict(self._analyzer_timings),
                 total_frame_ms=total_ms,
                 observations_produced=list(self._observations_produced),
                 observations_failed=list(self._observations_failed),
@@ -160,48 +160,48 @@ class PathwayMonitor:
             self._emit_backpressure_record(now)
 
     # ------------------------------------------------------------------
-    # Extractor timing
+    # Analyzer timing
     # ------------------------------------------------------------------
 
-    def begin_extractor(self, name: str) -> None:
-        """Start timing an extractor.
+    def begin_analyzer(self, name: str) -> None:
+        """Start timing an analyzer.
 
         Args:
-            name: Extractor name.
+            name: Analyzer name.
         """
-        self._extractor_start_ns = time.perf_counter_ns()
+        self._analyzer_start_ns = time.perf_counter_ns()
 
-    def end_extractor(
+    def end_analyzer(
         self,
         name: str,
         obs: Any = None,
         sub_timings: Optional[Dict[str, float]] = None,
         elapsed_ms: Optional[float] = None,
     ) -> None:
-        """Finish timing an extractor.
+        """Finish timing an analyzer.
 
         Args:
-            name: Extractor name.
-            obs: Observation result (None if extractor failed/produced nothing).
-            sub_timings: Optional sub-component timings from the extractor.
+            name: Analyzer name.
+            obs: Observation result (None if analyzer failed/produced nothing).
+            sub_timings: Optional sub-component timings from the analyzer.
             elapsed_ms: Pre-computed elapsed time in ms. If provided, skips
-                begin_extractor timing. Used for parallel worker results.
+                begin_analyzer timing. Used for parallel worker results.
         """
         if elapsed_ms is None:
-            elapsed_ms = (time.perf_counter_ns() - self._extractor_start_ns) / 1_000_000
-        self._extractor_timings[name] = elapsed_ms
+            elapsed_ms = (time.perf_counter_ns() - self._analyzer_start_ns) / 1_000_000
+        self._analyzer_timings[name] = elapsed_ms
 
         if obs is not None:
             self._observations_produced.append(name)
         else:
             self._observations_failed.append(name)
-            self._extractor_error_counts[name] += 1
+            self._analyzer_error_counts[name] += 1
 
-        # Emit ExtractorTimingRecord
+        # Emit AnalyzerTimingRecord
         if self._hub.enabled:
-            self._hub.emit(ExtractorTimingRecord(
+            self._hub.emit(AnalyzerTimingRecord(
                 frame_id=self._frame_id,
-                extractor_name=name,
+                analyzer_name=name,
                 processing_ms=elapsed_ms,
                 produced_observation=obs is not None,
                 sub_timings_ms=dict(sub_timings) if sub_timings else {},
@@ -296,7 +296,7 @@ class PathwayMonitor:
         """Get current frame statistics for overlay.
 
         Returns:
-            Dict with frame timing, extractor breakdown, fusion decision.
+            Dict with frame timing, analyzer breakdown, fusion decision.
             Always returns data regardless of trace level.
         """
         if not self._history:
@@ -306,7 +306,7 @@ class PathwayMonitor:
         rolling = self.get_rolling_stats()
 
         # Determine bottleneck
-        timings = current["extractor_timings_ms"]
+        timings = current["analyzer_timings_ms"]
         total_ext_ms = sum(timings.values()) if timings else 0
         slowest = max(timings, key=timings.get) if timings else ""
         bottleneck_pct = (
@@ -324,11 +324,11 @@ class PathwayMonitor:
             # Current frame
             "frame_id": current["frame_id"],
             "total_frame_ms": current["total_frame_ms"],
-            "extractor_timings_ms": current["extractor_timings_ms"],
+            "analyzer_timings_ms": current["analyzer_timings_ms"],
             "fusion_ms": current["fusion_ms"],
             "fusion_decision": current["fusion_decision"],
             # Bottleneck
-            "slowest_extractor": slowest,
+            "slowest_analyzer": slowest,
             "bottleneck_pct": bottleneck_pct,
             # Main face
             "main_face": main_face_str,
@@ -342,15 +342,15 @@ class PathwayMonitor:
         """Get rolling statistics over recent frames.
 
         Returns:
-            Dict with effective FPS, per-extractor avg/p95/max, bottleneck.
+            Dict with effective FPS, per-analyzer avg/p95/max, bottleneck.
         """
         if len(self._history) < 2:
             return {
                 "effective_fps": 0.0,
                 "fps_ratio": 0.0,
-                "extractor_avg_ms": {},
-                "extractor_p95_ms": {},
-                "extractor_max_ms": {},
+                "analyzer_avg_ms": {},
+                "analyzer_p95_ms": {},
+                "analyzer_max_ms": {},
             }
 
         frames = list(self._history)
@@ -361,12 +361,12 @@ class PathwayMonitor:
         effective_fps = (n * 1000.0 / total_ms) if total_ms > 0 else 0.0
         fps_ratio = effective_fps / self._target_fps if self._target_fps > 0 else 0.0
 
-        # Per-extractor stats
+        # Per-analyzer stats
         ext_timings: Dict[str, List[float]] = collections.defaultdict(list)
         fusion_timings: List[float] = []
 
         for f in frames:
-            for name, ms in f["extractor_timings_ms"].items():
+            for name, ms in f["analyzer_timings_ms"].items():
                 ext_timings[name].append(ms)
             if f["fusion_ms"] > 0:
                 fusion_timings.append(f["fusion_ms"])
@@ -383,7 +383,7 @@ class PathwayMonitor:
 
         fusion_avg = sum(fusion_timings) / len(fusion_timings) if fusion_timings else 0.0
 
-        # Slowest extractor
+        # Slowest analyzer
         slowest = max(ext_avg, key=ext_avg.get) if ext_avg else ""
         avg_frame_ms = total_ms / n if n > 0 else 0
         bottleneck_pct = (
@@ -395,11 +395,11 @@ class PathwayMonitor:
         return {
             "effective_fps": effective_fps,
             "fps_ratio": fps_ratio,
-            "extractor_avg_ms": ext_avg,
-            "extractor_p95_ms": ext_p95,
-            "extractor_max_ms": ext_max,
+            "analyzer_avg_ms": ext_avg,
+            "analyzer_p95_ms": ext_p95,
+            "analyzer_max_ms": ext_max,
             "fusion_avg_ms": fusion_avg,
-            "slowest_extractor": slowest,
+            "slowest_analyzer": slowest,
             "bottleneck_pct": bottleneck_pct,
         }
 
@@ -409,15 +409,15 @@ class PathwayMonitor:
         Also emits PipelineStatsRecord if hub is enabled.
 
         Returns:
-            Dict with total frames, triggers, FPS, per-extractor stats.
+            Dict with total frames, triggers, FPS, per-analyzer stats.
         """
         now = time.perf_counter_ns()
         wall_sec = (now - self._session_start_ns) / 1e9 if self._session_start_ns else 0
         effective_fps = self._total_frames / wall_sec if wall_sec > 0 else 0
 
-        # Per-extractor stats
+        # Per-analyzer stats
         ext_stats = {}
-        for name, vals in self._all_extractor_timings.items():
+        for name, vals in self._all_analyzer_timings.items():
             if not vals:
                 continue
             sorted_vals = sorted(vals)
@@ -426,7 +426,7 @@ class PathwayMonitor:
                 "avg_ms": sum(vals) / len(vals),
                 "p95_ms": sorted_vals[p95_idx],
                 "max_ms": sorted_vals[-1],
-                "errors": self._extractor_error_counts.get(name, 0),
+                "errors": self._analyzer_error_counts.get(name, 0),
             }
 
         fusion_avg = (
@@ -447,7 +447,7 @@ class PathwayMonitor:
             "wall_time_sec": wall_sec,
             "effective_fps": effective_fps,
             "target_fps": self._target_fps,
-            "extractor_stats": ext_stats,
+            "analyzer_stats": ext_stats,
             "fusion_avg_ms": fusion_avg,
             "gate_open_pct": gate_open_pct,
         }
@@ -459,7 +459,7 @@ class PathwayMonitor:
                 total_triggers=self._total_triggers,
                 wall_time_sec=wall_sec,
                 effective_fps=effective_fps,
-                extractor_stats={
+                analyzer_stats={
                     name: {k: round(v, 1) for k, v in stats.items()}
                     for name, stats in ext_stats.items()
                 },
@@ -484,12 +484,12 @@ class PathwayMonitor:
         effective_fps = n / wall_sec if wall_sec > 0 else 0
         fps_ratio = effective_fps / self._target_fps if self._target_fps > 0 else 0
 
-        # Per-extractor stats for this window
+        # Per-analyzer stats for this window
         ext_timings: Dict[str, List[float]] = collections.defaultdict(list)
         fusion_timings: List[float] = []
 
         for f in frames:
-            for name, ms in f["extractor_timings_ms"].items():
+            for name, ms in f["analyzer_timings_ms"].items():
                 ext_timings[name].append(ms)
             if f["fusion_ms"] > 0:
                 fusion_timings.append(f["fusion_ms"])
@@ -522,10 +522,10 @@ class PathwayMonitor:
             effective_fps=effective_fps,
             target_fps=self._target_fps,
             fps_ratio=fps_ratio,
-            extractor_avg_ms=ext_avg,
-            extractor_max_ms=ext_max,
-            extractor_p95_ms=ext_p95,
-            slowest_extractor=slowest,
+            analyzer_avg_ms=ext_avg,
+            analyzer_max_ms=ext_max,
+            analyzer_p95_ms=ext_p95,
+            slowest_analyzer=slowest,
             bottleneck_pct=bottleneck_pct,
             fusion_avg_ms=fusion_avg,
         ))

@@ -1,4 +1,4 @@
-"""Tests for FaceExtractor."""
+"""Tests for FaceAnalyzer."""
 
 from unittest.mock import MagicMock, patch
 import numpy as np
@@ -6,8 +6,8 @@ import pytest
 
 from visualbase import Frame
 
-from vpx.face import FaceExtractor
-from visualpath.extractors.backends.base import (
+from vpx.face import FaceAnalyzer
+from visualpath.analyzers.backends.base import (
     DetectedFace,
     FaceExpression,
 )
@@ -48,17 +48,17 @@ class MockExpressionBackend:
         pass
 
 
-class TestFaceExtractor:
+class TestFaceAnalyzer:
     def test_extract_no_faces(self):
         """Test extraction with no faces detected."""
         face_backend = MockFaceBackend(faces=[])
         expr_backend = MockExpressionBackend()
 
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -66,7 +66,7 @@ class TestFaceExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert obs.source == "face"
@@ -74,7 +74,7 @@ class TestFaceExtractor:
         assert obs.signals["max_expression"] == 0.0
         assert len(obs.faces) == 0
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_extract_single_face(self):
         """Test extraction with single face."""
@@ -95,11 +95,11 @@ class TestFaceExtractor:
         face_backend = MockFaceBackend(faces=[face])
         expr_backend = MockExpressionBackend(expressions=[expression])
 
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -107,7 +107,7 @@ class TestFaceExtractor:
             t_src_ns=33_333_333,  # ~30fps
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert obs.signals["face_count"] == 1
@@ -123,7 +123,7 @@ class TestFaceExtractor:
         assert pytest.approx(face_obs.bbox[0], rel=0.01) == 100 / 640
         assert pytest.approx(face_obs.bbox[1], rel=0.01) == 100 / 480
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_extract_multiple_faces(self):
         """Test extraction with multiple faces."""
@@ -139,12 +139,12 @@ class TestFaceExtractor:
         face_backend = MockFaceBackend(faces=faces)
         expr_backend = MockExpressionBackend(expressions=expressions)
 
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
             roi=(0, 0, 1, 1),  # Full frame - no ROI filtering for this test
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -152,13 +152,13 @@ class TestFaceExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["face_count"] == 2
         assert obs.signals["max_expression"] == 0.9
         assert len(obs.faces) == 2
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_face_tracking(self):
         """Test simple IoU-based face tracking."""
@@ -168,20 +168,20 @@ class TestFaceExtractor:
         face_backend = MockFaceBackend(faces=[face1])
         expr_backend = MockExpressionBackend(expressions=[FaceExpression()])
 
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
             track_faces=True,
             roi=(0, 0, 1, 1),  # Full frame - no ROI filtering for tracking test
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame1 = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
             frame_id=0,
             t_src_ns=0,
         )
-        obs1 = extractor.process(frame1)
+        obs1 = analyzer.process(frame1)
         first_face_id = obs1.faces[0].face_id
 
         # Frame 2: Face at slightly moved position (should keep same ID)
@@ -193,7 +193,7 @@ class TestFaceExtractor:
             frame_id=1,
             t_src_ns=33_333_333,
         )
-        obs2 = extractor.process(frame2)
+        obs2 = analyzer.process(frame2)
 
         assert obs2.faces[0].face_id == first_face_id  # Same ID due to IoU overlap
 
@@ -206,11 +206,11 @@ class TestFaceExtractor:
             frame_id=2,
             t_src_ns=66_666_666,
         )
-        obs3 = extractor.process(frame3)
+        obs3 = analyzer.process(frame3)
 
         assert obs3.faces[0].face_id != first_face_id  # New ID, no overlap
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_inside_frame_detection(self):
         """Test detection of faces at frame edges."""
@@ -221,40 +221,40 @@ class TestFaceExtractor:
         expr_backend = MockExpressionBackend(expressions=[FaceExpression()])
 
         # Use full-frame ROI to test inside_frame detection without ROI filtering
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
             roi=(0, 0, 1, 1),  # Full frame - no ROI filtering
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
             frame_id=0,
             t_src_ns=0,
         )
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         # Face at (0, 0) is not inside frame (needs margin)
         assert obs.faces[0].inside_frame is False
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_iou_computation(self):
         """Test IoU computation helper."""
         # Identical boxes
         box1 = (100, 100, 200, 200)
-        iou = FaceExtractor._compute_iou(box1, box1)
+        iou = FaceAnalyzer._compute_iou(box1, box1)
         assert iou == 1.0
 
         # Non-overlapping boxes
         box2 = (500, 500, 100, 100)
-        iou = FaceExtractor._compute_iou(box1, box2)
+        iou = FaceAnalyzer._compute_iou(box1, box2)
         assert iou == 0.0
 
         # Partially overlapping boxes
         box3 = (200, 100, 200, 200)  # 50% horizontal overlap
-        iou = FaceExtractor._compute_iou(box1, box3)
+        iou = FaceAnalyzer._compute_iou(box1, box3)
         assert 0.3 < iou < 0.4  # ~1/3 IoU
 
     def test_context_manager(self):
@@ -262,18 +262,18 @@ class TestFaceExtractor:
         face_backend = MockFaceBackend()
         expr_backend = MockExpressionBackend()
 
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
         )
 
-        with extractor:
+        with analyzer:
             frame = Frame.from_array(
                 np.zeros((480, 640, 3), dtype=np.uint8),
                 frame_id=0,
                 t_src_ns=0,
             )
-            obs = extractor.process(frame)
+            obs = analyzer.process(frame)
             assert obs is not None
 
     def test_roi_filtering(self):
@@ -287,42 +287,42 @@ class TestFaceExtractor:
         expr_backend = MockExpressionBackend(expressions=[FaceExpression(), FaceExpression()])
 
         # Default ROI (0.3, 0.1, 0.7, 0.6) should filter out corner face
-        extractor = FaceExtractor(
+        analyzer = FaceAnalyzer(
             face_backend=face_backend,
             expression_backend=expr_backend,
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
             frame_id=0,
             t_src_ns=0,
         )
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         # Only center face should be included (corner face filtered out)
         assert obs.signals["face_count"] == 1
         assert len(obs.faces) == 1
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_roi_property(self):
         """Test ROI property getter and setter."""
-        extractor = FaceExtractor()
+        analyzer = FaceAnalyzer()
 
         # Default ROI (matches debug session: 30%-70% width, 10%-60% height)
-        assert extractor.roi == (0.3, 0.1, 0.7, 0.6)
+        assert analyzer.roi == (0.3, 0.1, 0.7, 0.6)
 
         # Valid ROI update
-        extractor.roi = (0.2, 0.2, 0.8, 0.8)
-        assert extractor.roi == (0.2, 0.2, 0.8, 0.8)
+        analyzer.roi = (0.2, 0.2, 0.8, 0.8)
+        assert analyzer.roi == (0.2, 0.2, 0.8, 0.8)
 
         # Invalid ROI should raise
         with pytest.raises(ValueError):
-            extractor.roi = (0.8, 0.2, 0.2, 0.8)  # x1 > x2
+            analyzer.roi = (0.8, 0.2, 0.2, 0.8)  # x1 > x2
 
         with pytest.raises(ValueError):
-            extractor.roi = (-0.1, 0.2, 0.8, 0.8)  # x1 < 0
+            analyzer.roi = (-0.1, 0.2, 0.8, 0.8)  # x1 < 0
 
         with pytest.raises(ValueError):
-            extractor.roi = (0.2, 0.2, 1.1, 0.8)  # x2 > 1
+            analyzer.roi = (0.2, 0.2, 1.1, 0.8)  # x2 > 1

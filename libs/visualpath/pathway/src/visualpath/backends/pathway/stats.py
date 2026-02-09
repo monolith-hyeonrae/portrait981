@@ -6,7 +6,7 @@ monitoring Pathway pipeline execution. No Pathway dependency required.
 Example:
     >>> stats = PathwayStats()
     >>> stats.record_ingestion()
-    >>> stats.record_extraction("face", 12.5, success=True)
+    >>> stats.record_analysis("face", 12.5, success=True)
     >>> print(stats.throughput_fps)
 """
 
@@ -28,27 +28,27 @@ class PathwayStats:
 
     # Frame counters
     frames_ingested: int = 0
-    frames_extracted: int = 0
+    frames_analyzed: int = 0
 
-    # Extraction counters
-    extractions_completed: int = 0
-    extractions_failed: int = 0
+    # Analysis counters
+    analyses_completed: int = 0
+    analyses_failed: int = 0
 
     # Trigger / observation output counters
     triggers_fired: int = 0
     observations_output: int = 0
 
     # Timing (milliseconds)
-    total_extraction_ms: float = 0.0
+    total_analysis_ms: float = 0.0
 
-    # Per-extractor EMA times (name -> ema_ms)
-    per_extractor_time_ms: Dict[str, float] = field(default_factory=dict)
+    # Per-analyzer EMA times (name -> ema_ms)
+    per_analyzer_time_ms: Dict[str, float] = field(default_factory=dict)
 
-    # Raw extraction times for percentile calculation
-    _extraction_times: List[float] = field(default_factory=list, repr=False)
+    # Raw analysis times for percentile calculation
+    _analysis_times: List[float] = field(default_factory=list, repr=False)
 
-    # Per-extractor raw times for EMA
-    _per_extractor_counts: Dict[str, int] = field(
+    # Per-analyzer raw times for EMA
+    _per_analyzer_counts: Dict[str, int] = field(
         default_factory=lambda: defaultdict(int), repr=False,
     )
 
@@ -69,43 +69,43 @@ class PathwayStats:
         with self._lock:
             self.frames_ingested += 1
 
-    def record_extraction(
+    def record_analysis(
         self,
-        extractor_name: str,
+        analyzer_name: str,
         elapsed_ms: float,
         success: bool = True,
     ) -> None:
-        """Record a single extractor invocation.
+        """Record a single analyzer invocation.
 
         Args:
-            extractor_name: Name of the extractor.
+            analyzer_name: Name of the analyzer.
             elapsed_ms: Wall-clock time in milliseconds.
-            success: Whether the extraction succeeded.
+            success: Whether the analysis succeeded.
         """
         with self._lock:
             if success:
-                self.extractions_completed += 1
+                self.analyses_completed += 1
             else:
-                self.extractions_failed += 1
+                self.analyses_failed += 1
 
-            self.total_extraction_ms += elapsed_ms
-            self._extraction_times.append(elapsed_ms)
+            self.total_analysis_ms += elapsed_ms
+            self._analysis_times.append(elapsed_ms)
 
-            # EMA per extractor
-            self._per_extractor_counts[extractor_name] += 1
-            prev = self.per_extractor_time_ms.get(extractor_name)
+            # EMA per analyzer
+            self._per_analyzer_counts[analyzer_name] += 1
+            prev = self.per_analyzer_time_ms.get(analyzer_name)
             if prev is None:
-                self.per_extractor_time_ms[extractor_name] = elapsed_ms
+                self.per_analyzer_time_ms[analyzer_name] = elapsed_ms
             else:
                 alpha = self._ema_alpha
-                self.per_extractor_time_ms[extractor_name] = (
+                self.per_analyzer_time_ms[analyzer_name] = (
                     alpha * elapsed_ms + (1 - alpha) * prev
                 )
 
-    def record_frame_extracted(self) -> None:
-        """Record that all extractors finished for one frame."""
+    def record_frame_analyzed(self) -> None:
+        """Record that all analyzers finished for one frame."""
         with self._lock:
-            self.frames_extracted += 1
+            self.frames_analyzed += 1
 
     def record_trigger(self) -> None:
         """Record a trigger fired by fusion."""
@@ -131,15 +131,15 @@ class PathwayStats:
         """Reset all counters and timings."""
         with self._lock:
             self.frames_ingested = 0
-            self.frames_extracted = 0
-            self.extractions_completed = 0
-            self.extractions_failed = 0
+            self.frames_analyzed = 0
+            self.analyses_completed = 0
+            self.analyses_failed = 0
             self.triggers_fired = 0
             self.observations_output = 0
-            self.total_extraction_ms = 0.0
-            self.per_extractor_time_ms.clear()
-            self._extraction_times.clear()
-            self._per_extractor_counts.clear()
+            self.total_analysis_ms = 0.0
+            self.per_analyzer_time_ms.clear()
+            self._analysis_times.clear()
+            self._per_analyzer_counts.clear()
             self.pipeline_start_ns = 0
             self.pipeline_end_ns = 0
 
@@ -153,16 +153,16 @@ class PathwayStats:
             return 0.0
         return (end - start) / 1_000_000_000
 
-    def _avg_extraction_ms_unlocked(self) -> float:
-        """Average extraction time without lock. Caller must hold lock."""
-        n = len(self._extraction_times)
+    def _avg_analysis_ms_unlocked(self) -> float:
+        """Average analysis time without lock. Caller must hold lock."""
+        n = len(self._analysis_times)
         if n == 0:
             return 0.0
-        return self.total_extraction_ms / n
+        return self.total_analysis_ms / n
 
-    def _p95_extraction_ms_unlocked(self) -> float:
-        """P95 extraction time without lock. Caller must hold lock."""
-        times = sorted(self._extraction_times)
+    def _p95_analysis_ms_unlocked(self) -> float:
+        """P95 analysis time without lock. Caller must hold lock."""
+        times = sorted(self._analysis_times)
         if not times:
             return 0.0
         idx = int(len(times) * 0.95)
@@ -174,25 +174,25 @@ class PathwayStats:
         duration = self._pipeline_duration_sec_unlocked()
         if duration <= 0:
             return 0.0
-        return self.frames_extracted / duration
+        return self.frames_analyzed / duration
 
     @property
     def throughput_fps(self) -> float:
-        """Frames extracted per second based on pipeline wall-clock."""
+        """Frames analyzed per second based on pipeline wall-clock."""
         with self._lock:
             return self._throughput_fps_unlocked()
 
     @property
-    def avg_extraction_ms(self) -> float:
-        """Average extraction time across all invocations."""
+    def avg_analysis_ms(self) -> float:
+        """Average analysis time across all invocations."""
         with self._lock:
-            return self._avg_extraction_ms_unlocked()
+            return self._avg_analysis_ms_unlocked()
 
     @property
-    def p95_extraction_ms(self) -> float:
-        """95th-percentile extraction time."""
+    def p95_analysis_ms(self) -> float:
+        """95th-percentile analysis time."""
         with self._lock:
-            return self._p95_extraction_ms_unlocked()
+            return self._p95_analysis_ms_unlocked()
 
     @property
     def pipeline_duration_sec(self) -> float:
@@ -211,18 +211,18 @@ class PathwayStats:
         with self._lock:
             return {
                 "frames_ingested": self.frames_ingested,
-                "frames_extracted": self.frames_extracted,
-                "extractions_completed": self.extractions_completed,
-                "extractions_failed": self.extractions_failed,
+                "frames_analyzed": self.frames_analyzed,
+                "analyses_completed": self.analyses_completed,
+                "analyses_failed": self.analyses_failed,
                 "triggers_fired": self.triggers_fired,
                 "observations_output": self.observations_output,
-                "total_extraction_ms": self.total_extraction_ms,
-                "per_extractor_time_ms": dict(self.per_extractor_time_ms),
+                "total_analysis_ms": self.total_analysis_ms,
+                "per_analyzer_time_ms": dict(self.per_analyzer_time_ms),
                 "pipeline_start_ns": self.pipeline_start_ns,
                 "pipeline_end_ns": self.pipeline_end_ns,
                 "throughput_fps": self._throughput_fps_unlocked(),
-                "avg_extraction_ms": self._avg_extraction_ms_unlocked(),
-                "p95_extraction_ms": self._p95_extraction_ms_unlocked(),
+                "avg_analysis_ms": self._avg_analysis_ms_unlocked(),
+                "p95_analysis_ms": self._p95_analysis_ms_unlocked(),
                 "pipeline_duration_sec": self._pipeline_duration_sec_unlocked(),
             }
 

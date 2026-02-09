@@ -7,9 +7,9 @@ import logging
 
 from visualbase import Trigger
 
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 from facemoment.moment_detector.fusion.base import Module
-from facemoment.moment_detector.extractors.face_classifier import FaceClassifierOutput
+from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierOutput
 from facemoment.observability import ObservabilityHub, TraceLevel
 from facemoment.observability.records import (
     GateChangeRecord,
@@ -68,7 +68,7 @@ class AdaptiveEmotionState:
 class HighlightFusion(Module):
     """Fusion module for detecting highlight-worthy moments.
 
-    Combines signals from face, pose, and quality extractors to
+    Combines signals from face, pose, and quality analyzers to
     identify moments worth capturing. Uses a quality gate with
     hysteresis and detects various trigger events.
 
@@ -236,7 +236,7 @@ class HighlightFusion(Module):
         """Process observation and decide on trigger.
 
         Args:
-            observation: New observation from extractors.
+            observation: New observation from analyzers.
             classifier_obs: Optional face classifier observation for main-only mode.
 
         Returns:
@@ -333,7 +333,7 @@ class HighlightFusion(Module):
                 trigger_reason = "head_turn"
                 trigger_score = head_turn
 
-        # Check hand waves (from pose extractor)
+        # Check hand waves (from pose analyzer)
         hand_wave = observation.signals.get("hand_wave_detected", 0.0)
         if hand_wave > 0.5:
             wave_score = observation.signals.get("hand_wave_confidence", 0.8)
@@ -829,9 +829,9 @@ class HighlightFusion(Module):
         return False, 0.0
 
     def _detect_gestures(self, observation: Observation) -> tuple[Optional[str], float]:
-        """Detect hand gestures from gesture extractor signals.
+        """Detect hand gestures from gesture analyzer signals.
 
-        Looks for gesture signals in the observation (from GestureExtractor).
+        Looks for gesture signals in the observation (from GestureAnalyzer).
 
         Args:
             observation: Current observation.
@@ -839,7 +839,7 @@ class HighlightFusion(Module):
         Returns:
             Tuple of (trigger_reason, score) or (None, 0.0).
         """
-        # Check for gesture signals from GestureExtractor
+        # Check for gesture signals from GestureAnalyzer
         gesture_detected = observation.signals.get("gesture_detected", 0.0)
         if gesture_detected < 0.5:
             return None, 0.0

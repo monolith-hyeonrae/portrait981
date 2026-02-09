@@ -1,4 +1,4 @@
-"""Tests for process module (ExtractorProcess, FusionProcess)."""
+"""Tests for process module (AnalyzerProcess, FusionProcess)."""
 
 import os
 import tempfile
@@ -14,22 +14,22 @@ from visualbase.ipc.uds import UDSServer, UDSClient
 from visualbase.ipc.messages import parse_obs_message
 from visualbase.ipc.interfaces import VideoReader, MessageSender
 
-from visualpath.extractors.base import (
-    BaseExtractor,
+from visualpath.analyzers.base import (
+    BaseAnalyzer,
     Observation,
     FaceObservation,
 )
 from facemoment.moment_detector.fusion.base import BaseFusion
 from facemoment.process import (
-    ExtractorProcess,
+    AnalyzerProcess,
     FusionProcess,
-    ExtractorOrchestrator,
+    AnalyzerOrchestrator,
     FacemomentMapper,
 )
 
 
-class MockExtractor(BaseExtractor):
-    """Mock extractor for testing."""
+class MockAnalyzer(BaseAnalyzer):
+    """Mock analyzer for testing."""
 
     def __init__(self, name: str = "mock"):
         self._name = name
@@ -212,12 +212,12 @@ class MockFusion(BaseFusion):
         return self._in_cooldown
 
 
-class TestExtractorProcess:
-    """Tests for ExtractorProcess."""
+class TestAnalyzerProcess:
+    """Tests for AnalyzerProcess."""
 
     def test_observation_to_message_face(self):
         """Test conversion of face observation to OBS message using FacemomentMapper."""
-        extractor = MockExtractor(name="face")
+        analyzer = MockAnalyzer(name="face")
         mapper = FacemomentMapper()
 
         # Create a test frame
@@ -225,7 +225,7 @@ class TestExtractorProcess:
         frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
         # Extract observation
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
         assert obs is not None
 
         # Convert to message using mapper
@@ -244,13 +244,13 @@ class TestExtractorProcess:
 
     def test_observation_to_message_pose(self):
         """Test conversion of pose observation to OBS message using FacemomentMapper."""
-        extractor = MockExtractor(name="pose")
+        analyzer = MockAnalyzer(name="pose")
         mapper = FacemomentMapper()
 
         data = np.zeros((480, 640, 3), dtype=np.uint8)
         frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
         msg = mapper.to_message(obs)
 
         assert msg is not None
@@ -259,13 +259,13 @@ class TestExtractorProcess:
 
     def test_observation_to_message_quality(self):
         """Test conversion of quality observation to OBS message using FacemomentMapper."""
-        extractor = MockExtractor(name="quality")
+        analyzer = MockAnalyzer(name="quality")
         mapper = FacemomentMapper()
 
         data = np.zeros((480, 640, 3), dtype=np.uint8)
         frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
         msg = mapper.to_message(obs)
 
         assert msg is not None
@@ -274,9 +274,9 @@ class TestExtractorProcess:
 
     def test_get_stats(self):
         """Test stats retrieval."""
-        extractor = MockExtractor(name="face")
-        process = ExtractorProcess(
-            extractor=extractor,
+        analyzer = MockAnalyzer(name="face")
+        process = AnalyzerProcess(
+            analyzer=analyzer,
             input_fifo="/tmp/test.fifo",
             obs_socket="/tmp/test.sock",
         )
@@ -288,13 +288,13 @@ class TestExtractorProcess:
         assert "fps" in stats
 
     def test_interface_based_initialization(self):
-        """Test ExtractorProcess with interface-based dependency injection."""
-        extractor = MockExtractor(name="face")
+        """Test AnalyzerProcess with interface-based dependency injection."""
+        analyzer = MockAnalyzer(name="face")
         reader = MockVideoReader()
         sender = MockMessageSender()
 
-        process = ExtractorProcess(
-            extractor=extractor,
+        process = AnalyzerProcess(
+            analyzer=analyzer,
             video_reader=reader,
             message_sender=sender,
         )
@@ -307,7 +307,7 @@ class TestExtractorProcess:
 
     def test_interface_process_frames(self):
         """Test frame processing with interface-based dependencies."""
-        extractor = MockExtractor(name="face")
+        analyzer = MockAnalyzer(name="face")
         mapper = FacemomentMapper()
 
         # Create test frames
@@ -320,8 +320,8 @@ class TestExtractorProcess:
         reader = MockVideoReader(frames=frames)
         sender = MockMessageSender()
 
-        process = ExtractorProcess(
-            extractor=extractor,
+        process = AnalyzerProcess(
+            analyzer=analyzer,
             observation_mapper=mapper,
             video_reader=reader,
             message_sender=sender,
@@ -350,23 +350,23 @@ class TestExtractorProcess:
 
     def test_missing_reader_and_path_raises(self):
         """Test that missing both video_reader and input_fifo raises ValueError."""
-        extractor = MockExtractor(name="face")
+        analyzer = MockAnalyzer(name="face")
         sender = MockMessageSender()
 
         with pytest.raises(ValueError, match="Either video_reader or input_fifo"):
-            ExtractorProcess(
-                extractor=extractor,
+            AnalyzerProcess(
+                analyzer=analyzer,
                 message_sender=sender,
             )
 
     def test_missing_sender_and_path_raises(self):
         """Test that missing both message_sender and obs_socket raises ValueError."""
-        extractor = MockExtractor(name="face")
+        analyzer = MockAnalyzer(name="face")
         reader = MockVideoReader()
 
         with pytest.raises(ValueError, match="Either message_sender or obs_socket"):
-            ExtractorProcess(
-                extractor=extractor,
+            AnalyzerProcess(
+                analyzer=analyzer,
                 video_reader=reader,
             )
 
@@ -497,71 +497,71 @@ class TestFusionProcess:
             )
 
 
-class TestExtractorOrchestrator:
-    """Tests for ExtractorOrchestrator."""
+class TestAnalyzerOrchestrator:
+    """Tests for AnalyzerOrchestrator."""
 
     def test_initialization(self):
         """Test orchestrator initialization."""
-        extractors = [MockExtractor(name="face"), MockExtractor(name="pose")]
-        orchestrator = ExtractorOrchestrator(extractors)
+        analyzers = [MockAnalyzer(name="face"), MockAnalyzer(name="pose")]
+        orchestrator = AnalyzerOrchestrator(analyzers)
 
         assert not orchestrator.is_initialized
         orchestrator.initialize()
         assert orchestrator.is_initialized
-        assert orchestrator.extractor_names == ["face", "pose"]
+        assert orchestrator.analyzer_names == ["face", "pose"]
 
         orchestrator.cleanup()
         assert not orchestrator.is_initialized
 
     def test_context_manager(self):
         """Test context manager interface."""
-        extractors = [MockExtractor(name="face")]
+        analyzers = [MockAnalyzer(name="face")]
 
-        with ExtractorOrchestrator(extractors) as orchestrator:
+        with AnalyzerOrchestrator(analyzers) as orchestrator:
             assert orchestrator.is_initialized
 
         assert not orchestrator.is_initialized
 
-    def test_extract_all_parallel(self):
+    def test_analyze_all_parallel(self):
         """Test parallel extraction."""
-        extractors = [
-            MockExtractor(name="face"),
-            MockExtractor(name="pose"),
-            MockExtractor(name="quality"),
+        analyzers = [
+            MockAnalyzer(name="face"),
+            MockAnalyzer(name="pose"),
+            MockAnalyzer(name="quality"),
         ]
 
-        with ExtractorOrchestrator(extractors, max_workers=3) as orchestrator:
+        with AnalyzerOrchestrator(analyzers, max_workers=3) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
             frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
-            observations = orchestrator.extract_all(frame)
+            observations = orchestrator.analyze_all(frame)
 
             assert len(observations) == 3
             sources = {obs.source for obs in observations}
             assert sources == {"face", "pose", "quality"}
 
-    def test_extract_sequential(self):
+    def test_analyze_sequential(self):
         """Test sequential extraction."""
-        extractors = [MockExtractor(name="face"), MockExtractor(name="pose")]
+        analyzers = [MockAnalyzer(name="face"), MockAnalyzer(name="pose")]
 
-        with ExtractorOrchestrator(extractors) as orchestrator:
+        with AnalyzerOrchestrator(analyzers) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
             frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
-            observations = orchestrator.extract_sequential(frame)
+            observations = orchestrator.analyze_sequential(frame)
 
             assert len(observations) == 2
 
     def test_get_stats(self):
         """Test stats retrieval."""
-        extractors = [MockExtractor(name="face")]
+        analyzers = [MockAnalyzer(name="face")]
 
-        with ExtractorOrchestrator(extractors) as orchestrator:
+        with AnalyzerOrchestrator(analyzers) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
             frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
-            orchestrator.extract_all(frame)
-            orchestrator.extract_all(frame)
+            orchestrator.analyze_all(frame)
+            orchestrator.analyze_all(frame)
 
             stats = orchestrator.get_stats()
 
@@ -571,32 +571,32 @@ class TestExtractorOrchestrator:
             assert stats["timeouts"] == 0
             assert "avg_time_ms" in stats
 
-    def test_empty_extractors_raises(self):
-        """Test that empty extractor list raises ValueError."""
-        with pytest.raises(ValueError, match="At least one extractor"):
-            ExtractorOrchestrator([])
+    def test_empty_analyzers_raises(self):
+        """Test that empty analyzer list raises ValueError."""
+        with pytest.raises(ValueError, match="At least one analyzer"):
+            AnalyzerOrchestrator([])
 
     def test_not_initialized_raises(self):
         """Test that extract without initialize raises RuntimeError."""
-        extractors = [MockExtractor(name="face")]
-        orchestrator = ExtractorOrchestrator(extractors)
+        analyzers = [MockAnalyzer(name="face")]
+        orchestrator = AnalyzerOrchestrator(analyzers)
 
         data = np.zeros((480, 640, 3), dtype=np.uint8)
         frame = Frame.from_array(data, frame_id=1, t_src_ns=1_000_000_000)
 
         with pytest.raises(RuntimeError, match="not initialized"):
-            orchestrator.extract_all(frame)
+            orchestrator.analyze_all(frame)
 
     def test_multiple_frames(self):
         """Test processing multiple frames."""
-        extractors = [MockExtractor(name="face")]
+        analyzers = [MockAnalyzer(name="face")]
 
-        with ExtractorOrchestrator(extractors) as orchestrator:
+        with AnalyzerOrchestrator(analyzers) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
 
             for i in range(5):
                 frame = Frame.from_array(data, frame_id=i, t_src_ns=i * 1_000_000_000)
-                observations = orchestrator.extract_all(frame)
+                observations = orchestrator.analyze_all(frame)
                 assert len(observations) == 1
                 assert observations[0].frame_id == i
 

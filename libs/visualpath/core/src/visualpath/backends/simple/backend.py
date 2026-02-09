@@ -35,7 +35,7 @@ class SimpleBackend(ExecutionBackend):
         >>> graph = (FlowGraphBuilder()
         ...     .source("frames")
         ...     .sample(every_nth=3)
-        ...     .path("main", extractors=[face_ext], fusion=smile_fusion)
+        ...     .path("main", analyzers=[face_ext], fusion=smile_fusion)
         ...     .build())
         >>> result = backend.execute(frames, graph)
     """

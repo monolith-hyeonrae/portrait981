@@ -1,4 +1,4 @@
-"""Tests for ExtractorProcess and FusionProcess IPC wrappers."""
+"""Tests for AnalyzerProcess and FusionProcess IPC wrappers."""
 
 import pytest
 import json
@@ -11,7 +11,7 @@ from queue import Queue
 
 from visualpath.core import Module, Observation
 from visualpath.process import (
-    ExtractorProcess,
+    AnalyzerProcess,
     FusionProcess,
     DefaultObservationMapper,
     CompositeMapper,
@@ -209,12 +209,12 @@ class TriggerModule(Module):
 
 
 # =============================================================================
-# ExtractorProcess Tests
+# AnalyzerProcess Tests
 # =============================================================================
 
 
-class TestExtractorProcess:
-    """Tests for ExtractorProcess."""
+class TestAnalyzerProcess:
+    """Tests for AnalyzerProcess."""
 
     def test_initialization_with_interfaces(self):
         """Test initialization with interface objects."""
@@ -223,8 +223,8 @@ class TestExtractorProcess:
         sender = MockMessageSender()
         mapper = DefaultObservationMapper()
 
-        process = ExtractorProcess(
-            extractor=module,
+        process = AnalyzerProcess(
+            analyzer=module,
             observation_mapper=mapper,
             video_reader=reader,
             message_sender=sender,
@@ -239,8 +239,8 @@ class TestExtractorProcess:
         sender = MockMessageSender()
 
         with pytest.raises(ValueError, match="video_reader or input_fifo"):
-            ExtractorProcess(
-                extractor=module,
+            AnalyzerProcess(
+                analyzer=module,
                 message_sender=sender,
             )
 
@@ -250,8 +250,8 @@ class TestExtractorProcess:
         reader = MockVideoReader([])
 
         with pytest.raises(ValueError, match="message_sender or obs_socket"):
-            ExtractorProcess(
-                extractor=module,
+            AnalyzerProcess(
+                analyzer=module,
                 video_reader=reader,
             )
 
@@ -266,8 +266,8 @@ class TestExtractorProcess:
         sender = MockMessageSender()
         mapper = DefaultObservationMapper()
 
-        process = ExtractorProcess(
-            extractor=module,
+        process = AnalyzerProcess(
+            analyzer=module,
             observation_mapper=mapper,
             video_reader=reader,
             message_sender=sender,
@@ -305,8 +305,8 @@ class TestExtractorProcess:
         def on_frame(frame, obs):
             callback_results.append((frame.frame_id, obs.source))
 
-        process = ExtractorProcess(
-            extractor=module,
+        process = AnalyzerProcess(
+            analyzer=module,
             video_reader=reader,
             message_sender=sender,
             reconnect=False,
@@ -331,8 +331,8 @@ class TestExtractorProcess:
         reader = MockVideoReader(frames)
         sender = MockMessageSender()
 
-        process = ExtractorProcess(
-            extractor=module,
+        process = AnalyzerProcess(
+            analyzer=module,
             video_reader=reader,
             message_sender=sender,
             reconnect=False,
@@ -354,8 +354,8 @@ class TestExtractorProcess:
         reader = MockVideoReader(frames)
         sender = MockMessageSender()
 
-        process = ExtractorProcess(
-            extractor=module,
+        process = AnalyzerProcess(
+            analyzer=module,
             video_reader=reader,
             message_sender=sender,
             reconnect=False,
@@ -535,11 +535,11 @@ class TestFusionProcess:
 # =============================================================================
 
 
-class TestExtractorFusionIntegration:
-    """Integration tests for ExtractorProcess and FusionProcess."""
+class TestAnalyzerFusionIntegration:
+    """Integration tests for AnalyzerProcess and FusionProcess."""
 
     def test_message_format_compatibility(self):
-        """Test that extractor and fusion use compatible message formats."""
+        """Test that analyzer and fusion use compatible message formats."""
         # Create a simple observation
         obs = Observation(
             source="test",
@@ -548,7 +548,7 @@ class TestExtractorFusionIntegration:
             signals={"score": 0.95},
         )
 
-        # Serialize with extractor's mapper
+        # Serialize with analyzer's mapper
         mapper = DefaultObservationMapper()
         message = mapper.to_message(obs)
 

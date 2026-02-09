@@ -1,6 +1,6 @@
 """IPC process wrappers for distributed execution.
 
-Provides process wrappers for running extractors and fusion modules
+Provides process wrappers for running analyzers and fusion modules
 as independent processes with IPC communication (A-B*-C architecture).
 
 Architecture:
@@ -8,20 +8,20 @@ Architecture:
        ↓                                    ↑
     FIFO/video stream              OBS messages from B*
        │                                    ↑
-       └─→ [B1: Extractor1] ──OBS→ ┐
-           [B2: Extractor2] ──OBS→ ├─→ Fusion ──TRIG→ Ingest
-           [B3: Extractor3] ──OBS→ ┘
+       └─→ [B1: Analyzer1] ──OBS→ ┐
+           [B2: Analyzer2] ──OBS→ ├─→ Fusion ──TRIG→ Ingest
+           [B3: Analyzer3] ──OBS→ ┘
 
-Example (ExtractorProcess):
-    >>> from visualpath.process import ExtractorProcess, DefaultObservationMapper
+Example (AnalyzerProcess):
+    >>> from visualpath.process import AnalyzerProcess, DefaultObservationMapper
     >>> from visualbase.ipc.factory import TransportFactory
     >>>
     >>> mapper = DefaultObservationMapper()
     >>> reader = TransportFactory.create_video_reader("fifo", "/tmp/vid.mjpg")
     >>> sender = TransportFactory.create_message_sender("uds", "/tmp/obs.sock")
     >>>
-    >>> process = ExtractorProcess(
-    ...     extractor=my_extractor,
+    >>> process = AnalyzerProcess(
+    ...     analyzer=my_analyzer,
     ...     observation_mapper=mapper,
     ...     video_reader=reader,
     ...     message_sender=sender,
@@ -52,7 +52,7 @@ from visualbase.ipc.factory import TransportFactory
 from visualbase.ipc.messages import TRIGMessage
 from visualbase import Frame
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 from visualpath.process.mapper import ObservationMapper, DefaultObservationMapper
 from visualpath.observability import ObservabilityHub
@@ -68,7 +68,7 @@ ALIGNMENT_WINDOW_NS = 100_000_000
 
 
 class _BaseProcess:
-    """Common base for ExtractorProcess and FusionProcess."""
+    """Common base for AnalyzerProcess and FusionProcess."""
 
     def __init__(self, observability_hub: Optional[ObservabilityHub] = None):
         self._hub = observability_hub or _hub
@@ -99,10 +99,10 @@ class _BaseProcess:
         self._hub.emit(TraceRecord(record_type=record_type, frame_id=frame_id, data=data))
 
 
-class ExtractorProcess(_BaseProcess):
-    """Wrapper for running an extractor as an independent process.
+class AnalyzerProcess(_BaseProcess):
+    """Wrapper for running an analyzer as an independent process.
 
-    Reads frames from a VideoReader input, processes them with the extractor,
+    Reads frames from a VideoReader input, processes them with the analyzer,
     and sends OBS messages to the fusion process via MessageSender.
 
     Supports two initialization modes:
@@ -113,7 +113,7 @@ class ExtractorProcess(_BaseProcess):
     wire format. This allows domain-specific serialization to be injected.
 
     Args:
-        extractor: The extractor instance to use.
+        analyzer: The analyzer instance to use.
         observation_mapper: Mapper for Observation ↔ Message conversion.
         video_reader: VideoReader instance for receiving frames.
         message_sender: MessageSender instance for sending OBS messages.
@@ -128,7 +128,7 @@ class ExtractorProcess(_BaseProcess):
 
     def __init__(
         self,
-        extractor: Module,
+        analyzer: Module,
         observation_mapper: Optional[ObservationMapper] = None,
         video_reader: Optional[VideoReader] = None,
         message_sender: Optional[MessageSender] = None,
@@ -141,7 +141,7 @@ class ExtractorProcess(_BaseProcess):
         observability_hub: Optional[ObservabilityHub] = None,
     ):
         super().__init__(observability_hub)
-        self._extractor = extractor
+        self._analyzer = analyzer
         self._mapper = observation_mapper or DefaultObservationMapper()
         self._reconnect = reconnect
         self._on_frame = on_frame
@@ -180,7 +180,7 @@ class ExtractorProcess(_BaseProcess):
         self._last_frame_id: Optional[int] = None
 
     def run(self) -> None:
-        """Run the extractor process main loop.
+        """Run the analyzer process main loop.
 
         This method blocks until stop() is called or the process is
         interrupted.
@@ -189,9 +189,9 @@ class ExtractorProcess(_BaseProcess):
         self._running = True
         self._start_time = time.monotonic()
 
-        # Initialize extractor
-        logger.info(f"Initializing extractor: {self._extractor.name}")
-        self._extractor.initialize()
+        # Initialize analyzer
+        logger.info(f"Initializing analyzer: {self._analyzer.name}")
+        self._analyzer.initialize()
 
         # Create message sender if not provided
         if self._client is None and self._obs_path is not None:
@@ -249,7 +249,7 @@ class ExtractorProcess(_BaseProcess):
                 self._process_frame(frame)
 
         except Exception as e:
-            logger.error(f"Error in extractor loop: {e}")
+            logger.error(f"Error in analyzer loop: {e}")
             self._errors += 1
 
         finally:
@@ -273,7 +273,7 @@ class ExtractorProcess(_BaseProcess):
                     self._emit_frame_drop(dropped)
             self._last_frame_id = frame.frame_id
 
-            obs = self._extractor.process(frame)
+            obs = self._analyzer.process(frame)
             self._frames_processed += 1
 
             if obs is not None:
@@ -305,15 +305,15 @@ class ExtractorProcess(_BaseProcess):
     def _emit_timing(self, frame_id: int, processing_ms: float) -> None:
         """Emit a timing record. Override in subclass for domain-specific records."""
         self._emit_trace("timing", frame_id, {
-            "component": f"process_{self._extractor.name}",
+            "component": f"process_{self._analyzer.name}",
             "processing_ms": processing_ms,
             "threshold_ms": 100.0,
             "is_slow": processing_ms > 100.0,
         })
 
     def stop(self) -> None:
-        """Stop the extractor process."""
-        logger.info(f"Stopping extractor process: {self._extractor.name}")
+        """Stop the analyzer process."""
+        logger.info(f"Stopping analyzer process: {self._analyzer.name}")
         super().stop()
 
     def _cleanup(self) -> None:
@@ -328,13 +328,13 @@ class ExtractorProcess(_BaseProcess):
             if not self._client_provided:
                 self._client = None
 
-        self._extractor.cleanup()
+        self._analyzer.cleanup()
 
         # Log stats
         elapsed = time.monotonic() - self._start_time if self._start_time else 0
         fps = self._frames_processed / elapsed if elapsed > 0 else 0
         logger.info(
-            f"Extractor '{self._extractor.name}' stopped: "
+            f"Analyzer '{self._analyzer.name}' stopped: "
             f"{self._frames_processed} frames, {self._obs_sent} obs, "
             f"{fps:.1f} fps, {self._errors} errors"
         )
@@ -354,7 +354,7 @@ class ExtractorProcess(_BaseProcess):
 class FusionProcess(_BaseProcess):
     """Wrapper for running fusion as an independent process.
 
-    Receives OBS messages from extractors via MessageReceiver, converts them to
+    Receives OBS messages from analyzers via MessageReceiver, converts them to
     Observations, runs the fusion engine, and sends TRIG messages to
     the ingest process via MessageSender.
 

@@ -11,7 +11,7 @@ Example:
     >>> from visualpath.backends.pathway import PathwayBackend
     >>> from visualpath.flow.graph import FlowGraph
     >>>
-    >>> graph = FlowGraph.from_modules([face_ext, smile_trigger])
+    >>> graph = FlowGraph.from_modules([face_analyzer, smile_trigger])
     >>> backend = PathwayBackend()
     >>> result = backend.execute(frames, graph)
 """
@@ -59,10 +59,10 @@ class PathwayBackend(ExecutionBackend):
        be processed instead of dropped.
 
     4. **Backpressure**: Built-in backpressure prevents queue overflow
-       when extractors have varying speeds.
+       when analyzers have varying speeds.
 
     5. **Interval Joins**: Temporal interval_join for synchronizing
-       observations from multiple extractors.
+       observations from multiple analyzers.
 
     Configuration:
         - window_ns: Window size for joins (default: 100ms)
@@ -74,7 +74,7 @@ class PathwayBackend(ExecutionBackend):
         ...     window_ns=100_000_000,  # 100ms
         ...     allowed_lateness_ns=50_000_000,  # 50ms
         ... )
-        >>> graph = FlowGraph.from_modules([face_ext, expr_trigger])
+        >>> graph = FlowGraph.from_modules([face_analyzer, expr_trigger])
         >>> result = backend.execute(frames, graph)
     """
 
@@ -131,19 +131,19 @@ class PathwayBackend(ExecutionBackend):
     def run(
         self,
         frames: Iterator["Frame"],
-        extractors: list,
+        analyzers: list,
         fusion=None,
         on_trigger=None,
         on_frame_result=None,
     ) -> list:
-        """Run pipeline with extractors and fusion modules directly.
+        """Run pipeline with analyzers and fusion modules directly.
 
         This is a convenience method that builds a FlowGraph internally
         and delegates to execute().
 
         Args:
             frames: Iterator of Frame objects.
-            extractors: List of extractor modules (Module instances).
+            analyzers: List of analyzer modules (Module instances).
             fusion: Optional fusion/trigger module.
             on_trigger: Optional callback for each trigger: fn(trigger).
             on_frame_result: Optional callback for frame results: fn(frame, observations).
@@ -153,8 +153,8 @@ class PathwayBackend(ExecutionBackend):
         """
         from visualpath.flow.graph import FlowGraph
 
-        # Build modules list (extractors + fusion)
-        modules = list(extractors)
+        # Build modules list (analyzers + fusion)
+        modules = list(analyzers)
         if fusion is not None:
             modules.append(fusion)
 
@@ -208,7 +208,7 @@ class PathwayBackend(ExecutionBackend):
             from visualpath.observability.records import SessionStartRecord
             hub.emit(SessionStartRecord(
                 session_id=session_id,
-                extractors=[],  # Graph-based: extractors embedded in nodes
+                analyzers=[],  # Graph-based: analyzers embedded in nodes
                 config={
                     "backend": "pathway",
                     "window_ns": self._window_ns,
@@ -221,7 +221,7 @@ class PathwayBackend(ExecutionBackend):
         # so we don't re-run it in the subscribe callback.
         # Instead, we inspect UDF output for trigger observations directly.
 
-        # Initialize graph nodes (extractors, fusions)
+        # Initialize graph nodes (analyzers, fusions)
         graph.initialize()
 
         try:
@@ -259,11 +259,11 @@ class PathwayBackend(ExecutionBackend):
                     if isinstance(result_list, list):
                         frame_id_val = 0
                         for r in result_list:
-                            # Record extraction stats
+                            # Record analysis stats
                             if hasattr(r, "observation") and r.observation is not None:
-                                stats.record_frame_extracted()
+                                stats.record_frame_analyzed()
                                 elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
-                                stats.record_extraction(
+                                stats.record_analysis(
                                     r.source, elapsed_ms, success=True,
                                 )
                                 frame_id_val = r.frame_id
@@ -277,8 +277,8 @@ class PathwayBackend(ExecutionBackend):
                                     trigger_data = FlowData(results=[obs])
                                     graph.fire_triggers(trigger_data)
                             elif hasattr(r, "source"):
-                                # Extraction failed (no observation)
-                                stats.record_extraction(
+                                # Analysis failed (no observation)
+                                stats.record_analysis(
                                     r.source, 0.0, success=False,
                                 )
 

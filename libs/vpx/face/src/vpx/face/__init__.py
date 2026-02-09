@@ -1,3 +1,3 @@
-from vpx.face.extractor import FaceExtractor
+from vpx.face.analyzer import FaceAnalyzer
 
-__all__ = ["FaceExtractor"]
+__all__ = ["FaceAnalyzer"]

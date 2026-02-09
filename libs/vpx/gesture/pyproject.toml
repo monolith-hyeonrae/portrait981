@@ -1,15 +1,15 @@
 [project]
 name = "vpx-gesture"
 version = "0.1.0"
-description = "Gesture detection extractor (MediaPipe Hands)"
+description = "Gesture detection analyzer (MediaPipe Hands)"
 requires-python = ">=3.10"
 dependencies = [
-    "visualpath-extractors-base",
+    "visualpath-analyzers-base",
     "mediapipe>=0.10.32",
 ]
 
-[project.entry-points."visualpath.extractors"]
-gesture = "vpx.gesture:GestureExtractor"
+[project.entry-points."visualpath.analyzers"]
+gesture = "vpx.gesture:GestureAnalyzer"
 
 [build-system]
 requires = ["hatchling"]
@@ -19,4 +19,4 @@ build-backend = "hatchling.build"
 packages = ["src/vpx"]
 
 [tool.uv.sources]
-visualpath-extractors-base = { workspace = true }
+visualpath-analyzers-base = { workspace = true }

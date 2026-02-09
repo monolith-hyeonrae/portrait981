@@ -7,7 +7,7 @@ used by both the worker subprocess and the launcher (main process).
 import json
 from typing import Any, Dict, List, Optional
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ def serialize_observation(obs: Optional[Any]) -> Optional[Dict[str, Any]]:
     if hasattr(obs, "data") and obs.data is not None:
         result["data"] = serialize_value(obs.data)
 
-    # faces field (extractors-base Observation has this, core does not)
+    # faces field (analyzers-base Observation has this, core does not)
     faces = getattr(obs, "faces", [])
     if faces:
         result["faces"] = serialize_value(faces)
@@ -154,7 +154,7 @@ def deserialize_observation(data: Optional[Dict[str, Any]]) -> Optional[Observat
         timing=data.get("timing"),
     )
 
-    # Attach faces (extractors-base Observation declares this field;
+    # Attach faces (analyzers-base Observation declares this field;
     # core Observation does not, but Python allows extra attributes).
     faces_raw = data.get("faces", [])
     obs.faces = [_wrap_value(f) for f in faces_raw] if faces_raw else []

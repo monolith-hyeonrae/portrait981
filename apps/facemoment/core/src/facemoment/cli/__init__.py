@@ -19,15 +19,15 @@ def _add_distributed_args(parser):
     )
     parser.add_argument(
         "--venv-face", type=str, metavar="PATH",
-        help="Path to venv for face extractor (enables VENV isolation)"
+        help="Path to venv for face analyzer (enables VENV isolation)"
     )
     parser.add_argument(
         "--venv-pose", type=str, metavar="PATH",
-        help="Path to venv for pose extractor (enables VENV isolation)"
+        help="Path to venv for pose analyzer (enables VENV isolation)"
     )
     parser.add_argument(
         "--venv-gesture", type=str, metavar="PATH",
-        help="Path to venv for gesture extractor (enables VENV isolation)"
+        help="Path to venv for gesture analyzer (enables VENV isolation)"
     )
     parser.add_argument(
         "--config", type=str, metavar="PATH",
@@ -53,7 +53,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  facemoment debug video.mp4                  # All extractors
+  facemoment debug video.mp4                  # All analyzers
   facemoment debug video.mp4 -e face          # Face only
   facemoment debug video.mp4 -e face,pose     # Face + Pose
   facemoment debug video.mp4 -e raw           # Raw video preview (no analysis)
@@ -72,7 +72,7 @@ Examples:
     info_parser = subparsers.add_parser(
         "info",
         help="Show system info and available components",
-        description="Display extractors, backends, triggers, and pipeline structure.",
+        description="Display analyzers, backends, triggers, and pipeline structure.",
     )
     info_parser.add_argument(
         "--verbose", "-v", action="store_true",
@@ -80,7 +80,7 @@ Examples:
     )
     info_parser.add_argument(
         "--deps", action="store_true",
-        help="Show extractor dependency graph",
+        help="Show analyzer dependency graph",
     )
     info_parser.add_argument(
         "--graph", nargs="?", const="ascii", choices=["ascii", "dot"],
@@ -88,22 +88,22 @@ Examples:
     )
     info_parser.add_argument(
         "--steps", action="store_true",
-        help="Show internal processing steps of each extractor",
+        help="Show internal processing steps of each analyzer",
     )
 
     # debug command (unified)
     debug_parser = subparsers.add_parser(
         "debug",
-        help="Debug extractors with visualization",
-        description="Run extractors on video with real-time visualization.",
+        help="Debug analyzers with visualization",
+        description="Run analyzers on video with real-time visualization.",
     )
     debug_parser.add_argument("path", help="Path to video file")
     debug_parser.add_argument("--fps", type=float, default=10.0, help="Analysis FPS (default: 10)")
     debug_parser.add_argument(
-        "-e", "--extractor",
+        "-e", "--analyzer",
         type=str,
         default="all",
-        help="Extractor(s) to run: face, pose, quality, gesture, all, raw (default: all). Use 'raw' for video-only preview without analysis. Comma-separated for multiple.",
+        help="Analyzer(s) to run: face, pose, quality, gesture, all, raw (default: all). Use 'raw' for video-only preview without analysis. Comma-separated for multiple.",
     )
     _add_ml_args(debug_parser)
     debug_parser.add_argument("--no-window", action="store_true", help="Disable interactive window")
@@ -122,7 +122,7 @@ Examples:
     debug_parser.add_argument(
         "--backend", choices=["pathway", "simple"], default=None,
         help="Execution backend: 'pathway' (Pathway streaming) or 'simple' (sequential). "
-             "Default: inline (same extractors/fusion as pathway, smooth visualization)"
+             "Default: inline (same analyzers/fusion as pathway, smooth visualization)"
     )
     debug_parser.add_argument(
         "--report", type=str, metavar="PATH",
@@ -154,7 +154,7 @@ Examples:
     proc_parser.add_argument("--spike-prob", type=float, default=0.1, help=argparse.SUPPRESS)
 
     # benchmark command
-    bench_parser = subparsers.add_parser("benchmark", help="Benchmark extractor performance")
+    bench_parser = subparsers.add_parser("benchmark", help="Benchmark analyzer performance")
     bench_parser.add_argument("path", help="Path to video file")
     bench_parser.add_argument("--frames", type=int, default=100, help="Number of frames (default: 100)")
     bench_parser.add_argument("--device", type=str, default="cuda:0")

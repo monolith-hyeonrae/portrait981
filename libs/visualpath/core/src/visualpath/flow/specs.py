@@ -43,7 +43,7 @@ class SourceSpec(NodeSpec):
 
 @dataclass(frozen=True)
 class ModuleSpec(NodeSpec):
-    """Spec for module execution (unified extractor/fusion).
+    """Spec for module execution (unified analyzer/fusion).
 
     Modules are processed in dependency order. Each module produces
     an Observation (with optional trigger info in signals).

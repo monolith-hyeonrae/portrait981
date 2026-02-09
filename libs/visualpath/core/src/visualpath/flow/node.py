@@ -34,7 +34,7 @@ from visualpath.flow.specs import NodeSpec
 
 if TYPE_CHECKING:
     from visualbase import Frame
-    from visualpath.core.extractor import Observation
+    from visualpath.core.observation import Observation
 
 
 @dataclass
@@ -47,7 +47,7 @@ class FlowData:
 
     Attributes:
         frame: Optional source frame being processed.
-        observations: List of observations from extractors.
+        observations: List of observations from analyzers.
         results: List of trigger observations (Observations with should_trigger=True).
             These are Observation instances with trigger info in signals/metadata.
         metadata: Arbitrary key-value metadata.

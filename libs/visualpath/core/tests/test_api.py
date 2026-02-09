@@ -7,9 +7,9 @@ from visualbase import Frame
 
 import visualpath as vp
 from visualpath.api import (
-    _extractor_registry,
+    _analyzer_registry,
     _fusion_registry,
-    FunctionExtractor,
+    FunctionAnalyzer,
     FunctionFusion,
 )
 
@@ -17,10 +17,10 @@ from visualpath.api import (
 @pytest.fixture(autouse=True)
 def clear_registry():
     """Clear registries before each test."""
-    _extractor_registry.clear()
+    _analyzer_registry.clear()
     _fusion_registry.clear()
     yield
-    _extractor_registry.clear()
+    _analyzer_registry.clear()
     _fusion_registry.clear()
 
 
@@ -33,24 +33,24 @@ def make_frame(frame_id: int = 0, t_ns: int = 0) -> Frame:
     )
 
 
-class TestExtractorDecorator:
-    """Tests for @vp.extractor decorator."""
+class TestAnalyzerDecorator:
+    """Tests for @vp.analyzer decorator."""
 
-    def test_basic_extractor(self):
-        """Test simple extractor creation."""
-        @vp.extractor("test")
-        def my_extractor(frame):
+    def test_basic_analyzer(self):
+        """Test simple analyzer creation."""
+        @vp.analyzer("test")
+        def my_analyzer(frame):
             return {"score": 0.5}
 
-        assert isinstance(my_extractor, FunctionExtractor)
-        assert my_extractor.name == "test"
+        assert isinstance(my_analyzer, FunctionAnalyzer)
+        assert my_analyzer.name == "test"
 
         # Should be registered
-        assert "test" in _extractor_registry
+        assert "test" in _analyzer_registry
 
-    def test_extractor_process(self):
-        """Test extractor process."""
-        @vp.extractor("brightness")
+    def test_analyzer_process(self):
+        """Test analyzer process."""
+        @vp.analyzer("brightness")
         def check_brightness(frame):
             return {"brightness": 128.0, "valid": 1.0}
 
@@ -62,24 +62,24 @@ class TestExtractorDecorator:
         assert obs.signals["brightness"] == 128.0
         assert obs.signals["valid"] == 1.0
 
-    def test_extractor_returns_none(self):
-        """Test extractor that returns None."""
-        @vp.extractor("conditional")
-        def conditional_extractor(frame):
+    def test_analyzer_returns_none(self):
+        """Test analyzer that returns None."""
+        @vp.analyzer("conditional")
+        def conditional_analyzer(frame):
             if frame.frame_id < 5:
                 return None
             return {"passed": 1.0}
 
         frame = make_frame(frame_id=0)
-        assert conditional_extractor.process(frame) is None
+        assert conditional_analyzer.process(frame) is None
 
         frame = make_frame(frame_id=10)
-        obs = conditional_extractor.process(frame)
+        obs = conditional_analyzer.process(frame)
         assert obs is not None
         assert obs.signals["passed"] == 1.0
 
-    def test_extractor_with_init_cleanup(self):
-        """Test extractor with init and cleanup functions."""
+    def test_analyzer_with_init_cleanup(self):
+        """Test analyzer with init and cleanup functions."""
         state = {"initialized": False, "cleaned": False}
 
         def init():
@@ -88,39 +88,39 @@ class TestExtractorDecorator:
         def cleanup():
             state["cleaned"] = True
 
-        @vp.extractor("stateful", init=init, cleanup=cleanup)
-        def stateful_extractor(frame):
+        @vp.analyzer("stateful", init=init, cleanup=cleanup)
+        def stateful_analyzer(frame):
             return {"ready": 1.0 if state["initialized"] else 0.0}
 
         assert not state["initialized"]
 
-        stateful_extractor.initialize()
+        stateful_analyzer.initialize()
         assert state["initialized"]
 
-        stateful_extractor.cleanup()
+        stateful_analyzer.cleanup()
         assert state["cleaned"]
 
-    def test_extractor_context_manager(self):
-        """Test extractor as context manager."""
+    def test_analyzer_context_manager(self):
+        """Test analyzer as context manager."""
         calls = []
 
-        @vp.extractor(
+        @vp.analyzer(
             "ctx",
             init=lambda: calls.append("init"),
             cleanup=lambda: calls.append("cleanup"),
         )
-        def ctx_extractor(frame):
+        def ctx_analyzer(frame):
             return {"ok": 1.0}
 
-        with ctx_extractor:
+        with ctx_analyzer:
             assert "init" in calls
             assert "cleanup" not in calls
 
         assert "cleanup" in calls
 
-    def test_extractor_non_scalar_data(self):
-        """Test extractor with non-scalar data."""
-        @vp.extractor("objects")
+    def test_analyzer_non_scalar_data(self):
+        """Test analyzer with non-scalar data."""
+        @vp.analyzer("objects")
         def object_detector(frame):
             return {
                 "count": 2.0,
@@ -271,21 +271,21 @@ class TestTriggerSpec:
 
 
 class TestRegistry:
-    """Tests for extractor/fusion registry."""
+    """Tests for analyzer/fusion registry."""
 
-    def test_get_extractor(self):
-        """Test getting registered extractor."""
-        @vp.extractor("test_ext")
+    def test_get_analyzer(self):
+        """Test getting registered analyzer."""
+        @vp.analyzer("test_ext")
         def my_ext(frame):
             return {"x": 1.0}
 
-        ext = vp.get_extractor("test_ext")
+        ext = vp.get_analyzer("test_ext")
         assert ext is not None
         assert ext.name == "test_ext"
 
-    def test_get_unknown_extractor(self):
-        """Test getting unknown extractor."""
-        ext = vp.get_extractor("nonexistent")
+    def test_get_unknown_analyzer(self):
+        """Test getting unknown analyzer."""
+        ext = vp.get_analyzer("nonexistent")
         assert ext is None
 
     def test_get_fusion(self):
@@ -298,17 +298,17 @@ class TestRegistry:
         assert fus is not None
         assert fus.name == "test_fus"
 
-    def test_list_extractors(self):
-        """Test listing extractors."""
-        @vp.extractor("ext1")
+    def test_list_analyzers(self):
+        """Test listing analyzers."""
+        @vp.analyzer("ext1")
         def ext1(frame):
             return {}
 
-        @vp.extractor("ext2")
+        @vp.analyzer("ext2")
         def ext2(frame):
             return {}
 
-        names = vp.list_extractors()
+        names = vp.list_analyzers()
         assert "ext1" in names
         assert "ext2" in names
 
@@ -343,8 +343,8 @@ class TestAPIUsability:
 
     def test_readme_example(self):
         """Test example that would go in README."""
-        # Define extractor
-        @vp.extractor("quality")
+        # Define analyzer
+        @vp.analyzer("quality")
         def check_quality(frame):
             brightness = float(frame.data.mean())
             return {"brightness": brightness, "is_bright": brightness > 128}
@@ -355,7 +355,7 @@ class TestAPIUsability:
             if quality.get("is_bright") and quality.get("brightness", 0) > 200:
                 return vp.trigger("bright_frame", score=quality["brightness"] / 255)
 
-        # Test the extractor
+        # Test the analyzer
         frame = Frame.from_array(
             np.full((480, 640, 3), 220, dtype=np.uint8),  # Bright frame
             frame_id=0,
@@ -372,13 +372,13 @@ class TestAPIUsability:
         assert result.trigger_reason == "bright_frame"
         assert 0.8 < result.trigger_score < 0.9  # 220/255 ≈ 0.86
 
-    def test_minimal_extractor(self):
-        """Test minimal extractor definition."""
-        @vp.extractor("simple")
+    def test_minimal_analyzer(self):
+        """Test minimal analyzer definition."""
+        @vp.analyzer("simple")
         def simple(frame):
             return {"value": 1.0}
 
-        # That's it - 3 lines to define an extractor
+        # That's it - 3 lines to define an analyzer
         obs = simple.process(make_frame())
         assert obs.signals["value"] == 1.0
 

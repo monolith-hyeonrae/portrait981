@@ -4,7 +4,7 @@ from typing import List
 
 from visualbase import Frame
 
-from visualpath.extractors.base import Observation
+from visualpath.analyzers.base import Observation
 
 
 def merge_observations(observations: List[Observation], frame: Frame) -> Observation:
@@ -15,7 +15,7 @@ def merge_observations(observations: List[Observation], frame: Frame) -> Observa
     Propagates main_face_id from face_classifier to merged signals.
 
     Args:
-        observations: List of observations from different extractors.
+        observations: List of observations from different analyzers.
         frame: The source frame.
 
     Returns:

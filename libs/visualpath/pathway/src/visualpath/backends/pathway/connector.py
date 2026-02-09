@@ -95,7 +95,7 @@ if PATHWAY_AVAILABLE:
         Attributes:
             frame_id: Frame identifier.
             t_ns: Timestamp in nanoseconds.
-            source: Extractor name.
+            source: Analyzer name.
             observation: The Observation object (PyObjectWrapper).
         """
         frame_id: int

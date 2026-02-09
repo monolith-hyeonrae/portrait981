@@ -10,7 +10,7 @@ from facemoment.observability import ObservabilityHub, TraceLevel
 from facemoment.observability.pathway_monitor import PathwayMonitor
 from facemoment.observability.records import (
     BackpressureRecord,
-    ExtractorTimingRecord,
+    AnalyzerTimingRecord,
     ObservationMergeRecord,
     PathwayFrameRecord,
     PipelineStatsRecord,
@@ -87,14 +87,14 @@ class TestTraceRecords:
         r = PathwayFrameRecord()
         assert r.record_type == "pathway_frame"
         assert r.frame_id == 0
-        assert r.extractor_timings_ms == {}
+        assert r.analyzer_timings_ms == {}
         assert r.fusion_decision == ""
 
     def test_pathway_frame_record_with_values(self):
         r = PathwayFrameRecord(
             frame_id=10,
             t_ns=1000,
-            extractor_timings_ms={"face": 32.4, "pose": 18.1},
+            analyzer_timings_ms={"face": 32.4, "pose": 18.1},
             total_frame_ms=55.0,
             observations_produced=["face", "pose"],
             observations_failed=[],
@@ -102,7 +102,7 @@ class TestTraceRecords:
             fusion_decision="triggered",
         )
         assert r.frame_id == 10
-        assert r.extractor_timings_ms["face"] == 32.4
+        assert r.analyzer_timings_ms["face"] == 32.4
         assert r.fusion_decision == "triggered"
 
     def test_pathway_frame_record_to_dict(self):
@@ -112,16 +112,16 @@ class TestTraceRecords:
         assert d["frame_id"] == 5
         assert "min_level" not in d  # min_level excluded from dict
 
-    def test_extractor_timing_record(self):
-        r = ExtractorTimingRecord(
+    def test_analyzer_timing_record(self):
+        r = AnalyzerTimingRecord(
             frame_id=1,
-            extractor_name="face",
+            analyzer_name="face",
             processing_ms=32.5,
             produced_observation=True,
             sub_timings_ms={"detect": 20.0, "expression": 12.5},
         )
-        assert r.record_type == "extractor_timing"
-        assert r.extractor_name == "face"
+        assert r.record_type == "analyzer_timing"
+        assert r.analyzer_name == "face"
         assert r.sub_timings_ms["detect"] == 20.0
 
     def test_observation_merge_record(self):
@@ -145,13 +145,13 @@ class TestTraceRecords:
             effective_fps=10.0,
             target_fps=10.0,
             fps_ratio=1.0,
-            extractor_avg_ms={"face": 30.0},
-            slowest_extractor="face",
+            analyzer_avg_ms={"face": 30.0},
+            slowest_analyzer="face",
             bottleneck_pct=77.0,
         )
         assert r.record_type == "backpressure"
         assert r.fps_ratio == 1.0
-        assert r.slowest_extractor == "face"
+        assert r.slowest_analyzer == "face"
 
     def test_pipeline_stats_record(self):
         r = PipelineStatsRecord(
@@ -159,7 +159,7 @@ class TestTraceRecords:
             total_triggers=3,
             wall_time_sec=10.0,
             effective_fps=10.0,
-            extractor_stats={"face": {"avg_ms": 30.0, "p95_ms": 45.0}},
+            analyzer_stats={"face": {"avg_ms": 30.0, "p95_ms": 45.0}},
             fusion_avg_ms=2.0,
             gate_open_pct=68.0,
         )
@@ -183,9 +183,9 @@ class TestPathwayMonitorLifecycle:
 
         frame = FakeFrame(frame_id=1, t_src_ns=100_000_000)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("face")
+        monitor.begin_analyzer("face")
         obs = FakeObservation(source="face")
-        monitor.end_extractor("face", obs)
+        monitor.end_analyzer("face", obs)
         monitor.begin_fusion()
         result = FakeFusionResult(should_trigger=False, metadata={"state": "gate_closed"})
         monitor.end_fusion(result)
@@ -193,7 +193,7 @@ class TestPathwayMonitorLifecycle:
 
         stats = monitor.get_frame_stats()
         assert stats["frame_id"] == 1
-        assert "face" in stats["extractor_timings_ms"]
+        assert "face" in stats["analyzer_timings_ms"]
         assert stats["fusion_decision"] == "gate_closed"
 
     def test_multiple_extractors(self):
@@ -204,19 +204,19 @@ class TestPathwayMonitorLifecycle:
         monitor.begin_frame(frame)
 
         for name in ["face", "pose", "quality"]:
-            monitor.begin_extractor(name)
+            monitor.begin_analyzer(name)
             obs = FakeObservation(source=name)
-            monitor.end_extractor(name, obs)
+            monitor.end_analyzer(name, obs)
 
         monitor.begin_fusion()
         monitor.end_fusion(FakeFusionResult())
         monitor.end_frame()
 
         stats = monitor.get_frame_stats()
-        assert len(stats["extractor_timings_ms"]) == 3
-        assert "face" in stats["extractor_timings_ms"]
-        assert "pose" in stats["extractor_timings_ms"]
-        assert "quality" in stats["extractor_timings_ms"]
+        assert len(stats["analyzer_timings_ms"]) == 3
+        assert "face" in stats["analyzer_timings_ms"]
+        assert "pose" in stats["analyzer_timings_ms"]
+        assert "quality" in stats["analyzer_timings_ms"]
 
     def test_failed_extractor(self):
         hub, sink = _make_hub()
@@ -224,12 +224,12 @@ class TestPathwayMonitorLifecycle:
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("face")
-        monitor.end_extractor("face", None)  # Failed
+        monitor.begin_analyzer("face")
+        monitor.end_analyzer("face", None)  # Failed
         monitor.end_frame()
 
         stats = monitor.get_frame_stats()
-        assert "face" in stats["extractor_timings_ms"]
+        assert "face" in stats["analyzer_timings_ms"]
 
     def test_trigger_counting(self):
         hub, sink = _make_hub()
@@ -274,11 +274,11 @@ class TestPathwayMonitorStats:
         for i in range(n):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
             monitor.begin_frame(frame)
-            monitor.begin_extractor("face")
+            monitor.begin_analyzer("face")
             time.sleep(0.001)  # ~1ms
-            monitor.end_extractor("face", FakeObservation())
-            monitor.begin_extractor("quality")
-            monitor.end_extractor("quality", FakeObservation(source="quality"))
+            monitor.end_analyzer("face", FakeObservation())
+            monitor.begin_analyzer("quality")
+            monitor.end_analyzer("quality", FakeObservation(source="quality"))
             monitor.begin_fusion()
             monitor.end_fusion(FakeFusionResult())
             monitor.end_frame()
@@ -297,11 +297,11 @@ class TestPathwayMonitorStats:
         stats = monitor.get_frame_stats()
         assert "frame_id" in stats
         assert "total_frame_ms" in stats
-        assert "extractor_timings_ms" in stats
+        assert "analyzer_timings_ms" in stats
         assert "effective_fps" in stats
         assert "target_fps" in stats
         assert "fps_ratio" in stats
-        assert "slowest_extractor" in stats
+        assert "slowest_analyzer" in stats
         assert "bottleneck_pct" in stats
 
     def test_get_rolling_stats(self):
@@ -311,10 +311,10 @@ class TestPathwayMonitorStats:
 
         rolling = monitor.get_rolling_stats()
         assert rolling["effective_fps"] > 0
-        assert "face" in rolling["extractor_avg_ms"]
-        assert "face" in rolling["extractor_p95_ms"]
-        assert "face" in rolling["extractor_max_ms"]
-        assert rolling["slowest_extractor"] in ("face", "quality")
+        assert "face" in rolling["analyzer_avg_ms"]
+        assert "face" in rolling["analyzer_p95_ms"]
+        assert "face" in rolling["analyzer_max_ms"]
+        assert rolling["slowest_analyzer"] in ("face", "quality")
 
     def test_get_rolling_stats_insufficient_frames(self):
         hub, _ = _make_hub()
@@ -336,10 +336,10 @@ class TestPathwayMonitorStats:
         assert summary["total_frames"] == 5
         assert summary["wall_time_sec"] > 0
         assert summary["effective_fps"] > 0
-        assert "face" in summary["extractor_stats"]
-        assert "avg_ms" in summary["extractor_stats"]["face"]
-        assert "p95_ms" in summary["extractor_stats"]["face"]
-        assert "max_ms" in summary["extractor_stats"]["face"]
+        assert "face" in summary["analyzer_stats"]
+        assert "avg_ms" in summary["analyzer_stats"]["face"]
+        assert "p95_ms" in summary["analyzer_stats"]["face"]
+        assert "max_ms" in summary["analyzer_stats"]["face"]
 
     def test_main_face_tracking(self):
         hub, _ = _make_hub()
@@ -380,20 +380,20 @@ class TestPathwayMonitorEmission:
         assert len(frame_records) == 1
         assert frame_records[0].frame_id == 1
 
-    def test_emits_extractor_timing_record(self):
+    def test_emits_analyzer_timing_record(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
         monitor = PathwayMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("face")
-        monitor.end_extractor("face", FakeObservation())
+        monitor.begin_analyzer("face")
+        monitor.end_analyzer("face", FakeObservation())
         monitor.end_frame()
 
         records = sink.get_records()
-        timing_records = [r for r in records if isinstance(r, ExtractorTimingRecord)]
+        timing_records = [r for r in records if isinstance(r, AnalyzerTimingRecord)]
         assert len(timing_records) == 1
-        assert timing_records[0].extractor_name == "face"
+        assert timing_records[0].analyzer_name == "face"
         assert timing_records[0].produced_observation is True
 
     def test_emits_merge_record_at_verbose(self):
@@ -453,8 +453,8 @@ class TestPathwayMonitorEmission:
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("face")
-        monitor.end_extractor("face", FakeObservation())
+        monitor.begin_analyzer("face")
+        monitor.end_analyzer("face", FakeObservation())
         monitor.end_frame()
 
         records = sink.get_records()
@@ -467,8 +467,8 @@ class TestPathwayMonitorEmission:
         for i in range(10):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
             monitor.begin_frame(frame)
-            monitor.begin_extractor("face")
-            monitor.end_extractor("face", FakeObservation())
+            monitor.begin_analyzer("face")
+            monitor.end_analyzer("face", FakeObservation())
             monitor.end_frame()
 
         records = sink.get_records()
@@ -491,15 +491,15 @@ class TestPathwayMonitorStatsAlwaysWork:
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("face")
-        monitor.end_extractor("face", FakeObservation())
+        monitor.begin_analyzer("face")
+        monitor.end_analyzer("face", FakeObservation())
         monitor.begin_fusion()
         monitor.end_fusion(FakeFusionResult())
         monitor.end_frame()
 
         stats = monitor.get_frame_stats()
         assert stats["frame_id"] == 1
-        assert "face" in stats["extractor_timings_ms"]
+        assert "face" in stats["analyzer_timings_ms"]
 
     def test_rolling_stats_with_tracing_off(self):
         hub, _ = _make_hub(TraceLevel.OFF)
@@ -509,14 +509,14 @@ class TestPathwayMonitorStatsAlwaysWork:
         for i in range(5):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
             monitor.begin_frame(frame)
-            monitor.begin_extractor("face")
+            monitor.begin_analyzer("face")
             time.sleep(0.001)
-            monitor.end_extractor("face", FakeObservation())
+            monitor.end_analyzer("face", FakeObservation())
             monitor.end_frame()
 
         rolling = monitor.get_rolling_stats()
         assert rolling["effective_fps"] > 0
-        assert "face" in rolling["extractor_avg_ms"]
+        assert "face" in rolling["analyzer_avg_ms"]
 
     def test_summary_with_tracing_off(self):
         hub, _ = _make_hub(TraceLevel.OFF)
@@ -552,7 +552,7 @@ class TestConsoleSinkFormatters:
             effective_fps=9.2,
             target_fps=10.0,
             fps_ratio=0.92,
-            slowest_extractor="face",
+            slowest_analyzer="face",
             bottleneck_pct=77.0,
         )
         result = sink._format_record(record)
@@ -589,7 +589,7 @@ class TestConsoleSinkFormatters:
             total_triggers=2,
             wall_time_sec=10.0,
             effective_fps=10.0,
-            extractor_stats={"face": {"avg_ms": 30.0, "p95_ms": 45.0, "max_ms": 80.0, "errors": 0}},
+            analyzer_stats={"face": {"avg_ms": 30.0, "p95_ms": 45.0, "max_ms": 80.0, "errors": 0}},
             fusion_avg_ms=2.0,
             gate_open_pct=68.0,
         )
@@ -684,7 +684,7 @@ class TestFusionDecisionMapping:
 
 
 class TestSubTimings:
-    """Tests for extractor sub-timings propagation."""
+    """Tests for analyzer sub-timings propagation."""
 
     def test_sub_timings_passed_to_record(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
@@ -692,12 +692,12 @@ class TestSubTimings:
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("face")
-        monitor.end_extractor("face", FakeObservation(), sub_timings={"detect": 20.0, "expression": 12.0})
+        monitor.begin_analyzer("face")
+        monitor.end_analyzer("face", FakeObservation(), sub_timings={"detect": 20.0, "expression": 12.0})
         monitor.end_frame()
 
         records = sink.get_records()
-        timing_records = [r for r in records if isinstance(r, ExtractorTimingRecord)]
+        timing_records = [r for r in records if isinstance(r, AnalyzerTimingRecord)]
         assert len(timing_records) == 1
         assert timing_records[0].sub_timings_ms == {"detect": 20.0, "expression": 12.0}
 
@@ -707,11 +707,11 @@ class TestSubTimings:
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
-        monitor.begin_extractor("quality")
-        monitor.end_extractor("quality", FakeObservation(source="quality"))
+        monitor.begin_analyzer("quality")
+        monitor.end_analyzer("quality", FakeObservation(source="quality"))
         monitor.end_frame()
 
         records = sink.get_records()
-        timing_records = [r for r in records if isinstance(r, ExtractorTimingRecord)]
+        timing_records = [r for r in records if isinstance(r, AnalyzerTimingRecord)]
         assert len(timing_records) == 1
         assert timing_records[0].sub_timings_ms == {}

@@ -5,7 +5,7 @@ import time
 
 
 def run_benchmark(args):
-    """Run extractor performance benchmark."""
+    """Run analyzer performance benchmark."""
     import cv2
     from visualbase import Frame
 
@@ -210,9 +210,9 @@ def run_benchmark(args):
     # Benchmark Quality
     print("\n[Quality - Blur/Brightness]")
     try:
-        from facemoment.moment_detector.extractors import QualityExtractor
+        from facemoment.moment_detector.analyzers import QualityAnalyzer
 
-        quality_ext = QualityExtractor()
+        quality_ext = QualityAnalyzer()
 
         for f in frames[:5]:
             quality_ext.process(f)

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 from visualpath.core.isolation import IsolationLevel, IsolationConfig
 
@@ -68,7 +68,7 @@ class Path:
         isolation_config: Optional[IsolationConfig] = None,
         max_workers: Optional[int] = None,
         # Legacy alias
-        extractors: Optional[List[Module]] = None,
+        analyzers: Optional[List[Module]] = None,
     ):
         """Initialize a Path.
 
@@ -78,10 +78,10 @@ class Path:
             fusion: Optional fusion module for combining observations.
             isolation_config: Optional isolation configuration.
             max_workers: Max thread workers for parallel execution.
-            extractors: Deprecated alias for modules.
+            analyzers: Deprecated alias for modules.
         """
         self._name = name
-        self._modules = modules or extractors or []
+        self._modules = modules or analyzers or []
         self._fusion = fusion
         self._isolation_config = isolation_config or IsolationConfig()
         self._max_workers = max_workers or len(self._modules)
@@ -99,7 +99,7 @@ class Path:
         return self._modules
 
     @property
-    def extractors(self) -> List[Module]:
+    def analyzers(self) -> List[Module]:
         """Get the list of modules (legacy alias)."""
         return self._modules
 
@@ -184,7 +184,7 @@ class Path:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.cleanup()
 
-    def extract_all(
+    def analyze_all(
         self,
         frame: "Frame",
         external_deps: Optional[Dict[str, Observation]] = None,
@@ -245,7 +245,7 @@ class Path:
         Returns:
             List of Observations from fusion processing.
         """
-        observations = self.extract_all(frame)
+        observations = self.analyze_all(frame)
 
         if self._fusion is None:
             # No fusion - return empty results
@@ -376,7 +376,7 @@ class PathOrchestrator:
 
         return results
 
-    def extract_all(self, frame: "Frame") -> Dict[str, List[Observation]]:
+    def analyze_all(self, frame: "Frame") -> Dict[str, List[Observation]]:
         """Extract observations from all paths without fusion.
 
         Args:
@@ -390,5 +390,5 @@ class PathOrchestrator:
 
         results = {}
         for path in self._paths:
-            results[path.name] = path.extract_all(frame)
+            results[path.name] = path.analyze_all(frame)
         return results

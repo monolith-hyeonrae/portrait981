@@ -1,4 +1,4 @@
-"""Face detection extractor - detection only, no expression analysis."""
+"""Face detection analyzer - detection only, no expression analysis."""
 
 from typing import Optional, Dict, List
 import logging
@@ -6,7 +6,7 @@ import time
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     FaceObservation,
@@ -14,29 +14,29 @@ from visualpath.extractors.base import (
     processing_step,
     get_processing_steps,
 )
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.backends.base import (
     FaceDetectionBackend,
     DetectedFace,
 )
-from visualpath.extractors.outputs import FaceDetectOutput
+from visualpath.analyzers.outputs import FaceDetectOutput
 
 logger = logging.getLogger(__name__)
 
 
-class FaceDetectionExtractor(Module):
-    """Extractor for face detection only.
+class FaceDetectionAnalyzer(Module):
+    """Analyzer for face detection only.
 
     Detects faces and outputs bounding boxes, landmarks, and head pose.
-    Does NOT analyze expressions - use ExpressionExtractor for that.
+    Does NOT analyze expressions - use ExpressionAnalyzer for that.
 
     Outputs:
         - signals: face_count
         - data: {"faces": List[FaceObservation]}
 
     Example:
-        >>> extractor = FaceDetectionExtractor()
-        >>> with extractor:
-        ...     obs = extractor.process(frame)
+        >>> analyzer = FaceDetectionAnalyzer()
+        >>> with analyzer:
+        ...     obs = analyzer.process(frame)
         ...     print(f"Detected {obs.signals['face_count']} faces")
     """
 
@@ -83,14 +83,14 @@ class FaceDetectionExtractor(Module):
 
         self._face_backend.initialize(self._device)
         self._initialized = True
-        logger.info("FaceDetectionExtractor initialized")
+        logger.info("FaceDetectionAnalyzer initialized")
 
     def cleanup(self) -> None:
         if self._face_backend is not None:
             self._face_backend.cleanup()
         self._next_face_id = 0
         self._prev_faces = []
-        logger.info("FaceDetectionExtractor cleaned up")
+        logger.info("FaceDetectionAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 
@@ -215,7 +215,7 @@ class FaceDetectionExtractor(Module):
         deps: Optional[Dict[str, Observation]] = None,
     ) -> Optional[Observation]:
         if self._face_backend is None:
-            raise RuntimeError("Extractor not initialized")
+            raise RuntimeError("Analyzer not initialized")
 
         # Enable step timing collection
         self._step_timings = {}

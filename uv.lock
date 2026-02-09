@@ -19,8 +19,8 @@ members = [
     "facemoment",
     "visualbase",
     "visualpath",
+    "visualpath-analyzers-base",
     "visualpath-cli",
-    "visualpath-extractors-base",
     "visualpath-isolation",
     "visualpath-pathway",
     "vpx-expression",
@@ -1071,7 +1071,7 @@ dependencies = [
     { name = "opencv-python" },
     { name = "visualbase" },
     { name = "visualpath", extra = ["isolation"] },
-    { name = "visualpath-extractors-base" },
+    { name = "visualpath-analyzers-base" },
 ]
 
 [package.optional-dependencies]
@@ -1115,7 +1115,7 @@ requires-dist = [
     { name = "supervision", marker = "extra == 'local'", specifier = ">=0.19.0" },
     { name = "visualbase", editable = "libs/visualbase" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
-    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
     { name = "vpx-expression", marker = "extra == 'expression'", editable = "libs/vpx/expression" },
     { name = "vpx-face", marker = "extra == 'face'", editable = "libs/vpx/face" },
     { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/face-detect" },
@@ -5615,6 +5615,22 @@ requires-dist = [
 provides-extras = ["all", "cli", "dev", "isolation", "pathway"]
 
 [[package]]
+name = "visualpath-analyzers-base"
+version = "0.1.0"
+source = { editable = "libs/visualpath/analyzers/base" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "visualpath" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "visualpath", editable = "libs/visualpath/core" },
+]
+
+[[package]]
 name = "visualpath-cli"
 version = "0.1.0"
 source = { editable = "libs/visualpath/cli" }
@@ -5631,22 +5647,6 @@ requires-dist = [
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
-]
-
-[[package]]
-name = "visualpath-extractors-base"
-version = "0.1.0"
-source = { editable = "libs/visualpath/extractors/base" }
-dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "visualpath" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "visualpath", editable = "libs/visualpath/core" },
 ]
 
 [[package]]
@@ -5702,13 +5702,13 @@ version = "0.1.0"
 source = { editable = "libs/vpx/expression" }
 dependencies = [
     { name = "hsemotion-onnx" },
-    { name = "visualpath-extractors-base" },
+    { name = "visualpath-analyzers-base" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "hsemotion-onnx", specifier = ">=0.3" },
-    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
 ]
 
 [[package]]
@@ -5734,7 +5734,7 @@ dependencies = [
     { name = "insightface" },
     { name = "ml-dtypes" },
     { name = "onnxruntime-gpu" },
-    { name = "visualpath-extractors-base" },
+    { name = "visualpath-analyzers-base" },
 ]
 
 [package.metadata]
@@ -5742,7 +5742,7 @@ requires-dist = [
     { name = "insightface", specifier = ">=0.7.3" },
     { name = "ml-dtypes", specifier = ">=0.5.0" },
     { name = "onnxruntime-gpu", specifier = ">=1.16.0" },
-    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
 ]
 
 [[package]]
@@ -5751,13 +5751,13 @@ version = "0.1.0"
 source = { editable = "libs/vpx/gesture" }
 dependencies = [
     { name = "mediapipe" },
-    { name = "visualpath-extractors-base" },
+    { name = "visualpath-analyzers-base" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "mediapipe", specifier = ">=0.10.32" },
-    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
 ]
 
 [[package]]
@@ -5766,13 +5766,13 @@ version = "0.1.0"
 source = { editable = "libs/vpx/pose" }
 dependencies = [
     { name = "ultralytics" },
-    { name = "visualpath-extractors-base" },
+    { name = "visualpath-analyzers-base" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "ultralytics", specifier = ">=8.0.0" },
-    { name = "visualpath-extractors-base", editable = "libs/visualpath/extractors/base" },
+    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
 ]
 
 [[package]]

@@ -124,8 +124,8 @@ class ConsoleSink(BaseConsoleSink):
             fps_str = self._colorize(f"{record.effective_fps:.1f}fps ({record.fps_ratio:.0%})", "red")
 
         bottleneck = ""
-        if record.slowest_extractor:
-            bottleneck = f" bottleneck={record.slowest_extractor} ({record.bottleneck_pct:.0f}%)"
+        if record.slowest_analyzer:
+            bottleneck = f" bottleneck={record.slowest_analyzer} ({record.bottleneck_pct:.0f}%)"
 
         return (
             f"{tag} Frames {record.start_frame}-{record.end_frame}: "
@@ -154,13 +154,13 @@ class ConsoleSink(BaseConsoleSink):
         lines.append(f"  Effective FPS: {record.effective_fps:.1f}")
         lines.append(f"  Triggers:      {record.total_triggers}")
 
-        if record.extractor_stats:
+        if record.analyzer_stats:
             lines.append("")
-            lines.append("  Extractor Performance:")
-            header = f"  {'Extractor':<14} {'Avg ms':>8} {'P95 ms':>8} {'Max ms':>8} {'Errors':>8}"
+            lines.append("  Analyzer Performance:")
+            header = f"  {'Analyzer':<14} {'Avg ms':>8} {'P95 ms':>8} {'Max ms':>8} {'Errors':>8}"
             lines.append(header)
             lines.append("  " + "-" * 48)
-            for name, stats in record.extractor_stats.items():
+            for name, stats in record.analyzer_stats.items():
                 avg = stats.get("avg_ms", 0)
                 p95 = stats.get("p95_ms", 0)
                 mx = stats.get("max_ms", 0)

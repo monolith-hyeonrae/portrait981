@@ -4,7 +4,7 @@
     MomentDetector is deprecated. Use ``FacemomentPipeline`` instead::
 
         from facemoment.pipeline import FacemomentPipeline
-        pipeline = FacemomentPipeline(extractors=["face", "pose"])
+        pipeline = FacemomentPipeline(analyzers=["face", "pose"])
         triggers = pipeline.run(frames)
 """
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from visualbase import VisualBase, FileSource, Frame, Trigger, ClipResult
 
-from visualpath.extractors.base import BaseExtractor, Observation
+from visualpath.analyzers.base import BaseAnalyzer, Observation
 from facemoment.moment_detector.fusion.base import BaseFusion
 
 
@@ -23,20 +23,20 @@ class MomentDetector:
 
     MomentDetector combines:
     - VisualBase for video input and clip extraction
-    - Extractors (B modules) for feature analysis
+    - Analyzers (B modules) for feature analysis
     - Fusion (C module) for trigger decisions
 
     Args:
-        extractors: List of feature extractors to use.
+        analyzers: List of feature analyzers to use.
         fusion: Fusion module for trigger decisions.
         clip_output_dir: Directory for extracted clips.
 
     Example:
-        >>> from facemoment.moment_detector.extractors import DummyExtractor
+        >>> from facemoment.moment_detector.analyzers import DummyAnalyzer
         >>> from facemoment.moment_detector.fusion import DummyFusion
         >>>
         >>> detector = MomentDetector(
-        ...     extractors=[DummyExtractor(num_faces=2)],
+        ...     analyzers=[DummyAnalyzer(num_faces=2)],
         ...     fusion=DummyFusion(expression_threshold=0.8),
         ...     clip_output_dir=Path("./clips"),
         ... )
@@ -48,7 +48,7 @@ class MomentDetector:
 
     def __init__(
         self,
-        extractors: List[BaseExtractor],
+        analyzers: List[BaseAnalyzer],
         fusion: BaseFusion,
         clip_output_dir: Optional[Path] = None,
     ):
@@ -58,7 +58,7 @@ class MomentDetector:
             DeprecationWarning,
             stacklevel=2,
         )
-        self._extractors = extractors
+        self._analyzers = analyzers
         self._fusion = fusion
         self._clip_output_dir = Path(clip_output_dir) if clip_output_dir else Path("./clips")
         self._vb: Optional[VisualBase] = None
@@ -90,8 +90,8 @@ class MomentDetector:
         """
         clips: List[ClipResult] = []
 
-        # Initialize extractors
-        for ext in self._extractors:
+        # Initialize analyzers
+        for ext in self._analyzers:
             ext.initialize()
 
         try:
@@ -106,9 +106,9 @@ class MomentDetector:
                 if self._on_frame:
                     self._on_frame(frame)
 
-                # Run extractors
-                for extractor in self._extractors:
-                    observation = extractor.process(frame)
+                # Run analyzers
+                for analyzer in self._analyzers:
+                    observation = analyzer.process(frame)
 
                     if observation is not None:
                         # Callback
@@ -132,8 +132,8 @@ class MomentDetector:
             self._vb.disconnect()
 
         finally:
-            # Cleanup extractors
-            for ext in self._extractors:
+            # Cleanup analyzers
+            for ext in self._analyzers:
                 ext.cleanup()
 
         return clips
@@ -157,8 +157,8 @@ class MomentDetector:
             Tuple of (frame, fusion_result). fusion_result is None if
             no observation was produced, or Observation from fusion.
         """
-        # Initialize extractors
-        for ext in self._extractors:
+        # Initialize analyzers
+        for ext in self._analyzers:
             ext.initialize()
 
         try:
@@ -171,9 +171,9 @@ class MomentDetector:
 
                 fusion_result = None
 
-                # Run extractors (use first extractor for simplicity)
-                for extractor in self._extractors:
-                    observation = extractor.process(frame)
+                # Run analyzers (use first analyzer for simplicity)
+                for analyzer in self._analyzers:
+                    observation = analyzer.process(frame)
 
                     if observation is not None:
                         fusion_result = self._fusion.update(observation)
@@ -188,7 +188,7 @@ class MomentDetector:
             self._vb.disconnect()
 
         finally:
-            for ext in self._extractors:
+            for ext in self._analyzers:
                 ext.cleanup()
 
     def set_on_frame(self, callback: Callable[[Frame], None]) -> None:

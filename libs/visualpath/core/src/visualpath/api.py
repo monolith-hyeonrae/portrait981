@@ -7,8 +7,8 @@ customization when needed.
 Quick Start:
     >>> import visualpath as vp
     >>>
-    >>> # Define a custom extractor
-    >>> @vp.extractor("brightness")
+    >>> # Define a custom analyzer
+    >>> @vp.analyzer("brightness")
     >>> def check_brightness(frame):
     ...     gray = cv2.cvtColor(frame.data, cv2.COLOR_BGR2GRAY)
     ...     return {"brightness": float(gray.mean())}
@@ -34,7 +34,7 @@ from typing import (
 
 from visualbase import Frame, Trigger
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 
 
@@ -53,7 +53,7 @@ DEFAULT_POST_SEC = 2.0
 # Registry
 # =============================================================================
 
-_extractor_registry: Dict[str, "FunctionExtractor"] = {}
+_analyzer_registry: Dict[str, "FunctionAnalyzer"] = {}
 _fusion_registry: Dict[str, "FunctionFusion"] = {}
 
 
@@ -91,9 +91,9 @@ def _list_registered(
     return sorted(set(names))
 
 
-def get_extractor(name: str) -> Optional[Module]:
-    """Get a registered extractor by name."""
-    return _get_registered(name, _extractor_registry, "discover_extractors")
+def get_analyzer(name: str) -> Optional[Module]:
+    """Get a registered analyzer by name."""
+    return _get_registered(name, _analyzer_registry, "discover_analyzers")
 
 
 def get_fusion(name: str) -> Optional[Module]:
@@ -101,9 +101,9 @@ def get_fusion(name: str) -> Optional[Module]:
     return _get_registered(name, _fusion_registry, "discover_fusions")
 
 
-def list_extractors() -> List[str]:
-    """List all available extractor names."""
-    return _list_registered(_extractor_registry, "discover_extractors")
+def list_analyzers() -> List[str]:
+    """List all available analyzer names."""
+    return _list_registered(_analyzer_registry, "discover_analyzers")
 
 
 def list_fusions() -> List[str]:
@@ -112,19 +112,19 @@ def list_fusions() -> List[str]:
 
 
 # =============================================================================
-# Function-based Extractor
+# Function-based Analyzer
 # =============================================================================
 
-ExtractFn = Callable[[Frame], Optional[Dict[str, Any]]]
+AnalyzeFn = Callable[[Frame], Optional[Dict[str, Any]]]
 
 
-class FunctionExtractor(Module):
-    """Extractor wrapper for simple functions.
+class FunctionAnalyzer(Module):
+    """Analyzer wrapper for simple functions.
 
     Wraps a function that takes a Frame and returns a dict of signals.
 
     Example:
-        >>> @vp.extractor("brightness")
+        >>> @vp.analyzer("brightness")
         >>> def check_brightness(frame):
         ...     return {"brightness": float(frame.data.mean())}
     """
@@ -132,7 +132,7 @@ class FunctionExtractor(Module):
     def __init__(
         self,
         name: str,
-        fn: ExtractFn,
+        fn: AnalyzeFn,
         *,
         init_fn: Optional[Callable[[], None]] = None,
         cleanup_fn: Optional[Callable[[], None]] = None,
@@ -185,35 +185,35 @@ class FunctionExtractor(Module):
             self._cleanup_fn()
 
 
-def extractor(
+def analyzer(
     name: str,
     *,
     init: Optional[Callable[[], None]] = None,
     cleanup: Optional[Callable[[], None]] = None,
-) -> Callable[[ExtractFn], FunctionExtractor]:
-    """Decorator to create an extractor from a function.
+) -> Callable[[AnalyzeFn], FunctionAnalyzer]:
+    """Decorator to create an analyzer from a function.
 
     The decorated function should take a Frame and return a dict of signals,
     or None to skip the frame.
 
     Args:
-        name: Unique name for this extractor.
+        name: Unique name for this analyzer.
         init: Optional initialization function.
         cleanup: Optional cleanup function.
 
     Returns:
-        Decorator that creates a FunctionExtractor.
+        Decorator that creates a FunctionAnalyzer.
 
     Example:
-        >>> @vp.extractor("quality")
+        >>> @vp.analyzer("quality")
         >>> def check_quality(frame):
         ...     blur = cv2.Laplacian(frame.data, cv2.CV_64F).var()
         ...     return {"blur_score": blur, "is_sharp": blur > 100}
     """
 
-    def decorator(fn: ExtractFn) -> FunctionExtractor:
-        ext = FunctionExtractor(name, fn, init_fn=init, cleanup_fn=cleanup)
-        _extractor_registry[name] = ext
+    def decorator(fn: AnalyzeFn) -> FunctionAnalyzer:
+        ext = FunctionAnalyzer(name, fn, init_fn=init, cleanup_fn=cleanup)
+        _analyzer_registry[name] = ext
         return ext
 
     return decorator
@@ -401,7 +401,7 @@ def fusion(
     and should return a TriggerSpec (via `vp.trigger()`) or None.
 
     Args:
-        sources: List of extractor names this fusion combines.
+        sources: List of analyzer names this fusion combines.
         name: Optional name for this fusion (defaults to function name).
         cooldown: Seconds to wait between triggers.
         gate_sources: Sources that must pass quality gate.
@@ -442,16 +442,16 @@ __all__ = [
     "DEFAULT_PRE_SEC",
     "DEFAULT_POST_SEC",
     # Decorators
-    "extractor",
+    "analyzer",
     "fusion",
     "trigger",
     # Classes (for advanced use)
-    "FunctionExtractor",
+    "FunctionAnalyzer",
     "FunctionFusion",
     "TriggerSpec",
     # Registry
-    "get_extractor",
+    "get_analyzer",
     "get_fusion",
-    "list_extractors",
+    "list_analyzers",
     "list_fusions",
 ]

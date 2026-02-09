@@ -41,15 +41,15 @@ class ObservabilitySchema(BaseModel):
     sinks: List[SinkSchema] = Field(default_factory=list)
 
 
-class ExtractorSchema(BaseModel):
-    """Configuration for an extractor in the pipeline.
+class AnalyzerSchema(BaseModel):
+    """Configuration for an analyzer in the pipeline.
 
     Attributes:
-        name: Extractor name (must be registered via entry point).
+        name: Analyzer name (must be registered via entry point).
         isolation: Isolation level for execution.
         venv_path: Path to venv (required for venv isolation).
         container_image: Container image (for container isolation).
-        config: Extractor-specific configuration.
+        config: Analyzer-specific configuration.
     """
 
     name: str
@@ -59,7 +59,7 @@ class ExtractorSchema(BaseModel):
     config: Dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_isolation_requirements(self) -> "ExtractorSchema":
+    def validate_isolation_requirements(self) -> "AnalyzerSchema":
         """Validate isolation-specific requirements."""
         if self.isolation == "venv" and not self.venv_path:
             raise ValueError("VENV isolation requires 'venv_path' to be set")
@@ -83,16 +83,16 @@ class FusionSchema(BaseModel):
 class PipelineSchema(BaseModel):
     """Configuration for a single pipeline.
 
-    A pipeline consists of one or more extractors feeding into
+    A pipeline consists of one or more analyzers feeding into
     a fusion module.
 
     Attributes:
-        extractors: List of extractor configurations.
+        analyzers: List of analyzer configurations.
         fusion: Fusion module configuration.
         observability: Optional observability settings.
     """
 
-    extractors: List[ExtractorSchema] = Field(min_length=1)
+    analyzers: List[AnalyzerSchema] = Field(min_length=1)
     fusion: FusionSchema
     observability: ObservabilitySchema = Field(default_factory=ObservabilitySchema)
 
@@ -168,7 +168,7 @@ class FlowNodeSchema(BaseModel):
                 raise ValueError("rate_limiter requires 'min_interval_ms'")
 
         elif self.type == "path":
-            # path can have extractors and/or fusion
+            # path can have analyzers and/or fusion
             pass
 
         elif self.type == "branch":

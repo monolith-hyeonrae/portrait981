@@ -71,9 +71,9 @@ def _dry_run(pipelines: dict) -> int:
         print(f"\nPipeline: {name}")
         print("-" * 40)
 
-        # Extractors
-        print("Extractors:")
-        for i, ext in enumerate(pipeline.extractors, 1):
+        # Analyzers
+        print("Analyzers:")
+        for i, ext in enumerate(pipeline.analyzers, 1):
             print(f"  {i}. {ext.name}")
             print(f"     Isolation: {ext.isolation}")
             if ext.isolation == "venv":
@@ -113,22 +113,22 @@ def _execute(pipelines: dict) -> int:
         Exit code (0 for success, 1 for errors).
     """
     from visualpath.plugin.discovery import (
-        discover_extractors,
+        discover_analyzers,
         discover_fusions,
-        load_extractor,
+        load_analyzer,
         load_fusion,
     )
     from visualpath.observability import ObservabilityHub, FileSink, ConsoleSink
 
     # Verify all plugins are available first
-    available_extractors = set(discover_extractors().keys())
+    available_analyzers = set(discover_analyzers().keys())
     available_fusions = set(discover_fusions().keys())
 
     errors = []
     for name, pipeline in pipelines.items():
-        for ext in pipeline.extractors:
-            if ext.name not in available_extractors:
-                errors.append(f"Extractor '{ext.name}' not found (pipeline: {name})")
+        for ext in pipeline.analyzers:
+            if ext.name not in available_analyzers:
+                errors.append(f"Analyzer '{ext.name}' not found (pipeline: {name})")
 
         if pipeline.fusion.name not in available_fusions:
             errors.append(f"Fusion '{pipeline.fusion.name}' not found (pipeline: {name})")
@@ -163,13 +163,13 @@ def _execute(pipelines: dict) -> int:
         hub.configure(level=trace_level, sinks=sinks)
 
         try:
-            # Load extractors
-            extractors = []
-            for ext_config in pipeline.extractors:
-                ExtractorClass = load_extractor(ext_config.name)
-                extractor = ExtractorClass(**ext_config.config)
-                extractors.append((extractor, ext_config))
-                print(f"  Loaded extractor: {ext_config.name}")
+            # Load analyzers
+            analyzers = []
+            for ext_config in pipeline.analyzers:
+                AnalyzerClass = load_analyzer(ext_config.name)
+                analyzer = AnalyzerClass(**ext_config.config)
+                analyzers.append((analyzer, ext_config))
+                print(f"  Loaded analyzer: {ext_config.name}")
 
             # Load fusion
             FusionClass = load_fusion(pipeline.fusion.name)

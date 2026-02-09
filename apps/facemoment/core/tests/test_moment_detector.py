@@ -6,24 +6,24 @@ from pathlib import Path
 import pytest
 
 from facemoment import MomentDetector
-from facemoment.moment_detector.extractors import DummyExtractor, Observation
+from facemoment.moment_detector.analyzers import DummyAnalyzer, Observation
 from facemoment.moment_detector.fusion import DummyFusion
 
 from helpers import create_test_video
 
 
-class TestDummyExtractor:
+class TestDummyAnalyzer:
     def test_extract_produces_observation(self):
         from visualbase import Frame
         import numpy as np
 
-        extractor = DummyExtractor(num_faces=2, seed=42)
+        analyzer = DummyAnalyzer(num_faces=2, seed=42)
 
         # Create a dummy frame
         data = np.zeros((240, 320, 3), dtype=np.uint8)
         frame = Frame.from_array(data, frame_id=0, t_src_ns=0)
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert obs.source == "dummy"
@@ -32,19 +32,19 @@ class TestDummyExtractor:
         assert "max_expression" in obs.signals
         assert "face_count" in obs.signals
 
-    def test_extractor_name(self):
-        extractor = DummyExtractor(name="test_extractor")
-        assert extractor.name == "test_extractor"
+    def test_analyzer_name(self):
+        analyzer = DummyAnalyzer(name="test_analyzer")
+        assert analyzer.name == "test_analyzer"
 
     def test_face_observation_values(self):
         from visualbase import Frame
         import numpy as np
 
-        extractor = DummyExtractor(num_faces=1, seed=42)
+        analyzer = DummyAnalyzer(num_faces=1, seed=42)
         data = np.zeros((240, 320, 3), dtype=np.uint8)
         frame = Frame.from_array(data, frame_id=0, t_src_ns=0)
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
         face = obs.faces[0]
 
         assert 0 <= face.confidence <= 1
@@ -103,7 +103,7 @@ class TestMomentDetector:
 
         # Use high threshold so no triggers fire
         detector = MomentDetector(
-            extractors=[DummyExtractor(num_faces=1, spike_probability=0.0, seed=42)],
+            analyzers=[DummyAnalyzer(num_faces=1, spike_probability=0.0, seed=42)],
             fusion=DummyFusion(expression_threshold=0.99),
             clip_output_dir=clips_dir,
         )
@@ -122,7 +122,7 @@ class TestMomentDetector:
 
         # Use low threshold and high spike probability to guarantee triggers
         detector = MomentDetector(
-            extractors=[DummyExtractor(num_faces=1, spike_probability=0.5, seed=42)],
+            analyzers=[DummyAnalyzer(num_faces=1, spike_probability=0.5, seed=42)],
             fusion=DummyFusion(
                 expression_threshold=0.5,
                 consecutive_frames=2,
@@ -150,7 +150,7 @@ class TestMomentDetector:
         create_test_video(video_path, num_frames=30, fps=30)
 
         detector = MomentDetector(
-            extractors=[DummyExtractor(num_faces=1, seed=42)],
+            analyzers=[DummyAnalyzer(num_faces=1, seed=42)],
             fusion=DummyFusion(expression_threshold=0.99),
             clip_output_dir=clips_dir,
         )
@@ -169,7 +169,7 @@ class TestMomentDetector:
         create_test_video(video_path, num_frames=30, fps=30)
 
         detector = MomentDetector(
-            extractors=[DummyExtractor(num_faces=1, seed=42)],
+            analyzers=[DummyAnalyzer(num_faces=1, seed=42)],
             fusion=DummyFusion(expression_threshold=0.99),
             clip_output_dir=clips_dir,
         )
@@ -192,7 +192,7 @@ class TestMomentDetector:
         create_test_video(video_path, num_frames=30, fps=30)
 
         detector = MomentDetector(
-            extractors=[DummyExtractor(seed=42)],
+            analyzers=[DummyAnalyzer(seed=42)],
             fusion=DummyFusion(),
             clip_output_dir=clips_dir,
         )
@@ -217,8 +217,8 @@ class TestE2E:
         create_test_video(video_path, num_frames=150, fps=30)  # 5 seconds
 
         detector = MomentDetector(
-            extractors=[
-                DummyExtractor(
+            analyzers=[
+                DummyAnalyzer(
                     name="face",
                     num_faces=2,
                     spike_probability=0.3,

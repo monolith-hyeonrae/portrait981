@@ -1,32 +1,32 @@
-"""Dummy extractor for testing."""
+"""Dummy analyzer for testing."""
 
 import random
 from typing import Optional
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     FaceObservation,
 )
 
 
-class DummyExtractor(Module):
-    """Dummy extractor that generates random observations for testing.
+class DummyAnalyzer(Module):
+    """Dummy analyzer that generates random observations for testing.
 
-    This extractor simulates face detection with configurable behavior.
+    This analyzer simulates face detection with configurable behavior.
     Useful for testing the pipeline without real ML models.
 
     Args:
-        name: Extractor name (default: "dummy").
+        name: Analyzer name (default: "dummy").
         num_faces: Number of faces to simulate (default: 1).
         spike_probability: Probability of generating a high reaction (default: 0.1).
         seed: Random seed for reproducibility (default: None).
 
     Example:
-        >>> extractor = DummyExtractor(num_faces=2, spike_probability=0.2)
-        >>> obs = extractor.process(frame)
+        >>> analyzer = DummyAnalyzer(num_faces=2, spike_probability=0.2)
+        >>> obs = analyzer.process(frame)
         >>> print(f"Detected {len(obs.faces)} faces")
     """
 

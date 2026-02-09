@@ -1,13 +1,13 @@
 import pkgutil
 __path__ = pkgutil.extend_path(__path__, __name__)
 
-"""Backend implementations for feature extraction.
+"""Backend implementations for feature analysis.
 
 Each backend can be imported independently to avoid dependency conflicts.
 
 Usage:
     # Import base types (always available)
-    from visualpath.extractors.backends import DetectedFace, FaceExpression
+    from visualpath.analyzers.backends import DetectedFace, FaceExpression
 
     # Import specific backends (requires corresponding dependencies)
     from vpx.face_detect.backends.insightface import InsightFaceSCRFD
@@ -18,7 +18,7 @@ Usage:
 """
 
 # Base types - always available (no ML dependencies)
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.backends.base import (
     FaceDetectionBackend,
     ExpressionBackend,
     PoseBackend,

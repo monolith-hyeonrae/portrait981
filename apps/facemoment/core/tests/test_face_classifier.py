@@ -1,16 +1,16 @@
-"""Tests for FaceClassifierExtractor."""
+"""Tests for FaceClassifierAnalyzer."""
 
 import numpy as np
 import pytest
 from unittest.mock import MagicMock
 
-from facemoment.moment_detector.extractors.face_classifier import (
-    FaceClassifierExtractor,
+from facemoment.moment_detector.analyzers.face_classifier import (
+    FaceClassifierAnalyzer,
     ClassifiedFace,
     FaceClassifierOutput,
 )
-from visualpath.extractors.base import Observation, FaceObservation
-from visualpath.extractors.outputs import FaceDetectOutput
+from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.outputs import FaceDetectOutput
 
 
 def make_face(face_id: int, bbox: tuple, confidence: float = 0.9) -> FaceObservation:
@@ -50,12 +50,12 @@ def make_face_detect_obs(faces: list, frame_id: int = 1) -> Observation:
     )
 
 
-class TestFaceClassifierExtractor:
-    """Tests for FaceClassifierExtractor."""
+class TestFaceClassifierAnalyzer:
+    """Tests for FaceClassifierAnalyzer."""
 
     @pytest.fixture
     def classifier(self):
-        return FaceClassifierExtractor(
+        return FaceClassifierAnalyzer(
             min_track_frames=3,  # Lower for testing
             min_area_ratio=0.005,
             min_confidence=0.5,

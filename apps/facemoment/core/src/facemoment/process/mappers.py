@@ -11,11 +11,11 @@ Mapper implementations:
 
 Example:
     >>> from facemoment.process.mappers import FacemomentMapper
-    >>> from visualpath.process import ExtractorProcess
+    >>> from visualpath.process import AnalyzerProcess
     >>>
     >>> mapper = FacemomentMapper()
-    >>> process = ExtractorProcess(
-    ...     extractor=FaceExtractor(),
+    >>> process = AnalyzerProcess(
+    ...     analyzer=FaceAnalyzer(),
     ...     observation_mapper=mapper,
     ...     ...
     ... )
@@ -35,7 +35,7 @@ from visualbase.ipc.messages import (
 )
 from visualpath.process.mapper import ObservationMapper, CompositeMapper
 
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 
 
 class FaceObservationMapper:
@@ -272,8 +272,8 @@ class FacemomentMapper(CompositeMapper):
     the appropriate specialized mappers.
 
     Example:
-        >>> from facemoment.process import create_extractor_process
-        >>> process = create_extractor_process(FaceExtractor())
+        >>> from facemoment.process import create_analyzer_process
+        >>> process = create_analyzer_process(FaceAnalyzer())
         >>> # FacemomentMapper is automatically used
     """
 

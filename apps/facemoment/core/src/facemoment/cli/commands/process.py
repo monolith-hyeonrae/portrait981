@@ -11,7 +11,7 @@ from facemoment.cli.utils import (
     cleanup_observability,
     detect_distributed_mode,
     detect_ml_mode,
-    probe_extractors,
+    probe_analyzers,
 )
 
 
@@ -79,9 +79,9 @@ def _run_distributed(args, config_path, venv_face, venv_pose, venv_gesture, back
             backend=effective_backend,
         )
 
-    # Print extractor configuration
-    print("Extractors:")
-    for ext_config in config.extractors:
+    # Print analyzer configuration
+    print("Analyzers:")
+    for ext_config in config.analyzers:
         isolation = ext_config.effective_isolation.name
         venv = ext_config.venv_path or "(current)"
         print(f"  {ext_config.name}: {isolation} [{venv}]")
@@ -191,13 +191,13 @@ def _run_distributed(args, config_path, venv_face, venv_pose, venv_gesture, back
             "settings": {
                 "fps": args.fps,
                 "cooldown_sec": args.cooldown,
-                "extractors": [
+                "analyzers": [
                     {
                         "name": ext.name,
                         "isolation": ext.effective_isolation.name,
                         "venv_path": ext.venv_path,
                     }
-                    for ext in config.extractors
+                    for ext in config.analyzers
                 ],
             },
             "results": {
@@ -233,7 +233,7 @@ def _run_library(args, backend="pathway"):
     """Run processing in library mode using FacemomentPipeline.
 
     Uses the same pipeline as distributed mode for consistent behavior:
-    - FaceClassifier auto-injection when face extractor is used
+    - FaceClassifier auto-injection when face analyzer is used
     - HighlightFusion main_only mode
     """
     from visualbase import VisualBase, FileSource, ClipResult
@@ -261,22 +261,22 @@ def _run_library(args, backend="pathway"):
     print(f"ML backends: {ml_mode}")
     print("-" * 50)
 
-    # Determine which extractors to use
-    probed = probe_extractors(use_ml=use_ml)
-    extractor_names = probed["names"]
+    # Determine which analyzers to use
+    probed = probe_analyzers(use_ml=use_ml)
+    analyzer_names = probed["names"]
     face_available = probed["face"]
     pose_available = probed["pose"]
     gesture_available = probed["gesture"]
 
-    for name in extractor_names:
+    for name in analyzer_names:
         if name == "dummy":
-            print("  DummyExtractor: enabled (fallback)")
+            print("  DummyAnalyzer: enabled (fallback)")
         else:
-            print(f"  {name.capitalize()}Extractor: enabled")
+            print(f"  {name.capitalize()}Analyzer: enabled")
 
     # Print FaceClassifier info (auto-injected by FacemomentPipeline)
     if face_available:
-        print("  FaceClassifierExtractor: enabled (auto-injected)")
+        print("  FaceClassifierAnalyzer: enabled (auto-injected)")
 
     # Set up fusion config
     fusion_config = {
@@ -310,7 +310,7 @@ def _run_library(args, backend="pathway"):
 
     # Create pipeline
     pipeline = FacemomentPipeline(
-        extractors=extractor_names,
+        analyzers=analyzer_names,
         fusion_config=fusion_config,
         auto_inject_classifier=face_available,
     )
@@ -424,7 +424,7 @@ def _run_library(args, backend="pathway"):
                 "fps": args.fps,
                 "cooldown_sec": args.cooldown,
                 "ml_mode": ml_mode,
-                "extractors": extractor_names,
+                "analyzers": analyzer_names,
             },
             "results": {
                 "frames_processed": frames_processed,

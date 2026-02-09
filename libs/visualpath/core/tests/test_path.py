@@ -27,8 +27,8 @@ class MockFrame:
     data: np.ndarray
 
 
-class CountingExtractor(Module):
-    """Extractor that counts calls for testing."""
+class CountingAnalyzer(Module):
+    """Analyzer that counts calls for testing."""
 
     def __init__(self, name: str, return_value: float = 0.5):
         self._name = name
@@ -172,8 +172,8 @@ class TestPath:
 
     def test_basic_path_creation(self):
         """Test creating a basic path."""
-        e1 = CountingExtractor("ext1")
-        e2 = CountingExtractor("ext2")
+        e1 = CountingAnalyzer("ext1")
+        e2 = CountingAnalyzer("ext2")
 
         path = Path(
             name="test",
@@ -181,12 +181,12 @@ class TestPath:
         )
 
         assert path.name == "test"
-        assert len(path.extractors) == 2
+        assert len(path.analyzers) == 2
         assert path.fusion is None
 
     def test_path_with_fusion(self):
         """Test path with fusion module."""
-        e1 = CountingExtractor("ext1")
+        e1 = CountingAnalyzer("ext1")
         fusion = ThresholdFusion()
 
         path = Path(
@@ -199,8 +199,8 @@ class TestPath:
 
     def test_path_lifecycle(self):
         """Test path initialize/cleanup lifecycle."""
-        e1 = CountingExtractor("ext1")
-        e2 = CountingExtractor("ext2")
+        e1 = CountingAnalyzer("ext1")
+        e2 = CountingAnalyzer("ext2")
 
         path = Path(name="test", modules=[e1, e2])
 
@@ -219,8 +219,8 @@ class TestPath:
 
     def test_path_context_manager(self):
         """Test path as context manager."""
-        e1 = CountingExtractor("ext1")
-        e2 = CountingExtractor("ext2")
+        e1 = CountingAnalyzer("ext1")
+        e2 = CountingAnalyzer("ext2")
 
         path = Path(name="test", modules=[e1, e2])
 
@@ -232,16 +232,16 @@ class TestPath:
         assert e1._cleaned_up
         assert e2._cleaned_up
 
-    def test_extract_all_sequential(self):
+    def test_analyze_all_sequential(self):
         """Test extracting from all modules sequentially."""
-        e1 = CountingExtractor("ext1", return_value=0.3)
-        e2 = CountingExtractor("ext2", return_value=0.7)
+        e1 = CountingAnalyzer("ext1", return_value=0.3)
+        e2 = CountingAnalyzer("ext2", return_value=0.7)
 
         path = Path(name="test", modules=[e1, e2])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with path:
-            observations = path.extract_all(frame)
+            observations = path.analyze_all(frame)
 
         assert len(observations) == 2
         assert observations[0].source == "ext1"
@@ -249,35 +249,35 @@ class TestPath:
         assert observations[1].source == "ext2"
         assert observations[1].signals["value"] == 0.7
 
-    def test_extract_all_multiple(self):
+    def test_analyze_all_multiple(self):
         """Test extracting from multiple modules."""
-        e1 = CountingExtractor("ext1", return_value=0.3)
-        e2 = CountingExtractor("ext2", return_value=0.7)
-        e3 = CountingExtractor("ext3", return_value=0.5)
+        e1 = CountingAnalyzer("ext1", return_value=0.3)
+        e2 = CountingAnalyzer("ext2", return_value=0.7)
+        e3 = CountingAnalyzer("ext3", return_value=0.5)
 
         path = Path(name="test", modules=[e1, e2, e3])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with path:
-            observations = path.extract_all(frame)
+            observations = path.analyze_all(frame)
 
         assert len(observations) == 3
         sources = {obs.source for obs in observations}
         assert sources == {"ext1", "ext2", "ext3"}
 
-    def test_extract_all_not_initialized_raises(self):
-        """Test that extract_all raises when not initialized."""
-        e1 = CountingExtractor("ext1")
+    def test_analyze_all_not_initialized_raises(self):
+        """Test that analyze_all raises when not initialized."""
+        e1 = CountingAnalyzer("ext1")
         path = Path(name="test", modules=[e1])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with pytest.raises(RuntimeError, match="not initialized"):
-            path.extract_all(frame)
+            path.analyze_all(frame)
 
     def test_process_with_fusion(self):
         """Test processing through modules and fusion."""
-        e1 = CountingExtractor("ext1", return_value=0.7)  # Above threshold
-        e2 = CountingExtractor("ext2", return_value=0.3)  # Below threshold
+        e1 = CountingAnalyzer("ext1", return_value=0.7)  # Above threshold
+        e2 = CountingAnalyzer("ext2", return_value=0.3)  # Below threshold
         fusion = ThresholdFusion(threshold=0.5)
 
         path = Path(name="test", modules=[e1, e2], fusion=fusion)
@@ -293,7 +293,7 @@ class TestPath:
 
     def test_process_no_fusion(self):
         """Test processing without fusion returns empty."""
-        e1 = CountingExtractor("ext1")
+        e1 = CountingAnalyzer("ext1")
         path = Path(name="test", modules=[e1])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
@@ -313,8 +313,8 @@ class TestPathOrchestrator:
 
     def test_orchestrator_creation(self):
         """Test creating an orchestrator."""
-        path1 = Path(name="path1", modules=[CountingExtractor("ext1")])
-        path2 = Path(name="path2", modules=[CountingExtractor("ext2")])
+        path1 = Path(name="path1", modules=[CountingAnalyzer("ext1")])
+        path2 = Path(name="path2", modules=[CountingAnalyzer("ext2")])
 
         orchestrator = PathOrchestrator([path1, path2])
 
@@ -322,8 +322,8 @@ class TestPathOrchestrator:
 
     def test_orchestrator_lifecycle(self):
         """Test orchestrator initialize/cleanup lifecycle."""
-        e1 = CountingExtractor("ext1")
-        e2 = CountingExtractor("ext2")
+        e1 = CountingAnalyzer("ext1")
+        e2 = CountingAnalyzer("ext2")
         path1 = Path(name="path1", modules=[e1])
         path2 = Path(name="path2", modules=[e2])
 
@@ -344,8 +344,8 @@ class TestPathOrchestrator:
 
     def test_orchestrator_context_manager(self):
         """Test orchestrator as context manager."""
-        e1 = CountingExtractor("ext1")
-        e2 = CountingExtractor("ext2")
+        e1 = CountingAnalyzer("ext1")
+        e2 = CountingAnalyzer("ext2")
         path1 = Path(name="path1", modules=[e1])
         path2 = Path(name="path2", modules=[e2])
 
@@ -361,8 +361,8 @@ class TestPathOrchestrator:
 
     def test_process_all_sequential(self):
         """Test processing all paths sequentially."""
-        e1 = CountingExtractor("ext1", return_value=0.7)
-        e2 = CountingExtractor("ext2", return_value=0.3)
+        e1 = CountingAnalyzer("ext1", return_value=0.7)
+        e2 = CountingAnalyzer("ext2", return_value=0.3)
         fusion1 = ThresholdFusion(threshold=0.5)
         fusion2 = ThresholdFusion(threshold=0.5)
 
@@ -384,8 +384,8 @@ class TestPathOrchestrator:
 
     def test_process_all_parallel(self):
         """Test processing all paths in parallel."""
-        e1 = CountingExtractor("ext1", return_value=0.7)
-        e2 = CountingExtractor("ext2", return_value=0.8)
+        e1 = CountingAnalyzer("ext1", return_value=0.7)
+        e2 = CountingAnalyzer("ext2", return_value=0.8)
         fusion1 = ThresholdFusion(threshold=0.5)
         fusion2 = ThresholdFusion(threshold=0.5)
 
@@ -405,18 +405,18 @@ class TestPathOrchestrator:
 
     def test_process_all_not_initialized_raises(self):
         """Test that process_all raises when not initialized."""
-        path = Path(name="path1", modules=[CountingExtractor("ext1")])
+        path = Path(name="path1", modules=[CountingAnalyzer("ext1")])
         orchestrator = PathOrchestrator([path])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with pytest.raises(RuntimeError, match="not initialized"):
             orchestrator.process_all(frame)
 
-    def test_extract_all(self):
+    def test_analyze_all(self):
         """Test extracting observations from all paths."""
-        e1 = CountingExtractor("ext1")
-        e2 = CountingExtractor("ext2")
-        e3 = CountingExtractor("ext3")
+        e1 = CountingAnalyzer("ext1")
+        e2 = CountingAnalyzer("ext2")
+        e3 = CountingAnalyzer("ext3")
 
         path1 = Path(name="path1", modules=[e1, e2])
         path2 = Path(name="path2", modules=[e3])
@@ -425,7 +425,7 @@ class TestPathOrchestrator:
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with orchestrator:
-            observations = orchestrator.extract_all(frame)
+            observations = orchestrator.analyze_all(frame)
 
         assert "path1" in observations
         assert "path2" in observations
@@ -434,7 +434,7 @@ class TestPathOrchestrator:
 
     def test_multiple_frames(self):
         """Test processing multiple frames."""
-        e1 = CountingExtractor("ext1")
+        e1 = CountingAnalyzer("ext1")
         path = Path(name="path1", modules=[e1])
         orchestrator = PathOrchestrator([path])
 
@@ -445,6 +445,6 @@ class TestPathOrchestrator:
 
         with orchestrator:
             for frame in frames:
-                orchestrator.extract_all(frame)
+                orchestrator.analyze_all(frame)
 
         assert e1._process_count == 5

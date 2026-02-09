@@ -12,7 +12,7 @@ from facemoment.pipeline.pathway_pipeline import (
     PATHWAY_AVAILABLE,
     _CUDA_GROUPS,
 )
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 
 from helpers import create_test_video, create_mock_frame
 
@@ -20,15 +20,15 @@ from helpers import create_test_video, create_mock_frame
 class TestFacemomentPipeline:
     """Tests for FacemomentPipeline class."""
 
-    def test_init_default_extractors(self):
-        """Test default extractor configuration."""
+    def test_init_default_analyzers(self):
+        """Test default analyzer configuration."""
         pipeline = FacemomentPipeline()
-        assert pipeline._extractor_names == ["face", "pose", "gesture"]
+        assert pipeline._analyzer_names == ["face", "pose", "gesture"]
 
-    def test_init_custom_extractors(self):
-        """Test custom extractor configuration."""
-        pipeline = FacemomentPipeline(extractors=["face", "quality"])
-        assert pipeline._extractor_names == ["face", "quality"]
+    def test_init_custom_analyzers(self):
+        """Test custom analyzer configuration."""
+        pipeline = FacemomentPipeline(analyzers=["face", "quality"])
+        assert pipeline._analyzer_names == ["face", "quality"]
 
     def test_init_fusion_config(self):
         """Test fusion configuration."""
@@ -55,7 +55,7 @@ class TestFacemomentPipelineExecution:
         """Test that run delegates to the unified FlowGraph path."""
         from visualpath.backends.base import PipelineResult
 
-        pipeline = FacemomentPipeline(extractors=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["dummy"])
 
         mock_engine = Mock()
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=5)
@@ -76,7 +76,7 @@ class TestFacemomentPipelineExecution:
         """Test on_trigger callback is passed through."""
         from visualpath.backends.base import PipelineResult
 
-        pipeline = FacemomentPipeline(extractors=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["dummy"])
 
         mock_engine = Mock()
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
@@ -108,7 +108,7 @@ class TestPathwayAvailability:
         from visualpath.backends.base import PipelineResult
 
         with patch("facemoment.pipeline.pathway_pipeline.PATHWAY_AVAILABLE", False):
-            pipeline = FacemomentPipeline(extractors=["dummy"])
+            pipeline = FacemomentPipeline(analyzers=["dummy"])
 
             mock_engine = Mock()
             mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
@@ -152,7 +152,7 @@ class TestHighlevelAPIBackend:
             mock_bg.return_value = Mock()
 
             from facemoment.main import run
-            result = run("fake.mp4", extractors=["dummy"], fps=5, cooldown=1.5)
+            result = run("fake.mp4", analyzers=["dummy"], fps=5, cooldown=1.5)
 
             # build_graph was called
             mock_bg.assert_called_once()
@@ -176,7 +176,7 @@ class TestHighlevelAPIBackend:
             mock_bg.return_value = Mock()
 
             from facemoment.main import run
-            run("test.mp4", extractors=["dummy"], on_trigger=cb)
+            run("test.mp4", analyzers=["dummy"], on_trigger=cb)
 
             _, kwargs = mock_bg.call_args
             assert kwargs["on_trigger"] is cb
@@ -204,7 +204,7 @@ class TestPipelineConfigBackend:
         from facemoment.pipeline.config import PipelineConfig
 
         data = {
-            "extractors": [{"name": "dummy"}],
+            "analyzers": [{"name": "dummy"}],
             "backend": "simple",
         }
         config = PipelineConfig.from_dict(data)
@@ -212,10 +212,10 @@ class TestPipelineConfigBackend:
 
     def test_config_to_dict_includes_backend(self):
         """Test backend is included in to_dict."""
-        from facemoment.pipeline.config import PipelineConfig, ExtractorConfig
+        from facemoment.pipeline.config import PipelineConfig, AnalyzerConfig
 
         config = PipelineConfig(
-            extractors=[ExtractorConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="dummy")],
             backend="pathway",
         )
         data = config.to_dict()
@@ -234,19 +234,19 @@ class TestOrchestratorBackend:
 
     def test_orchestrator_default_backend(self):
         """Test default backend in orchestrator."""
-        from facemoment.pipeline import PipelineOrchestrator, ExtractorConfig
+        from facemoment.pipeline import PipelineOrchestrator, AnalyzerConfig
 
         orchestrator = PipelineOrchestrator(
-            extractor_configs=[ExtractorConfig(name="dummy")]
+            analyzer_configs=[AnalyzerConfig(name="dummy")]
         )
         assert orchestrator._backend == "pathway"
 
     def test_orchestrator_custom_backend(self):
         """Test custom backend in orchestrator."""
-        from facemoment.pipeline import PipelineOrchestrator, ExtractorConfig
+        from facemoment.pipeline import PipelineOrchestrator, AnalyzerConfig
 
         orchestrator = PipelineOrchestrator(
-            extractor_configs=[ExtractorConfig(name="dummy")],
+            analyzer_configs=[AnalyzerConfig(name="dummy")],
             backend="simple",
         )
         assert orchestrator._backend == "simple"
@@ -256,11 +256,11 @@ class TestOrchestratorBackend:
         from facemoment.pipeline import (
             PipelineOrchestrator,
             PipelineConfig,
-            ExtractorConfig,
+            AnalyzerConfig,
         )
 
         config = PipelineConfig(
-            extractors=[ExtractorConfig(name="dummy")],
+            analyzers=[AnalyzerConfig(name="dummy")],
             backend="simple",
         )
         orchestrator = PipelineOrchestrator.from_config(config)
@@ -282,7 +282,7 @@ class TestPipelineDelegation:
         """Test that the actual backend name is recorded after run."""
         from visualpath.backends.base import PipelineResult
 
-        pipeline = FacemomentPipeline(extractors=["dummy"])
+        pipeline = FacemomentPipeline(analyzers=["dummy"])
 
         mock_engine = Mock()
         mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
@@ -373,19 +373,19 @@ class TestCudaConflictDetection:
     """Tests for CUDA conflict detection and auto subprocess isolation."""
 
     def test_cuda_groups_defined(self):
-        """Test that CUDA groups contain expected extractors."""
+        """Test that CUDA groups contain expected analyzers."""
         assert "onnxruntime" in _CUDA_GROUPS
         assert "torch" in _CUDA_GROUPS
         assert "face" in _CUDA_GROUPS["onnxruntime"]
         assert "pose" in _CUDA_GROUPS["torch"]
 
     def test_no_conflict_single_group(self):
-        """No conflict when all extractors are in the same CUDA group."""
+        """No conflict when all analyzers are in the same CUDA group."""
         isolated = FacemomentPipeline._detect_cuda_conflicts(["face", "expression"])
         assert isolated == set()
 
-    def test_no_conflict_no_cuda_extractors(self):
-        """No conflict when extractors don't belong to any CUDA group."""
+    def test_no_conflict_no_cuda_analyzers(self):
+        """No conflict when analyzers don't belong to any CUDA group."""
         isolated = FacemomentPipeline._detect_cuda_conflicts(["quality", "dummy"])
         assert isolated == set()
 
@@ -396,11 +396,11 @@ class TestCudaConflictDetection:
         assert isolated == {"pose"}
 
     def test_conflict_multiple_onnxruntime_vs_pose(self):
-        """Multiple onnxruntime extractors vs single torch → torch isolated."""
+        """Multiple onnxruntime analyzers vs single torch → torch isolated."""
         isolated = FacemomentPipeline._detect_cuda_conflicts(
             ["face", "face_detect", "expression", "pose"]
         )
-        # onnxruntime has 3 extractors, torch has 1 → torch (pose) is minority
+        # onnxruntime has 3 analyzers, torch has 1 → torch (pose) is minority
         assert isolated == {"pose"}
 
     def test_no_conflict_without_zmq(self):
@@ -414,13 +414,13 @@ class TestCudaConflictDetection:
 
     def test_pipeline_init_has_workers_dict(self):
         """Pipeline initializes with empty workers dict."""
-        pipeline = FacemomentPipeline(extractors=["face"])
+        pipeline = FacemomentPipeline(analyzers=["face"])
         assert pipeline._workers == {}
         assert pipeline.workers == {}
 
     def test_workers_property(self):
         """Workers property returns the _workers dict."""
-        pipeline = FacemomentPipeline(extractors=["face"])
+        pipeline = FacemomentPipeline(analyzers=["face"])
         pipeline._workers = {"pose": Mock()}
         assert "pose" in pipeline.workers
 
@@ -443,15 +443,15 @@ class TestCudaConflictDetection:
 
     def test_cleanup_resets_state(self):
         """cleanup() resets initialized state."""
-        pipeline = FacemomentPipeline(extractors=["face"])
+        pipeline = FacemomentPipeline(analyzers=["face"])
         pipeline._initialized = True
         pipeline.cleanup()
         assert not pipeline._initialized
 
-    def test_initialize_loads_extractors(self):
-        """initialize() loads extractors and fusion."""
-        pipeline = FacemomentPipeline(extractors=["dummy"])
+    def test_initialize_loads_analyzers(self):
+        """initialize() loads analyzers and fusion."""
+        pipeline = FacemomentPipeline(analyzers=["dummy"])
         pipeline.initialize()
         assert pipeline._initialized
-        assert len(pipeline.extractors) > 0
+        assert len(pipeline.analyzers) > 0
         assert pipeline.fusion is not None

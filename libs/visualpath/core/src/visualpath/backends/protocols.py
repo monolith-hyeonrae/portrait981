@@ -1,7 +1,7 @@
 """Backend protocol definitions for ML backends.
 
 Protocols define interfaces that ML backends should implement.
-This allows extractors to work with different backend implementations
+This allows analyzers to work with different backend implementations
 without tight coupling.
 
 Example:

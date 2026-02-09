@@ -147,14 +147,14 @@ class TriggerModule:
 
 
 # Legacy aliases for backward compatibility
-DummyExtractor = AnalyzerModule
+DummyAnalyzer = AnalyzerModule
 DummyFusion = TriggerModule
 
 
 def cmd_debug(
     frames: int = 5,
     sample: int = 1,
-    extractor: str = "dummy",
+    analyzer: str = "dummy",
     fusion: bool = False,
     debug: bool = False,
     backend: str = "simple",
@@ -164,7 +164,7 @@ def cmd_debug(
     Args:
         frames: Number of frames to process.
         sample: Sample every Nth frame.
-        extractor: Extractor name (legacy) or module name.
+        analyzer: Analyzer name (legacy) or module name.
         fusion: Enable trigger module.
         debug: Enable debug output.
         backend: Backend to use ('simple' or 'pathway').
@@ -179,16 +179,16 @@ def cmd_debug(
     print("=" * 60)
     print(f"Frames: {frames}")
     print(f"Sample: every {sample}")
-    print(f"Module: {extractor}")
+    print(f"Module: {analyzer}")
     print(f"Trigger: {'enabled' if fusion else 'disabled'}")
     print(f"Debug: {debug}")
     print(f"Backend: {backend}")
     print("=" * 60)
 
     # Build modules
-    analyzer = AnalyzerModule(extractor)
+    analyzer = AnalyzerModule(analyzer)
     # Set trigger dependency to actual analyzer name
-    trigger = TriggerModule(depends_on=extractor) if fusion else None
+    trigger = TriggerModule(depends_on=analyzer) if fusion else None
 
     # Combine into unified modules list
     if trigger:

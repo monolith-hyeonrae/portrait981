@@ -8,7 +8,7 @@ import numpy as np
 
 from visualbase import Frame, FrameViewer
 from facemoment.moment_detector import MomentDetector
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 
 
 class DetectorVisualizer:
@@ -49,7 +49,7 @@ class DetectorVisualizer:
         Args:
             frame: Video frame to display.
             fusion_result: Observation result from fusion module.
-            observation: Observation from extractor (if available).
+            observation: Observation from analyzer (if available).
             wait_ms: Wait time for key press.
 
         Returns:
@@ -270,12 +270,12 @@ def visualize(
         >>> from facemoment.tools import visualize
         >>> visualize("video.mp4", fps=10, spike_probability=0.2)
     """
-    from facemoment.moment_detector.extractors import DummyExtractor
+    from facemoment.moment_detector.analyzers import DummyAnalyzer
     from facemoment.moment_detector.fusion import DummyFusion
 
     detector = MomentDetector(
-        extractors=[
-            DummyExtractor(
+        analyzers=[
+            DummyAnalyzer(
                 num_faces=num_faces,
                 spike_probability=spike_probability,
             )

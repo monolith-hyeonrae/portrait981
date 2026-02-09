@@ -1,4 +1,4 @@
-from vpx.gesture.extractor import GestureExtractor
-from visualpath.extractors.types import GestureType, HandLandmarkIndex
+from vpx.gesture.analyzer import GestureAnalyzer
+from visualpath.analyzers.types import GestureType, HandLandmarkIndex
 
-__all__ = ["GestureExtractor", "GestureType", "HandLandmarkIndex"]
+__all__ = ["GestureAnalyzer", "GestureType", "HandLandmarkIndex"]

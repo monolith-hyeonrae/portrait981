@@ -41,7 +41,7 @@ class FlowGraphConverter:
     in non-Pathway backends.
 
     When ``ModuleSpec.parallel=True`` and there are independent
-    extractor groups (no cross-dependencies), each group gets its
+    analyzer groups (no cross-dependencies), each group gets its
     own Pathway UDF so the engine can schedule them in parallel.
     The branches are then rejoined via ``interval_join``.
 
@@ -207,7 +207,7 @@ class FlowGraphConverter:
         UDF so Pathway can schedule them in parallel.  The branches are
         then rejoined via ``interval_join``.
         """
-        from visualpath.backends.pathway.operators import create_multi_extractor_udf
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
         input_table = self._get_input_table(node_name, graph)
         if input_table is None:
@@ -256,16 +256,16 @@ class FlowGraphConverter:
     def _build_single_udf(
         self,
         name: str,
-        extractors: list,
+        analyzers: list,
         input_table: "pw.Table",
     ) -> "pw.Table":
-        """Build a single Pathway UDF that runs extractors sequentially."""
-        from visualpath.backends.pathway.operators import create_multi_extractor_udf
+        """Build a single Pathway UDF that runs analyzers sequentially."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
-        raw_udf = create_multi_extractor_udf(extractors)
+        raw_udf = create_multi_analyzer_udf(analyzers)
 
         @pw.udf
-        def extract_udf(
+        def analyze_udf(
             frame_wrapped: pw.PyObjectWrapper,
         ) -> pw.PyObjectWrapper:
             frame = frame_wrapped.value
@@ -276,15 +276,15 @@ class FlowGraphConverter:
             frame_id=pw.this.frame_id,
             t_ns=pw.this.t_ns,
             frame=pw.this.frame,
-            results=extract_udf(pw.this.frame),
+            results=analyze_udf(pw.this.frame),
         )
 
     @staticmethod
-    def _split_by_dependency(extractors: list) -> List[list]:
-        """Split extractors into independent groups by dependency graph.
+    def _split_by_dependency(analyzers: list) -> List[list]:
+        """Split analyzers into independent groups by dependency graph.
 
-        Extractors sharing a dependency chain (direct or transitive) are
-        placed in the same group.  Extractors with no dependency
+        Analyzers sharing a dependency chain (direct or transitive) are
+        placed in the same group.  Analyzers with no dependency
         relationship are placed in separate groups.
 
         Example::
@@ -293,28 +293,28 @@ class FlowGraphConverter:
             -> [[face_detect, face_expression], [pose_detect]]
 
         Returns:
-            List of extractor groups.  Each group preserves insertion order.
+            List of analyzer groups.  Each group preserves insertion order.
         """
-        # Build name -> extractor map
-        by_name = {ext.name: ext for ext in extractors}
+        # Build name -> analyzer map
+        by_name = {a.name: a for a in analyzers}
 
         # Build undirected adjacency (connected component analysis)
-        adj: Dict[str, set] = {ext.name: set() for ext in extractors}
-        for ext in extractors:
-            for dep_name in (ext.depends or []):
+        adj: Dict[str, set] = {a.name: set() for a in analyzers}
+        for a in analyzers:
+            for dep_name in (a.depends or []):
                 if dep_name in adj:
-                    adj[ext.name].add(dep_name)
-                    adj[dep_name].add(ext.name)
+                    adj[a.name].add(dep_name)
+                    adj[dep_name].add(a.name)
 
         # Find connected components via BFS
         visited: set = set()
         components: List[List[str]] = []
-        for ext in extractors:
-            if ext.name in visited:
+        for a in analyzers:
+            if a.name in visited:
                 continue
             # BFS
             component = []
-            queue = [ext.name]
+            queue = [a.name]
             while queue:
                 current = queue.pop(0)
                 if current in visited:
@@ -326,8 +326,8 @@ class FlowGraphConverter:
                         queue.append(neighbour)
             components.append(component)
 
-        # Convert name lists back to extractor lists (preserving order)
-        name_order = {ext.name: i for i, ext in enumerate(extractors)}
+        # Convert name lists back to analyzer lists (preserving order)
+        name_order = {a.name: i for i, a in enumerate(analyzers)}
         groups = []
         for comp in components:
             comp_sorted = sorted(comp, key=lambda n: name_order[n])
@@ -402,9 +402,9 @@ class FlowGraphConverter:
             try:
                 worker = WorkerLauncher.create(
                     level=level,
-                    extractor=module if level <= IsolationLevel.THREAD else None,
+                    analyzer=module if level <= IsolationLevel.THREAD else None,
                     venv_path=venv_path,
-                    extractor_name=module.name,
+                    analyzer_name=module.name,
                 )
                 wrapped = WorkerModule(
                     name=module.name,

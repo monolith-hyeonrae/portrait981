@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 from facemoment.moment_detector.scoring.frame_scorer import ScoreResult
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,
@@ -35,7 +35,7 @@ class StatsPanel:
     Content (top to bottom):
     1. Backend indicator (PATHWAY / SIMPLE / DISTRIBUTED)
     2. FPS and frame time
-    3. Per-extractor timing bars
+    3. Per-analyzer timing bars
     4. Fusion timing
     5. Bottleneck indicator
     6. Gate / cooldown status
@@ -141,7 +141,7 @@ class StatsPanel:
     def _draw_monitor_stats(
         self, canvas: np.ndarray, x: int, y: int, panel_w: int, stats: Dict
     ) -> int:
-        """Draw PathwayMonitor stats: FPS, frame time, extractor timing bars."""
+        """Draw PathwayMonitor stats: FPS, frame time, analyzer timing bars."""
         line_h = 16
 
         # FPS
@@ -161,8 +161,8 @@ class StatsPanel:
         # Separator
         cv2.line(canvas, (x, y - 4), (x + panel_w, y - 4), COLOR_GRAY_BGR, 1)
 
-        # Extractor timing bars
-        ext_timings = stats.get("extractor_timings_ms", {})
+        # Analyzer timing bars
+        ext_timings = stats.get("analyzer_timings_ms", {})
         bar_max_w = min(70, panel_w - 120)
         bar_scale = max(100.0, max(ext_timings.values()) if ext_timings else 1)
 
@@ -190,7 +190,7 @@ class StatsPanel:
         cv2.line(canvas, (x, y - 4), (x + panel_w, y - 4), COLOR_GRAY_BGR, 1)
 
         # Bottleneck
-        slowest = stats.get("slowest_extractor", "")
+        slowest = stats.get("slowest_analyzer", "")
         bneck_pct = stats.get("bottleneck_pct", 0)
         if slowest:
             cv2.putText(canvas, f"Bottleneck: {slowest}", (x, y), FONT, FONT_SMALL, COLOR_WHITE_BGR, 1)

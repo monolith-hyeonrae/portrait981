@@ -1,6 +1,6 @@
 """Info command for facemoment CLI.
 
-Shows available extractors, backends, and pipeline structure.
+Shows available analyzers, backends, and pipeline structure.
 """
 
 import sys
@@ -30,13 +30,13 @@ def run_info(args):
     # Version info
     _print_version_info()
 
-    # Extractor availability
-    print("\n[Extractors]")
+    # Analyzer availability
+    print("\n[Analyzers]")
     print("-" * 60)
-    _check_face_extractor(verbose=args.verbose)
-    _check_pose_extractor(verbose=args.verbose)
-    _check_gesture_extractor(verbose=args.verbose)
-    _check_quality_extractor()
+    _check_face_analyzer(verbose=args.verbose)
+    _check_pose_analyzer(verbose=args.verbose)
+    _check_gesture_analyzer(verbose=args.verbose)
+    _check_quality_analyzer()
 
     # Fusion info
     print("\n[Fusion]")
@@ -76,8 +76,8 @@ def _print_version_info():
         print("  visualbase: NOT INSTALLED")
 
 
-def _check_face_extractor(verbose: bool = False):
-    """Check FaceExtractor availability."""
+def _check_face_analyzer(verbose: bool = False):
+    """Check FaceAnalyzer availability."""
     status = {"detection": None, "expression": None}
 
     # Detection backend (InsightFace)
@@ -104,37 +104,37 @@ def _check_face_extractor(verbose: bool = False):
 
     available = status["detection"] and "NOT" not in status["detection"]
     icon = "+" if available else "-"
-    print(f"  [{icon}] FaceExtractor")
+    print(f"  [{icon}] FaceAnalyzer")
     print(f"        Detection:  {status['detection']}")
     print(f"        Expression: {status['expression']}")
 
 
-def _check_pose_extractor(verbose: bool = False):
-    """Check PoseExtractor availability."""
+def _check_pose_analyzer(verbose: bool = False):
+    """Check PoseAnalyzer availability."""
     try:
         import ultralytics
         from vpx.pose.backends.yolo_pose import YOLOPoseBackend
-        print(f"  [+] PoseExtractor")
+        print(f"  [+] PoseAnalyzer")
         print(f"        Backend: YOLO-Pose (ultralytics v{ultralytics.__version__})")
     except ImportError:
-        print(f"  [-] PoseExtractor")
+        print(f"  [-] PoseAnalyzer")
         print(f"        Backend: NOT AVAILABLE (ultralytics not installed)")
 
 
-def _check_gesture_extractor(verbose: bool = False):
-    """Check GestureExtractor availability."""
+def _check_gesture_analyzer(verbose: bool = False):
+    """Check GestureAnalyzer availability."""
     try:
         import mediapipe
-        print(f"  [+] GestureExtractor")
+        print(f"  [+] GestureAnalyzer")
         print(f"        Backend: MediaPipe Hands (v{mediapipe.__version__})")
     except ImportError:
-        print(f"  [-] GestureExtractor")
+        print(f"  [-] GestureAnalyzer")
         print(f"        Backend: NOT AVAILABLE (mediapipe not installed)")
 
 
-def _check_quality_extractor():
-    """Check QualityExtractor (always available)."""
-    print(f"  [+] QualityExtractor")
+def _check_quality_analyzer():
+    """Check QualityAnalyzer (always available)."""
+    print(f"  [+] QualityAnalyzer")
     print(f"        Backend: OpenCV (blur/brightness/contrast)")
 
 
@@ -149,13 +149,13 @@ def _print_fusion_info():
 def _print_trigger_types():
     """Print available trigger types."""
     triggers = [
-        ("expression_spike", "FaceExtractor", "Sudden expression change"),
-        ("head_turn", "FaceExtractor", "Fast head rotation"),
-        ("hand_wave", "PoseExtractor", "Hand waving motion"),
-        ("camera_gaze", "FaceExtractor", "Looking at camera"),
-        ("passenger_interaction", "FaceExtractor", "Passengers facing each other"),
-        ("gesture_vsign", "GestureExtractor", "V-sign gesture"),
-        ("gesture_thumbsup", "GestureExtractor", "Thumbs up gesture"),
+        ("expression_spike", "FaceAnalyzer", "Sudden expression change"),
+        ("head_turn", "FaceAnalyzer", "Fast head rotation"),
+        ("hand_wave", "PoseAnalyzer", "Hand waving motion"),
+        ("camera_gaze", "FaceAnalyzer", "Looking at camera"),
+        ("passenger_interaction", "FaceAnalyzer", "Passengers facing each other"),
+        ("gesture_vsign", "GestureAnalyzer", "V-sign gesture"),
+        ("gesture_thumbsup", "GestureAnalyzer", "Thumbs up gesture"),
     ]
 
     for trigger, source, desc in triggers:
@@ -169,7 +169,7 @@ def _print_pipeline_structure():
        │
        ▼
   ┌─────────────────────────────────────────┐
-  │              Extractors                 │
+  │              Analyzers                  │
   │  ┌─────────┐ ┌─────────┐ ┌───────────┐  │
   │  │  Face   │ │  Pose   │ │  Quality  │  │
   │  │(detect+ │ │ (YOLO)  │ │(blur/bright)│ │
@@ -219,12 +219,12 @@ def _print_device_info():
 
 
 def _print_dependency_graph():
-    """Print extractor dependency graph."""
-    print("FaceMoment - Extractor Dependency Graph")
+    """Print analyzer dependency graph."""
+    print("FaceMoment - Analyzer Dependency Graph")
     print("=" * 60)
 
-    # Define extractors with their dependencies
-    extractors = [
+    # Define analyzers with their dependencies
+    analyzers = [
         ("face_detect", [], "Face detection (bbox, head pose)"),
         ("face_classifier", ["face_detect"], "Face role classification (main/passenger/transient)"),
         ("expression", ["face_detect"], "Expression analysis (emotions)"),
@@ -232,7 +232,7 @@ def _print_dependency_graph():
         ("pose", [], "Pose estimation (keypoints)"),
         ("gesture", [], "Gesture detection (hand signs)"),
         ("quality", [], "Quality metrics (blur, brightness)"),
-        ("dummy", [], "Dummy extractor (testing)"),
+        ("dummy", [], "Dummy analyzer (testing)"),
     ]
 
     # Build dependency graph
@@ -240,8 +240,8 @@ def _print_dependency_graph():
     print("-" * 60)
 
     # Group by root (no dependencies)
-    roots = [(name, deps, desc) for name, deps, desc in extractors if not deps]
-    dependents = [(name, deps, desc) for name, deps, desc in extractors if deps]
+    roots = [(name, deps, desc) for name, deps, desc in analyzers if not deps]
+    dependents = [(name, deps, desc) for name, deps, desc in analyzers if deps]
 
     for name, deps, desc in roots:
         print(f"  {name}")
@@ -305,46 +305,46 @@ def _print_dependency_graph():
 def _build_facemoment_flow_graph():
     """Build a FlowGraph representing the facemoment pipeline.
 
-    Creates a graph with individual extractor nodes showing dependency
+    Creates a graph with individual analyzer nodes showing dependency
     relationships, rather than a single pipeline node.
     """
     from visualpath.flow import FlowGraph
 
-    # Define all facemoment extractors with their dependencies
-    extractor_defs = [
-        ("quality", [], "QualityExtractor"),
-        ("face_detect", [], "FaceDetectionExtractor"),
-        ("face_classifier", ["face_detect"], "FaceClassifierExtractor"),
-        ("expression", ["face_detect"], "ExpressionExtractor"),
-        ("pose", [], "PoseExtractor"),
-        ("gesture", [], "GestureExtractor"),
+    # Define all facemoment analyzers with their dependencies
+    analyzer_defs = [
+        ("quality", [], "QualityAnalyzer"),
+        ("face_detect", [], "FaceDetectionAnalyzer"),
+        ("face_classifier", ["face_detect"], "FaceClassifierAnalyzer"),
+        ("expression", ["face_detect"], "ExpressionAnalyzer"),
+        ("pose", [], "PoseAnalyzer"),
+        ("gesture", [], "GestureAnalyzer"),
     ]
 
-    # Check which extractors are actually available
+    # Check which analyzers are actually available
     availability = {}
     availability["quality"] = True  # always available
     try:
-        from vpx.face_detect import FaceDetectionExtractor  # noqa: F401
+        from vpx.face_detect import FaceDetectionAnalyzer  # noqa: F401
         availability["face_detect"] = True
     except ImportError:
         availability["face_detect"] = False
     try:
-        from facemoment.moment_detector.extractors.face_classifier import FaceClassifierExtractor  # noqa: F401
+        from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierAnalyzer  # noqa: F401
         availability["face_classifier"] = True
     except ImportError:
         availability["face_classifier"] = False
     try:
-        from vpx.expression import ExpressionExtractor  # noqa: F401
+        from vpx.expression import ExpressionAnalyzer  # noqa: F401
         availability["expression"] = True
     except ImportError:
         availability["expression"] = False
     try:
-        from vpx.pose import PoseExtractor  # noqa: F401
+        from vpx.pose import PoseAnalyzer  # noqa: F401
         availability["pose"] = True
     except ImportError:
         availability["pose"] = False
     try:
-        from vpx.gesture import GestureExtractor  # noqa: F401
+        from vpx.gesture import GestureAnalyzer  # noqa: F401
         availability["gesture"] = True
     except ImportError:
         availability["gesture"] = False
@@ -354,7 +354,7 @@ def _build_facemoment_flow_graph():
     from visualpath.flow.node import FlowNode, FlowData
 
     # Lightweight stub node for graph visualization
-    class ExtractorNode(FlowNode):
+    class AnalyzerNode(FlowNode):
         """Stub node for visualization only."""
         def __init__(self, node_name):
             self._name = node_name
@@ -378,20 +378,20 @@ def _build_facemoment_flow_graph():
     graph.add_node(SourceNode(name="source"))
 
     available_names = []
-    for name, deps, _cls_name in extractor_defs:
+    for name, deps, _cls_name in analyzer_defs:
         if not availability.get(name, False):
             continue
         # Skip if dependencies are not available
         if deps and not all(availability.get(d, False) for d in deps):
             continue
-        graph.add_node(ExtractorNode(name))
+        graph.add_node(AnalyzerNode(name))
         available_names.append(name)
 
     # Add fusion node
     graph.add_node(FusionNode("fusion"))
 
-    # Add edges: source → root extractors, deps → dependents, all → fusion
-    for name, deps, _cls_name in extractor_defs:
+    # Add edges: source → root analyzers, deps → dependents, all → fusion
+    for name, deps, _cls_name in analyzer_defs:
         if name not in available_names:
             continue
         if not deps:
@@ -401,10 +401,10 @@ def _build_facemoment_flow_graph():
                 if dep in available_names:
                     graph.add_edge(dep, name)
 
-    # All leaf extractors → fusion
+    # All leaf analyzers → fusion
     for name in available_names:
         outgoing = graph.get_outgoing_edges(name)
-        # Only connect to fusion if no other extractor depends on this one
+        # Only connect to fusion if no other analyzer depends on this one
         if not outgoing:
             graph.add_edge(name, "fusion")
 
@@ -424,11 +424,11 @@ def _print_flow_graph(fmt: str = "ascii"):
         print("  Install visualpath >= 0.2.0 for FlowGraph support")
         return
 
-    graph, extractor_names = _build_facemoment_flow_graph()
+    graph, analyzer_names = _build_facemoment_flow_graph()
 
     print("FaceMoment - Pipeline FlowGraph")
     print("=" * 60)
-    print(f"  Extractors: {', '.join(extractor_names)}")
+    print(f"  Analyzers: {', '.join(analyzer_names)}")
     print()
 
     if fmt == "dot":
@@ -438,7 +438,7 @@ def _print_flow_graph(fmt: str = "ascii"):
 
 
 def _print_processing_steps():
-    """Print internal processing steps of each extractor."""
+    """Print internal processing steps of each analyzer."""
     print("FaceMoment - Processing Pipeline Steps")
     print("=" * 70)
     print()
@@ -450,7 +450,7 @@ def _print_processing_steps():
     print("[SourceProcessor] (Input Pipeline)")
     print("-" * 70)
     try:
-        from facemoment.moment_detector.extractors.source import SourceProcessor
+        from facemoment.moment_detector.analyzers.source import SourceProcessor
         for i, step in enumerate(SourceProcessor._STEPS, 1):
             opt_marker = " (optional)" if step.optional else ""
             backend_str = f" [{step.backend}]" if step.backend else ""
@@ -467,7 +467,7 @@ def _print_processing_steps():
     print("[BackendPreprocessor] (ML Backend Internal - for reference)")
     print("-" * 70)
     try:
-        from facemoment.moment_detector.extractors.source import BackendPreprocessor
+        from facemoment.moment_detector.analyzers.source import BackendPreprocessor
         for i, step in enumerate(BackendPreprocessor._STEPS, 1):
             opt_marker = " (optional)" if step.optional else ""
             backend_str = f" [{step.backend}]" if step.backend else ""
@@ -480,7 +480,7 @@ def _print_processing_steps():
         print("  (definition not available)")
     print()
 
-    extractors_info = []
+    analyzers_info = []
 
     def _get_steps(cls):
         """Get processing steps from class (supports both _STEPS and decorators)."""
@@ -489,60 +489,60 @@ def _print_processing_steps():
             return cls._STEPS
         # Try get_processing_steps (decorator-based)
         try:
-            from visualpath.extractors.base import get_processing_steps
+            from visualpath.analyzers.base import get_processing_steps
             return get_processing_steps(cls)
         except Exception:
             return []
 
-    # Composite Face extractor (legacy)
+    # Composite Face analyzer (legacy)
     try:
-        from vpx.face import FaceExtractor
-        extractors_info.append(("FaceExtractor", "face", _get_steps(FaceExtractor)))
+        from vpx.face import FaceAnalyzer
+        analyzers_info.append(("FaceAnalyzer", "face", _get_steps(FaceAnalyzer)))
     except (ImportError, AttributeError) as e:
-        extractors_info.append(("FaceExtractor", "face", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("FaceAnalyzer", "face", f"NOT AVAILABLE: {e}"))
 
-    # Split Face extractors
+    # Split Face analyzers
     try:
-        from vpx.face_detect import FaceDetectionExtractor
-        extractors_info.append(("FaceDetectionExtractor", "face_detect", _get_steps(FaceDetectionExtractor)))
+        from vpx.face_detect import FaceDetectionAnalyzer
+        analyzers_info.append(("FaceDetectionAnalyzer", "face_detect", _get_steps(FaceDetectionAnalyzer)))
     except (ImportError, AttributeError) as e:
-        extractors_info.append(("FaceDetectionExtractor", "face_detect", f"NOT AVAILABLE: {e}"))
-
-    try:
-        from vpx.expression import ExpressionExtractor
-        extractors_info.append(("ExpressionExtractor", "expression", _get_steps(ExpressionExtractor)))
-    except (ImportError, AttributeError) as e:
-        extractors_info.append(("ExpressionExtractor", "expression", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("FaceDetectionAnalyzer", "face_detect", f"NOT AVAILABLE: {e}"))
 
     try:
-        from facemoment.moment_detector.extractors.face_classifier import FaceClassifierExtractor
-        extractors_info.append(("FaceClassifierExtractor", "face_classifier", _get_steps(FaceClassifierExtractor)))
+        from vpx.expression import ExpressionAnalyzer
+        analyzers_info.append(("ExpressionAnalyzer", "expression", _get_steps(ExpressionAnalyzer)))
     except (ImportError, AttributeError) as e:
-        extractors_info.append(("FaceClassifierExtractor", "face_classifier", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("ExpressionAnalyzer", "expression", f"NOT AVAILABLE: {e}"))
 
-    # PoseExtractor
     try:
-        from vpx.pose import PoseExtractor
-        extractors_info.append(("PoseExtractor", "pose", _get_steps(PoseExtractor)))
+        from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierAnalyzer
+        analyzers_info.append(("FaceClassifierAnalyzer", "face_classifier", _get_steps(FaceClassifierAnalyzer)))
     except (ImportError, AttributeError) as e:
-        extractors_info.append(("PoseExtractor", "pose", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("FaceClassifierAnalyzer", "face_classifier", f"NOT AVAILABLE: {e}"))
 
-    # GestureExtractor
+    # PoseAnalyzer
     try:
-        from vpx.gesture import GestureExtractor
-        extractors_info.append(("GestureExtractor", "gesture", _get_steps(GestureExtractor)))
+        from vpx.pose import PoseAnalyzer
+        analyzers_info.append(("PoseAnalyzer", "pose", _get_steps(PoseAnalyzer)))
     except (ImportError, AttributeError) as e:
-        extractors_info.append(("GestureExtractor", "gesture", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("PoseAnalyzer", "pose", f"NOT AVAILABLE: {e}"))
 
-    # QualityExtractor (decorator-based)
+    # GestureAnalyzer
     try:
-        from facemoment.moment_detector.extractors.quality import QualityExtractor
-        extractors_info.append(("QualityExtractor", "quality", _get_steps(QualityExtractor)))
+        from vpx.gesture import GestureAnalyzer
+        analyzers_info.append(("GestureAnalyzer", "gesture", _get_steps(GestureAnalyzer)))
     except (ImportError, AttributeError) as e:
-        extractors_info.append(("QualityExtractor", "quality", f"NOT AVAILABLE: {e}"))
+        analyzers_info.append(("GestureAnalyzer", "gesture", f"NOT AVAILABLE: {e}"))
 
-    # Print each extractor's steps with DAG info
-    for class_name, name, steps in extractors_info:
+    # QualityAnalyzer (decorator-based)
+    try:
+        from facemoment.moment_detector.analyzers.quality import QualityAnalyzer
+        analyzers_info.append(("QualityAnalyzer", "quality", _get_steps(QualityAnalyzer)))
+    except (ImportError, AttributeError) as e:
+        analyzers_info.append(("QualityAnalyzer", "quality", f"NOT AVAILABLE: {e}"))
+
+    # Print each analyzer's steps with DAG info
+    for class_name, name, steps in analyzers_info:
         print(f"[{class_name}] (name: {name})")
         print("-" * 70)
 
@@ -580,7 +580,7 @@ def _print_processing_steps():
        │                                │                                  │
        ▼                                ▼                                  ▼
   ┌─────────────────────┐    ┌──────────────────────┐    ┌──────────────────┐
-  │  FaceDetectionExt   │    │    QualityExtractor  │    │   PoseExtractor  │
+  │  FaceDetectionExt   │    │    QualityAnalyzer  │    │   PoseAnalyzer  │
   │  ┌───────────────┐  │    │ ┌──────────────────┐ │    │ ┌──────────────┐ │
   │  │ detect        │  │    │ │ grayscale_convert│ │    │ │ pose_estim   │ │
   │  │ (→640x640)    │  │    │ │ blur_analysis    │ │    │ │ upper_body   │ │
@@ -593,7 +593,7 @@ def _print_processing_steps():
     │                 │
     ▼                 ▼
   ┌────────────────┐  ┌───────────────────┐    ┌───────────────────────┐
-  │ExpressionExt   │  │FaceClassifierExt  │    │   GestureExtractor    │
+  │ExpressionExt   │  │FaceClassifierExt  │    │   GestureAnalyzer    │
   │(depends:       │  │(depends:          │    │ ┌───────────────────┐ │
   │ face_detect)   │  │ face_detect)      │    │ │ hand_detection    │ │
   │ ┌────────────┐ │  │ ┌───────────────┐ │    │ │ finger_state      │ │

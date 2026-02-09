@@ -6,15 +6,15 @@ Extracts the core deps-accumulation + worker + fusion pattern from
 The deps pattern matches ``SimpleInterpreter._interpret_modules()``::
 
     deps = {}
-    for ext in extractors:
+    for ext in analyzers:
         ext_deps = {n: deps[n] for n in ext.depends if n in deps}
         obs = ext.process(frame, ext_deps)
         deps[ext.name] = obs
 
 Plus facemoment-specific additions:
-- Composite "face" extractor satisfies "face_detect" dependency
+- Composite "face" analyzer satisfies "face_detect" dependency
 - Subprocess workers (ProcessWorker)
-- Monitor hooks (begin/end_frame, begin/end_extractor, etc.)
+- Monitor hooks (begin/end_frame, begin/end_analyzer, etc.)
 - Fusion update with classifier observation
 """
 
@@ -29,14 +29,14 @@ logger = logging.getLogger(__name__)
 def _run_workers_parallel(frame, workers, deps, observations, monitor):
     """Run subprocess workers in parallel and collect results.
 
-    Workers are independent vpx extractors (no inter-dependencies).
+    Workers are independent vpx analyzers (no inter-dependencies).
     Each worker.process() blocks on ZMQ I/O, so threading provides
     true parallelism here.  Results populate *deps* and *observations*
-    so that subsequent inline extractors can use them.
+    so that subsequent inline analyzers can use them.
 
     PathwayMonitor is NOT thread-safe, so all monitor calls happen
     in the main thread after futures complete.  Pre-computed
-    ``elapsed_ms`` from WorkerResult is passed to ``end_extractor``
+    ``elapsed_ms`` from WorkerResult is passed to ``end_analyzer``
     to preserve accurate per-worker timing.
     """
     def _call(item):
@@ -59,7 +59,7 @@ def _run_workers_parallel(frame, workers, deps, observations, monitor):
         result = results.get(name)
         if result is None:
             if monitor is not None:
-                monitor.end_extractor(name, None, elapsed_ms=0.0)
+                monitor.end_analyzer(name, None, elapsed_ms=0.0)
             continue
 
         if result.error:
@@ -70,7 +70,7 @@ def _run_workers_parallel(frame, workers, deps, observations, monitor):
             deps[name] = result.observation
 
         if monitor is not None:
-            monitor.end_extractor(
+            monitor.end_analyzer(
                 name, result.observation, elapsed_ms=result.timing_ms,
             )
 
@@ -89,7 +89,7 @@ class FrameResult:
 
 def process_frame(
     frame,
-    extractors,
+    analyzers,
     *,
     classifier=None,
     workers=None,
@@ -97,12 +97,12 @@ def process_frame(
     merge_fn=None,
     monitor=None,
 ) -> FrameResult:
-    """Process a single frame through extractors, workers, and fusion.
+    """Process a single frame through analyzers, workers, and fusion.
 
     Args:
         frame: Input frame (must have ``frame_id``, ``t_src_ns``).
-        extractors: Ordered list of extractor instances.
-        classifier: The classifier extractor instance (to identify its obs).
+        analyzers: Ordered list of analyzer instances.
+        classifier: The classifier analyzer instance (to identify its obs).
         workers: Dict of ``{name: worker}`` subprocess workers. Optional.
         fusion: Fusion instance with ``update(merged_obs, classifier_obs=)``. Optional.
         merge_fn: Callable ``(obs_list, frame) -> merged_obs`` for fusion input.
@@ -124,37 +124,37 @@ def process_frame(
 
     # --- Phase 1: Subprocess workers (before inline, in parallel) ---
     # Workers run first so their results are available as deps for
-    # inline extractors (e.g. face_classifier depends on face).
+    # inline analyzers (e.g. face_classifier depends on face).
     # Independent workers run in parallel via ThreadPoolExecutor.
     if workers:
         _run_workers_parallel(frame, workers, deps, observations, monitor)
 
-    # --- Phase 2: Inline extractors (deps accumulated) ---
-    for ext in extractors:
+    # --- Phase 2: Inline analyzers (deps accumulated) ---
+    for ext in analyzers:
         try:
-            extractor_deps = None
+            analyzer_deps = None
             if ext.depends:
-                extractor_deps = {
+                analyzer_deps = {
                     n: deps[n] for n in ext.depends if n in deps
                 }
-                # Composite "face" extractor satisfies "face_detect" dependency
+                # Composite "face" analyzer satisfies "face_detect" dependency
                 if (
                     "face_detect" in ext.depends
-                    and "face_detect" not in extractor_deps
+                    and "face_detect" not in analyzer_deps
                     and "face" in deps
                 ):
-                    extractor_deps["face"] = deps["face"]
+                    analyzer_deps["face"] = deps["face"]
 
             if monitor is not None:
-                monitor.begin_extractor(ext.name)
+                monitor.begin_analyzer(ext.name)
             try:
-                obs = ext.process(frame, extractor_deps)
+                obs = ext.process(frame, analyzer_deps)
             except TypeError:
                 obs = ext.process(frame)
 
             sub_timings = getattr(obs, "timing", None) if obs else None
             if monitor is not None:
-                monitor.end_extractor(ext.name, obs, sub_timings=sub_timings)
+                monitor.end_analyzer(ext.name, obs, sub_timings=sub_timings)
 
             if obs:
                 observations[ext.name] = obs
@@ -163,7 +163,7 @@ def process_frame(
                     classifier_obs = obs
         except Exception:
             if monitor is not None:
-                monitor.end_extractor(ext.name, None)
+                monitor.end_analyzer(ext.name, None)
 
     if classifier_obs and monitor is not None:
         monitor.record_classifier(classifier_obs)

@@ -1,7 +1,7 @@
 import pkgutil
 __path__ = pkgutil.extend_path(__path__, __name__)
 
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.backends.base import (
     FaceDetectionBackend,
     ExpressionBackend,
     PoseBackend,

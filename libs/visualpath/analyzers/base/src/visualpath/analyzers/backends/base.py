@@ -83,7 +83,7 @@ class HandLandmarks:
 class FaceDetectionBackend(Protocol):
     """Protocol for face detection backends.
 
-    Implementations should be swappable without changing extractor logic.
+    Implementations should be swappable without changing analyzer logic.
     Examples: InsightFace SCRFD, YOLOv11-Face, RetinaFace.
     """
 

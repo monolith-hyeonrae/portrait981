@@ -1,4 +1,4 @@
-"""Tests for PoseExtractor."""
+"""Tests for PoseAnalyzer."""
 
 from unittest.mock import MagicMock
 import numpy as np
@@ -6,9 +6,9 @@ import pytest
 
 from visualbase import Frame
 
-from vpx.pose import PoseExtractor
-from visualpath.extractors.types import KeypointIndex
-from visualpath.extractors.backends.base import PoseKeypoints
+from vpx.pose import PoseAnalyzer
+from visualpath.analyzers.types import KeypointIndex
+from visualpath.analyzers.backends.base import PoseKeypoints
 
 
 class MockPoseBackend:
@@ -51,13 +51,13 @@ def create_keypoints(
     return keypoints
 
 
-class TestPoseExtractor:
+class TestPoseAnalyzer:
     def test_extract_no_poses(self):
         """Test extraction with no poses detected."""
         pose_backend = MockPoseBackend(poses=[])
 
-        extractor = PoseExtractor(pose_backend=pose_backend)
-        extractor.initialize()
+        analyzer = PoseAnalyzer(pose_backend=pose_backend)
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -65,7 +65,7 @@ class TestPoseExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert obs.source == "pose"
@@ -73,7 +73,7 @@ class TestPoseExtractor:
         assert obs.signals["hands_raised_count"] == 0
         assert obs.signals["hand_wave_detected"] == 0.0
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_extract_single_pose(self):
         """Test extraction with single person."""
@@ -87,8 +87,8 @@ class TestPoseExtractor:
 
         pose_backend = MockPoseBackend(poses=[pose])
 
-        extractor = PoseExtractor(pose_backend=pose_backend)
-        extractor.initialize()
+        analyzer = PoseAnalyzer(pose_backend=pose_backend)
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -96,11 +96,11 @@ class TestPoseExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["person_count"] == 1.0
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_hand_raised_detection(self):
         """Test detection of raised hands."""
@@ -120,8 +120,8 @@ class TestPoseExtractor:
 
         pose_backend = MockPoseBackend(poses=[pose])
 
-        extractor = PoseExtractor(pose_backend=pose_backend)
-        extractor.initialize()
+        analyzer = PoseAnalyzer(pose_backend=pose_backend)
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -129,25 +129,25 @@ class TestPoseExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         # Only left hand is raised
         assert obs.signals["hands_raised_count"] == 1.0
         assert obs.signals["person_0_left_raised"] == 1.0
         assert obs.signals["person_0_right_raised"] == 0.0
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_hand_wave_detection(self):
         """Test detection of hand waving pattern."""
         pose_backend = MockPoseBackend()
 
-        extractor = PoseExtractor(
+        analyzer = PoseAnalyzer(
             pose_backend=pose_backend,
             wave_window_frames=10,
             wave_amplitude_threshold=0.05,
         )
-        extractor.initialize()
+        analyzer.initialize()
 
         # Simulate oscillating wrist motion over multiple frames
         frame_interval_ns = 33_333_333  # ~30fps
@@ -174,13 +174,13 @@ class TestPoseExtractor:
                 frame_id=i,
                 t_src_ns=i * frame_interval_ns,
             )
-            obs = extractor.process(frame)
+            obs = analyzer.process(frame)
 
         # After enough frames with oscillation, wave should be detected
         # The exact detection depends on the oscillation parameters
         assert "hand_wave_confidence" in obs.signals
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_multiple_persons(self):
         """Test extraction with multiple persons."""
@@ -214,8 +214,8 @@ class TestPoseExtractor:
 
         pose_backend = MockPoseBackend(poses=poses)
 
-        extractor = PoseExtractor(pose_backend=pose_backend)
-        extractor.initialize()
+        analyzer = PoseAnalyzer(pose_backend=pose_backend)
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -223,14 +223,14 @@ class TestPoseExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["person_count"] == 2.0
         assert obs.signals["hands_raised_count"] == 1.0
         assert "person_0_left_raised" in obs.signals
         assert "person_1_left_raised" in obs.signals
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_low_confidence_keypoints_ignored(self):
         """Test that low confidence keypoints are ignored."""
@@ -250,8 +250,8 @@ class TestPoseExtractor:
 
         pose_backend = MockPoseBackend(poses=[pose])
 
-        extractor = PoseExtractor(pose_backend=pose_backend)
-        extractor.initialize()
+        analyzer = PoseAnalyzer(pose_backend=pose_backend)
+        analyzer.initialize()
 
         frame = Frame.from_array(
             np.zeros((480, 640, 3), dtype=np.uint8),
@@ -259,26 +259,26 @@ class TestPoseExtractor:
             t_src_ns=0,
         )
 
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         # Low confidence keypoint should not count as raised
         assert obs.signals["hands_raised_count"] == 0.0
 
-        extractor.cleanup()
+        analyzer.cleanup()
 
     def test_context_manager(self):
         """Test context manager usage."""
         pose_backend = MockPoseBackend()
 
-        extractor = PoseExtractor(pose_backend=pose_backend)
+        analyzer = PoseAnalyzer(pose_backend=pose_backend)
 
-        with extractor:
+        with analyzer:
             frame = Frame.from_array(
                 np.zeros((480, 640, 3), dtype=np.uint8),
                 frame_id=0,
                 t_src_ns=0,
             )
-            obs = extractor.process(frame)
+            obs = analyzer.process(frame)
             assert obs is not None
 
 

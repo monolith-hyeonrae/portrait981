@@ -1,6 +1,6 @@
-"""Type-safe output definitions for extractors.
+"""Type-safe output definitions for analyzers.
 
-Each extractor defines its output structure as a dataclass,
+Each analyzer defines its output structure as a dataclass,
 enabling type checking and IDE autocomplete for deps access.
 
 Example:
@@ -11,13 +11,13 @@ Example:
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
-from visualpath.extractors.base import FaceObservation
-from visualpath.extractors.backends.base import DetectedFace
+from visualpath.analyzers.base import FaceObservation
+from visualpath.analyzers.backends.base import DetectedFace
 
 
 @dataclass
 class FaceDetectOutput:
-    """Output from FaceDetectionExtractor.
+    """Output from FaceDetectionAnalyzer.
 
     Attributes:
         faces: List of detected faces with normalized bboxes and head pose.
@@ -31,7 +31,7 @@ class FaceDetectOutput:
 
 @dataclass
 class ExpressionOutput:
-    """Output from ExpressionExtractor.
+    """Output from ExpressionAnalyzer.
 
     Attributes:
         faces: List of faces with expression data added.
@@ -41,7 +41,7 @@ class ExpressionOutput:
 
 @dataclass
 class PoseOutput:
-    """Output from PoseExtractor.
+    """Output from PoseAnalyzer.
 
     Attributes:
         keypoints: List of keypoint dicts per person.
@@ -53,7 +53,7 @@ class PoseOutput:
 
 @dataclass
 class GestureOutput:
-    """Output from GestureExtractor.
+    """Output from GestureAnalyzer.
 
     Attributes:
         gestures: List of detected gestures.
@@ -65,7 +65,7 @@ class GestureOutput:
 
 @dataclass
 class QualityOutput:
-    """Output from QualityExtractor.
+    """Output from QualityAnalyzer.
 
     Attributes:
         blur_score: Laplacian variance (higher = sharper).
@@ -88,7 +88,7 @@ class ClassifiedFaceInfo:
 
 @dataclass
 class FaceClassifierOutput:
-    """Output from FaceClassifierExtractor.
+    """Output from FaceClassifierAnalyzer.
 
     Attributes:
         main_face_id: ID of the main subject face (or None).

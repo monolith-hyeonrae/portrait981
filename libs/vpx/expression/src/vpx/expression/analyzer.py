@@ -1,4 +1,4 @@
-"""Expression analysis extractor - depends on face_detect."""
+"""Expression analysis analyzer - depends on face_detect."""
 
 from typing import Optional, Dict, List
 import logging
@@ -6,7 +6,7 @@ import time
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     FaceObservation,
@@ -14,16 +14,16 @@ from visualpath.extractors.base import (
     processing_step,
     get_processing_steps,
 )
-from visualpath.extractors.backends.base import ExpressionBackend
-from visualpath.extractors.outputs import FaceDetectOutput, ExpressionOutput
+from visualpath.analyzers.backends.base import ExpressionBackend
+from visualpath.analyzers.outputs import FaceDetectOutput, ExpressionOutput
 
 logger = logging.getLogger(__name__)
 
 
-class ExpressionExtractor(Module):
-    """Extractor for expression analysis.
+class ExpressionAnalyzer(Module):
+    """Analyzer for expression analysis.
 
-    Depends on face_detect extractor for face bounding boxes.
+    Depends on face_detect analyzer for face bounding boxes.
     Analyzes emotions and action units for detected faces.
 
     depends: ["face_detect"]
@@ -36,8 +36,8 @@ class ExpressionExtractor(Module):
         >>> # Use with FlowGraph for automatic dependency resolution
         >>> graph = (FlowGraphBuilder()
         ...     .source()
-        ...     .path("detect", modules=[FaceDetectionExtractor()])
-        ...     .path("expr", modules=[ExpressionExtractor()])
+        ...     .path("detect", modules=[FaceDetectionAnalyzer()])
+        ...     .path("expr", modules=[ExpressionAnalyzer()])
         ...     .build())
     """
 
@@ -76,7 +76,7 @@ class ExpressionExtractor(Module):
                 )
                 self._expression_backend = HSEmotionBackend()
                 self._expression_backend.initialize(self._device)
-                logger.info("ExpressionExtractor using HSEmotionBackend")
+                logger.info("ExpressionAnalyzer using HSEmotionBackend")
             except ImportError:
                 logger.debug("hsemotion-onnx not available, trying PyFeat")
             except Exception as e:
@@ -90,7 +90,7 @@ class ExpressionExtractor(Module):
                     )
                     self._expression_backend = PyFeatBackend()
                     self._expression_backend.initialize(self._device)
-                    logger.info("ExpressionExtractor using PyFeatBackend")
+                    logger.info("ExpressionAnalyzer using PyFeatBackend")
                 except ImportError:
                     logger.warning("No expression backend available")
                 except Exception as e:
@@ -101,7 +101,7 @@ class ExpressionExtractor(Module):
     def cleanup(self) -> None:
         if self._expression_backend is not None:
             self._expression_backend.cleanup()
-        logger.info("ExpressionExtractor cleaned up")
+        logger.info("ExpressionAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 
@@ -200,7 +200,7 @@ class ExpressionExtractor(Module):
         # Get face_detect dependency (type-safe access)
         face_obs = deps.get("face_detect") if deps else None
         if face_obs is None:
-            logger.warning("ExpressionExtractor: no face_detect dependency")
+            logger.warning("ExpressionAnalyzer: no face_detect dependency")
             return None
 
         face_data: FaceDetectOutput = face_obs.data

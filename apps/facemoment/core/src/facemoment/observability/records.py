@@ -4,7 +4,7 @@ This module defines FaceMoment-specific trace record types.
 Generic record types are re-exported from visualpath.observability.
 
 Record Categories:
-- Extraction records: Frame-level extraction results (face-specific)
+- Analysis records: Frame-level analysis results (face-specific)
 - Gate records: Quality gate state changes
 - Trigger records: Trigger decisions and firings
 """
@@ -26,18 +26,18 @@ from visualpath.observability.records import (
 
 
 # =============================================================================
-# FaceMoment-specific Extraction Records
+# FaceMoment-specific Analysis Records
 # =============================================================================
 
 
 @dataclass
-class FrameExtractRecord(TraceRecord):
-    """Record of frame extraction results.
+class FrameAnalyzeRecord(TraceRecord):
+    """Record of frame analysis results.
 
-    Emitted by extractors after processing each frame.
-    Contains summary of what was extracted.
+    Emitted by analyzers after processing each frame.
+    Contains summary of what was analyzed.
     """
-    record_type: str = field(default="frame_extract", init=False)
+    record_type: str = field(default="frame_analyze", init=False)
 
     frame_id: int = 0
     t_ns: int = 0
@@ -56,13 +56,13 @@ class FrameExtractRecord(TraceRecord):
 
 
 @dataclass
-class FaceExtractDetail(TraceRecord):
-    """Detailed face extraction record for VERBOSE level.
+class FaceAnalyzeDetail(TraceRecord):
+    """Detailed face analysis record for VERBOSE level.
 
     Contains per-face information including pose angles,
     expression values, and tracking data.
     """
-    record_type: str = field(default="face_extract_detail", init=False)
+    record_type: str = field(default="face_analyze_detail", init=False)
     min_level: TraceLevel = field(default=TraceLevel.VERBOSE, repr=False)
 
     frame_id: int = 0
@@ -153,7 +153,7 @@ class TriggerCandidate:
     """A candidate trigger with reason and score."""
     reason: str = ""
     score: float = 0.0
-    source: str = ""  # Which extractor/detection produced it
+    source: str = ""  # Which analyzer/detection produced it
 
 
 @dataclass
@@ -227,13 +227,13 @@ class PathwayFrameRecord(TraceRecord):
     """Per-frame pipeline summary for Pathway backend.
 
     Emitted at NORMAL level for each frame processed through the
-    Pathway pipeline, summarizing extractor timings and fusion result.
+    Pathway pipeline, summarizing analyzer timings and fusion result.
     """
     record_type: str = field(default="pathway_frame", init=False)
 
     frame_id: int = 0
     t_ns: int = 0
-    extractor_timings_ms: Dict[str, float] = field(default_factory=dict)
+    analyzer_timings_ms: Dict[str, float] = field(default_factory=dict)
     total_frame_ms: float = 0.0
     observations_produced: List[str] = field(default_factory=list)
     observations_failed: List[str] = field(default_factory=list)
@@ -242,15 +242,15 @@ class PathwayFrameRecord(TraceRecord):
 
 
 @dataclass
-class ExtractorTimingRecord(TraceRecord):
-    """Individual extractor timing with sub-component breakdown.
+class AnalyzerTimingRecord(TraceRecord):
+    """Individual analyzer timing with sub-component breakdown.
 
-    Emitted at NORMAL level for each extractor on each frame.
+    Emitted at NORMAL level for each analyzer on each frame.
     """
-    record_type: str = field(default="extractor_timing", init=False)
+    record_type: str = field(default="analyzer_timing", init=False)
 
     frame_id: int = 0
-    extractor_name: str = ""
+    analyzer_name: str = ""
     processing_ms: float = 0.0
     produced_observation: bool = False
     sub_timings_ms: Dict[str, float] = field(default_factory=dict)
@@ -260,7 +260,7 @@ class ExtractorTimingRecord(TraceRecord):
 class ObservationMergeRecord(TraceRecord):
     """Detailed observation merge information.
 
-    Emitted at VERBOSE level when observations from multiple extractors
+    Emitted at VERBOSE level when observations from multiple analyzers
     are merged for fusion input.
     """
     record_type: str = field(default="observation_merge", init=False)
@@ -290,10 +290,10 @@ class BackpressureRecord(TraceRecord):
     effective_fps: float = 0.0
     target_fps: float = 0.0
     fps_ratio: float = 0.0
-    extractor_avg_ms: Dict[str, float] = field(default_factory=dict)
-    extractor_max_ms: Dict[str, float] = field(default_factory=dict)
-    extractor_p95_ms: Dict[str, float] = field(default_factory=dict)
-    slowest_extractor: str = ""
+    analyzer_avg_ms: Dict[str, float] = field(default_factory=dict)
+    analyzer_max_ms: Dict[str, float] = field(default_factory=dict)
+    analyzer_p95_ms: Dict[str, float] = field(default_factory=dict)
+    slowest_analyzer: str = ""
     bottleneck_pct: float = 0.0
     fusion_avg_ms: float = 0.0
 
@@ -311,7 +311,7 @@ class PipelineStatsRecord(TraceRecord):
     total_triggers: int = 0
     wall_time_sec: float = 0.0
     effective_fps: float = 0.0
-    extractor_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    analyzer_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
     fusion_avg_ms: float = 0.0
     gate_open_pct: float = 0.0
 
@@ -326,8 +326,8 @@ __all__ = [
     "SessionStartRecord",
     "SessionEndRecord",
     # FaceMoment-specific
-    "FrameExtractRecord",
-    "FaceExtractDetail",
+    "FrameAnalyzeRecord",
+    "FaceAnalyzeDetail",
     "GateChangeRecord",
     "GateConditionRecord",
     "TriggerCandidate",
@@ -335,7 +335,7 @@ __all__ = [
     "TriggerFireRecord",
     # Pathway monitoring
     "PathwayFrameRecord",
-    "ExtractorTimingRecord",
+    "AnalyzerTimingRecord",
     "ObservationMergeRecord",
     "BackpressureRecord",
     "PipelineStatsRecord",

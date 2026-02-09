@@ -1,4 +1,4 @@
-"""Tests for ExtractorOrchestrator."""
+"""Tests for AnalyzerOrchestrator."""
 
 import pytest
 import time
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Optional, List
 
 from visualpath.core import Module, Observation
-from visualpath.process import ExtractorOrchestrator
+from visualpath.process import AnalyzerOrchestrator
 
 
 # =============================================================================
@@ -23,8 +23,8 @@ class MockFrame:
     data: np.ndarray
 
 
-class SimpleExtractor(Module):
-    """Simple extractor for testing."""
+class SimpleAnalyzer(Module):
+    """Simple analyzer for testing."""
 
     def __init__(
         self,
@@ -50,7 +50,7 @@ class SimpleExtractor(Module):
             time.sleep(self._delay_ms / 1000)
 
         if self._fail:
-            raise RuntimeError("Extraction failed")
+            raise RuntimeError("Analysis failed")
 
         if self._return_none:
             return None
@@ -75,27 +75,27 @@ class SimpleExtractor(Module):
 # =============================================================================
 
 
-class TestExtractorOrchestrator:
-    """Tests for ExtractorOrchestrator."""
+class TestAnalyzerOrchestrator:
+    """Tests for AnalyzerOrchestrator."""
 
     def test_initialization(self):
         """Test orchestrator initialization."""
-        extractors = [SimpleExtractor("ext1"), SimpleExtractor("ext2")]
-        orchestrator = ExtractorOrchestrator(extractors)
+        analyzers = [SimpleAnalyzer("ext1"), SimpleAnalyzer("ext2")]
+        orchestrator = AnalyzerOrchestrator(analyzers)
 
         assert not orchestrator.is_initialized
-        assert orchestrator.extractor_names == ["ext1", "ext2"]
+        assert orchestrator.analyzer_names == ["ext1", "ext2"]
 
-    def test_requires_at_least_one_extractor(self):
-        """Test that at least one extractor is required."""
-        with pytest.raises(ValueError, match="At least one extractor"):
-            ExtractorOrchestrator([])
+    def test_requires_at_least_one_analyzer(self):
+        """Test that at least one analyzer is required."""
+        with pytest.raises(ValueError, match="At least one analyzer"):
+            AnalyzerOrchestrator([])
 
     def test_initialize(self):
-        """Test initialize() initializes all extractors."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2")
-        orchestrator = ExtractorOrchestrator([ext1, ext2])
+        """Test initialize() initializes all analyzers."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2")
+        orchestrator = AnalyzerOrchestrator([ext1, ext2])
 
         orchestrator.initialize()
 
@@ -104,10 +104,10 @@ class TestExtractorOrchestrator:
         assert ext2._initialized
 
     def test_cleanup(self):
-        """Test cleanup() cleans up all extractors."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2")
-        orchestrator = ExtractorOrchestrator([ext1, ext2])
+        """Test cleanup() cleans up all analyzers."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2")
+        orchestrator = AnalyzerOrchestrator([ext1, ext2])
 
         orchestrator.initialize()
         orchestrator.cleanup()
@@ -118,9 +118,9 @@ class TestExtractorOrchestrator:
 
     def test_context_manager(self):
         """Test context manager protocol."""
-        ext = SimpleExtractor()
+        ext = SimpleAnalyzer()
 
-        with ExtractorOrchestrator([ext]) as orchestrator:
+        with AnalyzerOrchestrator([ext]) as orchestrator:
             assert orchestrator.is_initialized
             assert ext._initialized
 
@@ -129,8 +129,8 @@ class TestExtractorOrchestrator:
 
     def test_double_initialize(self):
         """Test that double initialize is safe."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext])
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext])
 
         orchestrator.initialize()
         orchestrator.initialize()  # Should be no-op
@@ -139,8 +139,8 @@ class TestExtractorOrchestrator:
 
     def test_double_cleanup(self):
         """Test that double cleanup is safe."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext])
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext])
 
         orchestrator.initialize()
         orchestrator.cleanup()
@@ -150,68 +150,68 @@ class TestExtractorOrchestrator:
 
 
 # =============================================================================
-# Extraction Tests
+# Analysis Tests
 # =============================================================================
 
 
-class TestExtractorOrchestratorExtraction:
-    """Tests for extraction functionality."""
+class TestAnalyzerOrchestratorAnalysis:
+    """Tests for analysis functionality."""
 
-    def test_extract_all_single_extractor(self):
-        """Test extracting with a single extractor."""
-        ext = SimpleExtractor()
+    def test_analyze_all_single_extractor(self):
+        """Test analyzing with a single analyzer."""
+        ext = SimpleAnalyzer()
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext]) as orchestrator:
-            observations = orchestrator.extract_all(frame)
+        with AnalyzerOrchestrator([ext]) as orchestrator:
+            observations = orchestrator.analyze_all(frame)
 
         assert len(observations) == 1
         assert observations[0].source == "simple"
         assert observations[0].frame_id == 1
 
-    def test_extract_all_multiple_extractors(self):
-        """Test extracting with multiple extractors."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2")
-        ext3 = SimpleExtractor("ext3")
+    def test_analyze_all_multiple_extractors(self):
+        """Test analyzing with multiple analyzers."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2")
+        ext3 = SimpleAnalyzer("ext3")
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext1, ext2, ext3]) as orchestrator:
-            observations = orchestrator.extract_all(frame)
+        with AnalyzerOrchestrator([ext1, ext2, ext3]) as orchestrator:
+            observations = orchestrator.analyze_all(frame)
 
         assert len(observations) == 3
         sources = {obs.source for obs in observations}
         assert sources == {"ext1", "ext2", "ext3"}
 
-    def test_extract_all_requires_initialization(self):
-        """Test that extract_all requires initialization."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext])
+    def test_analyze_all_requires_initialization(self):
+        """Test that analyze_all requires initialization."""
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with pytest.raises(RuntimeError, match="not initialized"):
-            orchestrator.extract_all(frame)
+            orchestrator.analyze_all(frame)
 
-    def test_extract_all_filters_none(self):
+    def test_analyze_all_filters_none(self):
         """Test that None observations are filtered out."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2", return_none=True)
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2", return_none=True)
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext1, ext2]) as orchestrator:
-            observations = orchestrator.extract_all(frame)
+        with AnalyzerOrchestrator([ext1, ext2]) as orchestrator:
+            observations = orchestrator.analyze_all(frame)
 
         assert len(observations) == 1
         assert observations[0].source == "ext1"
 
-    def test_extract_all_handles_errors(self):
-        """Test that errors in extractors are handled."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2", fail=True)
+    def test_analyze_all_handles_errors(self):
+        """Test that errors in analyzers are handled."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2", fail=True)
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext1, ext2]) as orchestrator:
-            observations = orchestrator.extract_all(frame)
+        with AnalyzerOrchestrator([ext1, ext2]) as orchestrator:
+            observations = orchestrator.analyze_all(frame)
 
         # Only ext1 should succeed
         assert len(observations) == 1
@@ -221,14 +221,14 @@ class TestExtractorOrchestratorExtraction:
         stats = orchestrator.get_stats()
         assert stats["errors"] == 1
 
-    def test_extract_all_timeout(self):
-        """Test that slow extractors timeout."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2", delay_ms=2000)  # Very slow
+    def test_analyze_all_timeout(self):
+        """Test that slow analyzers timeout."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2", delay_ms=2000)  # Very slow
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext1, ext2], timeout=0.1) as orchestrator:
-            observations = orchestrator.extract_all(frame)
+        with AnalyzerOrchestrator([ext1, ext2], timeout=0.1) as orchestrator:
+            observations = orchestrator.analyze_all(frame)
 
         # ext1 should succeed, ext2 may timeout
         assert len(observations) >= 1
@@ -238,14 +238,14 @@ class TestExtractorOrchestratorExtraction:
         # Just verify stats are collected
         assert stats["frames_processed"] == 1
 
-    def test_extract_multiple_frames(self):
+    def test_analyze_multiple_frames(self):
         """Test processing multiple frames."""
-        ext = SimpleExtractor()
+        ext = SimpleAnalyzer()
 
-        with ExtractorOrchestrator([ext]) as orchestrator:
+        with AnalyzerOrchestrator([ext]) as orchestrator:
             for i in range(5):
                 frame = MockFrame(frame_id=i, t_src_ns=i * 1000000, data=np.zeros((100, 100, 3)))
-                observations = orchestrator.extract_all(frame)
+                observations = orchestrator.analyze_all(frame)
                 assert len(observations) == 1
                 assert observations[0].frame_id == i
 
@@ -255,42 +255,42 @@ class TestExtractorOrchestratorExtraction:
 
 
 # =============================================================================
-# Sequential Extraction Tests
+# Sequential Analysis Tests
 # =============================================================================
 
 
-class TestExtractorOrchestratorSequential:
-    """Tests for sequential extraction."""
+class TestAnalyzerOrchestratorSequential:
+    """Tests for sequential analysis."""
 
-    def test_extract_sequential(self):
-        """Test sequential extraction."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2")
+    def test_analyze_sequential(self):
+        """Test sequential analysis."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2")
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext1, ext2]) as orchestrator:
-            observations = orchestrator.extract_sequential(frame)
+        with AnalyzerOrchestrator([ext1, ext2]) as orchestrator:
+            observations = orchestrator.analyze_sequential(frame)
 
         assert len(observations) == 2
 
-    def test_extract_sequential_requires_initialization(self):
-        """Test that extract_sequential requires initialization."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext])
+    def test_analyze_sequential_requires_initialization(self):
+        """Test that analyze_sequential requires initialization."""
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext])
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
         with pytest.raises(RuntimeError, match="not initialized"):
-            orchestrator.extract_sequential(frame)
+            orchestrator.analyze_sequential(frame)
 
-    def test_extract_sequential_handles_errors(self):
-        """Test that sequential extraction handles errors."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2", fail=True)
-        ext3 = SimpleExtractor("ext3")
+    def test_analyze_sequential_handles_errors(self):
+        """Test that sequential analysis handles errors."""
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2", fail=True)
+        ext3 = SimpleAnalyzer("ext3")
         frame = MockFrame(frame_id=1, t_src_ns=1000000, data=np.zeros((100, 100, 3)))
 
-        with ExtractorOrchestrator([ext1, ext2, ext3]) as orchestrator:
-            observations = orchestrator.extract_sequential(frame)
+        with AnalyzerOrchestrator([ext1, ext2, ext3]) as orchestrator:
+            observations = orchestrator.analyze_sequential(frame)
 
         # ext1 and ext3 should succeed
         assert len(observations) == 2
@@ -304,13 +304,13 @@ class TestExtractorOrchestratorSequential:
 # =============================================================================
 
 
-class TestExtractorOrchestratorStats:
+class TestAnalyzerOrchestratorStats:
     """Tests for statistics collection."""
 
     def test_get_stats_initial(self):
         """Test initial stats."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext])
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext])
 
         stats = orchestrator.get_stats()
 
@@ -318,17 +318,17 @@ class TestExtractorOrchestratorStats:
         assert stats["total_observations"] == 0
         assert stats["timeouts"] == 0
         assert stats["errors"] == 0
-        assert stats["extractors"] == ["simple"]
+        assert stats["analyzers"] == ["simple"]
 
     def test_get_stats_after_processing(self):
         """Test stats after processing."""
-        ext1 = SimpleExtractor("ext1")
-        ext2 = SimpleExtractor("ext2")
+        ext1 = SimpleAnalyzer("ext1")
+        ext2 = SimpleAnalyzer("ext2")
 
-        with ExtractorOrchestrator([ext1, ext2]) as orchestrator:
+        with AnalyzerOrchestrator([ext1, ext2]) as orchestrator:
             for i in range(3):
                 frame = MockFrame(frame_id=i, t_src_ns=i * 1000000, data=np.zeros((100, 100, 3)))
-                orchestrator.extract_all(frame)
+                orchestrator.analyze_all(frame)
 
             stats = orchestrator.get_stats()
 
@@ -338,8 +338,8 @@ class TestExtractorOrchestratorStats:
 
     def test_max_workers_in_stats(self):
         """Test that max_workers is in stats."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext], max_workers=4)
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext], max_workers=4)
 
         stats = orchestrator.get_stats()
 
@@ -351,26 +351,26 @@ class TestExtractorOrchestratorStats:
 # =============================================================================
 
 
-class TestExtractorOrchestratorConfig:
+class TestAnalyzerOrchestratorConfig:
     """Tests for configuration options."""
 
     def test_custom_max_workers(self):
         """Test custom max_workers setting."""
-        extractors = [SimpleExtractor(f"ext{i}") for i in range(5)]
-        orchestrator = ExtractorOrchestrator(extractors, max_workers=2)
+        analyzers = [SimpleAnalyzer(f"ext{i}") for i in range(5)]
+        orchestrator = AnalyzerOrchestrator(analyzers, max_workers=2)
 
         assert orchestrator._max_workers == 2
 
     def test_custom_timeout(self):
         """Test custom timeout setting."""
-        ext = SimpleExtractor()
-        orchestrator = ExtractorOrchestrator([ext], timeout=10.0)
+        ext = SimpleAnalyzer()
+        orchestrator = AnalyzerOrchestrator([ext], timeout=10.0)
 
         assert orchestrator._timeout == 10.0
 
-    def test_default_max_workers_is_extractor_count(self):
-        """Test that default max_workers equals extractor count."""
-        extractors = [SimpleExtractor(f"ext{i}") for i in range(3)]
-        orchestrator = ExtractorOrchestrator(extractors)
+    def test_default_max_workers_is_analyzer_count(self):
+        """Test that default max_workers equals analyzer count."""
+        analyzers = [SimpleAnalyzer(f"ext{i}") for i in range(3)]
+        orchestrator = AnalyzerOrchestrator(analyzers)
 
         assert orchestrator._max_workers == 3

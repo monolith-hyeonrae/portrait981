@@ -8,7 +8,7 @@ from helpers import create_mock_frame
 
 
 def _make_extractor(name, depends=None, obs=None):
-    """Create a mock extractor with given name and depends."""
+    """Create a mock analyzer with given name and depends."""
     ext = Mock()
     ext.name = name
     ext.depends = depends or []
@@ -56,7 +56,7 @@ class TestDepsAccumulation:
         assert call_args[0][1] == {"ext1": obs1}
 
     def test_no_deps(self):
-        """Extractor with no depends should get None deps."""
+        """Analyzer with no depends should get None deps."""
         frame = create_mock_frame()
         ext = _make_extractor("solo")
 
@@ -149,11 +149,11 @@ class TestMonitorHooks:
         ext = _make_extractor("face")
         result = process_frame(frame, [ext], monitor=monitor)
 
-        # Expected order: begin_frame → begin_extractor → end_extractor → end_frame
+        # Expected order: begin_frame → begin_analyzer → end_analyzer → end_frame
         call_names = [c[0] for c in monitor.method_calls]
         assert call_names[0] == "begin_frame"
-        assert "begin_extractor" in call_names
-        assert "end_extractor" in call_names
+        assert "begin_analyzer" in call_names
+        assert "end_analyzer" in call_names
         assert call_names[-1] == "end_frame"
 
     def test_monitor_hooks_with_fusion(self):
@@ -261,7 +261,7 @@ class TestFusion:
 
 
 class TestExtractorErrorIsolation:
-    """Test that extractor errors don't break other extractors."""
+    """Test that analyzer errors don't break other analyzers."""
 
     def test_extractor_error_isolation(self):
         """ext1 error should not prevent ext2 from running."""
@@ -279,7 +279,7 @@ class TestExtractorErrorIsolation:
         assert "ext2" in result.observations
 
     def test_extractor_error_with_monitor(self):
-        """Monitor should record failure for errored extractor."""
+        """Monitor should record failure for errored analyzer."""
         frame = create_mock_frame()
         monitor = Mock()
 
@@ -288,10 +288,10 @@ class TestExtractorErrorIsolation:
 
         result = process_frame(frame, [ext], monitor=monitor)
 
-        # Monitor should have end_extractor called with None obs
+        # Monitor should have end_analyzer called with None obs
         end_calls = [
             c for c in monitor.method_calls
-            if c[0] == "end_extractor"
+            if c[0] == "end_analyzer"
         ]
         assert len(end_calls) == 1
         assert end_calls[0][1] == ("bad", None)
@@ -340,7 +340,7 @@ class TestFrameResultFields:
         assert result.timing_info is None
 
     def test_typedef_fallback(self):
-        """Extractor that doesn't accept deps should fallback to process(frame)."""
+        """Analyzer that doesn't accept deps should fallback to process(frame)."""
         frame = create_mock_frame()
 
         obs = _make_obs("legacy")

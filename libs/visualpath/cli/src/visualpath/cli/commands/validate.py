@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from visualpath.config import load_yaml_config, ConfigLoadError
-from visualpath.plugin.discovery import discover_extractors, discover_fusions
+from visualpath.plugin.discovery import discover_analyzers, discover_fusions
 
 
 def cmd_validate(config_path: str, check_plugins: bool = False) -> int:
@@ -38,9 +38,9 @@ def cmd_validate(config_path: str, check_plugins: bool = False) -> int:
 
     for pipeline_name, pipeline in config.pipelines.items():
         print(f"\n  Pipeline '{pipeline_name}':")
-        print(f"    Extractors: {len(pipeline.extractors)}")
+        print(f"    Analyzers: {len(pipeline.analyzers)}")
 
-        for ext in pipeline.extractors:
+        for ext in pipeline.analyzers:
             isolation_info = f" ({ext.isolation})"
             if ext.isolation == "venv" and ext.venv_path:
                 isolation_info += f" -> {ext.venv_path}"
@@ -61,14 +61,14 @@ def cmd_validate(config_path: str, check_plugins: bool = False) -> int:
     if check_plugins:
         print("\nChecking plugin availability...")
 
-        available_extractors = set(discover_extractors().keys())
+        available_analyzers = set(discover_analyzers().keys())
         available_fusions = set(discover_fusions().keys())
 
         for pipeline_name, pipeline in config.pipelines.items():
-            for ext in pipeline.extractors:
-                if ext.name not in available_extractors:
+            for ext in pipeline.analyzers:
+                if ext.name not in available_analyzers:
                     errors.append(
-                        f"Extractor '{ext.name}' not found "
+                        f"Analyzer '{ext.name}' not found "
                         f"(pipeline: {pipeline_name})"
                     )
 

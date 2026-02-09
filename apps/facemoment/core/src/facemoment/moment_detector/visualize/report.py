@@ -3,7 +3,7 @@
 Generates a static HTML file with:
 - Session summary (frames, duration, FPS)
 - Trigger list with thumbnails (base64 inlined)
-- Extractor performance table (avg, P95, max)
+- Analyzer performance table (avg, P95, max)
 - Bottleneck analysis
 - Gate open percentage
 """
@@ -47,10 +47,10 @@ def _build_html(
     target_fps = summary.get("target_fps", 0)
     total_triggers = summary.get("total_triggers", 0)
     gate_pct = summary.get("gate_open_pct", 0)
-    ext_stats = summary.get("extractor_stats", {})
+    ext_stats = summary.get("analyzer_stats", {})
     fusion_avg = summary.get("fusion_avg_ms", 0)
 
-    # Extractor performance rows
+    # Analyzer performance rows
     ext_rows = ""
     for name, stats in ext_stats.items():
         avg = stats.get("avg_ms", 0)
@@ -174,10 +174,10 @@ def _build_html(
     </div>
   </div>
 
-  <h2>Extractor Performance</h2>
+  <h2>Analyzer Performance</h2>
   <table>
     <thead>
-      <tr><th>Extractor</th><th>Avg (ms)</th><th>P95 (ms)</th><th>Max (ms)</th><th>Errors</th><th>Bar</th></tr>
+      <tr><th>Analyzer</th><th>Avg (ms)</th><th>P95 (ms)</th><th>Max (ms)</th><th>Errors</th><th>Bar</th></tr>
     </thead>
     <tbody>
       {ext_rows}

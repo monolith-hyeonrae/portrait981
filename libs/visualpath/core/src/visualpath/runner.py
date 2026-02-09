@@ -28,7 +28,7 @@ from typing import (
 
 from visualbase import Frame, Trigger
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 
 # Backend type alias
@@ -88,7 +88,7 @@ def resolve_modules(
 ) -> List[Module]:
     """Resolve module names or instances to instances.
 
-    Modules can be either extractor names (from registry) or Module instances.
+    Modules can be either analyzer names (from registry) or Module instances.
 
     Args:
         modules: List of module names or instances.
@@ -99,13 +99,13 @@ def resolve_modules(
     Raises:
         ValueError: If a module name is not found.
     """
-    from visualpath.api import get_extractor, get_fusion
+    from visualpath.api import get_analyzer, get_fusion
 
     instances: List[Module] = []
     for mod in modules:
         if isinstance(mod, str):
-            # Try extractor registry first, then fusion registry
-            instance = get_extractor(mod)
+            # Try analyzer registry first, then fusion registry
+            instance = get_analyzer(mod)
             if instance is None:
                 instance = get_fusion(mod)
             if instance is None:

@@ -4,7 +4,7 @@ This module re-exports the core observability components from visualpath
 and adds FaceMoment-specific trace record types.
 
 Provides tracing and logging infrastructure to track:
-- Frame-by-frame extraction results
+- Frame-by-frame analysis results
 - Gate state transitions
 - Trigger decision processes
 - Component timing and performance
@@ -22,9 +22,9 @@ Example:
     >>> hub.configure(level=TraceLevel.NORMAL)
     >>> hub.add_sink(FileSink("/tmp/trace.jsonl"))
     >>>
-    >>> # In extractor code:
+    >>> # In analyzer code:
     >>> if hub.enabled:
-    ...     hub.emit(FrameExtractRecord(...))
+    ...     hub.emit(FrameAnalyzeRecord(...))
 """
 
 # Re-export core observability from visualpath

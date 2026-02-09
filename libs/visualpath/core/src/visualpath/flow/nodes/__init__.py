@@ -6,7 +6,7 @@ Source:
 - SourceNode: Entry point that converts Frames to FlowData
 
 Path:
-- PathNode: Wraps existing Path for extractor execution
+- PathNode: Wraps existing Path for analyzer execution
 
 Filter:
 - FilterNode: Generic condition-based filtering

@@ -2,7 +2,7 @@
 
 import pytest
 
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 from facemoment.moment_detector.fusion.highlight import HighlightFusion
 
 
@@ -176,7 +176,7 @@ class TestHighlightFusion:
         assert not fusion.is_gate_open
 
     def test_gate_rejects_quality_gate_closed(self):
-        """Test gate respects quality extractor signal."""
+        """Test gate respects quality analyzer signal."""
         fusion = HighlightFusion(gate_open_duration_sec=0.01)
 
         obs = create_observation(quality_gate=0.0)
@@ -791,7 +791,7 @@ class TestHighlightFusionMainOnly:
 
     def test_main_only_triggers_on_main_face(self):
         """Test that only main face triggers in main-only mode."""
-        from facemoment.moment_detector.extractors.face_classifier import (
+        from facemoment.moment_detector.analyzers.face_classifier import (
             FaceClassifierOutput,
             ClassifiedFace,
         )
@@ -900,7 +900,7 @@ class TestHighlightFusionMainOnly:
 
     def test_main_only_ignores_passenger_expression(self):
         """Test main-only mode ignores passenger expressions."""
-        from facemoment.moment_detector.extractors.face_classifier import (
+        from facemoment.moment_detector.analyzers.face_classifier import (
             FaceClassifierOutput,
             ClassifiedFace,
         )

@@ -107,10 +107,10 @@ def create_parser() -> argparse.ArgumentParser:
         help="Sample every Nth frame (default: 1, no sampling)",
     )
     debug_parser.add_argument(
-        "-e", "--extractor",
+        "-e", "--analyzer",
         type=str,
         default="dummy",
-        help="Extractor name (default: dummy)",
+        help="Analyzer name (default: dummy)",
     )
     debug_parser.add_argument(
         "-f", "--fusion",
@@ -187,7 +187,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return cmd_debug(
             frames=args.frames,
             sample=args.sample,
-            extractor=args.extractor,
+            analyzer=args.analyzer,
             fusion=args.fusion,
             debug=args.debug,
             backend=args.backend,

@@ -10,7 +10,7 @@ Environment variable syntax:
 Example:
     >>> config = load_yaml_config("pipeline.yaml")
     >>> for name, pipeline in config.pipelines.items():
-    ...     print(f"Pipeline: {name}, extractors: {len(pipeline.extractors)}")
+    ...     print(f"Pipeline: {name}, analyzers: {len(pipeline.analyzers)}")
 """
 
 import os

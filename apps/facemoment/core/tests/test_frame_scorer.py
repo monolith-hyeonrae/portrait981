@@ -12,7 +12,7 @@ from facemoment.moment_detector.scoring import (
     SelectionConfig,
     ScoredFrame,
 )
-from visualpath.extractors.base import Observation, FaceObservation
+from visualpath.analyzers.base import Observation, FaceObservation
 
 
 def make_face_obs(

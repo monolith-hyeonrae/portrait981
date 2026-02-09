@@ -1,15 +1,15 @@
 [project]
 name = "vpx-expression"
 version = "0.1.0"
-description = "Expression analysis extractor (HSEmotion)"
+description = "Expression analysis analyzer (HSEmotion)"
 requires-python = ">=3.10"
 dependencies = [
-    "visualpath-extractors-base",
+    "visualpath-analyzers-base",
     "hsemotion-onnx>=0.3",
 ]
 
-[project.entry-points."visualpath.extractors"]
-expression = "vpx.expression:ExpressionExtractor"
+[project.entry-points."visualpath.analyzers"]
+expression = "vpx.expression:ExpressionAnalyzer"
 
 [build-system]
 requires = ["hatchling"]
@@ -19,4 +19,4 @@ build-backend = "hatchling.build"
 packages = ["src/vpx"]
 
 [tool.uv.sources]
-visualpath-extractors-base = { workspace = true }
+visualpath-analyzers-base = { workspace = true }

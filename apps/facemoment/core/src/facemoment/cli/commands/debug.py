@@ -19,19 +19,19 @@ from facemoment.cli.utils import (
 
 
 def run_debug(args):
-    """Run unified debug session with selected extractors.
+    """Run unified debug session with selected analyzers.
 
     Supports:
-    - Single extractor: -e face, -e pose, -e quality, -e gesture
-    - Multiple extractors: -e face,pose or -e all (default)
+    - Single analyzer: -e face, -e pose, -e quality, -e gesture
+    - Multiple analyzers: -e face,pose or -e all (default)
     - Raw video preview: -e raw (no analysis, verify video input)
     - Dummy mode: --no-ml (replaces legacy 'visualize' command)
     - Distributed mode: --distributed (uses VenvWorker for process isolation)
     - Backend selection: --backend pathway (default) or simple
     """
-    # Parse extractor selection
-    extractor_arg = getattr(args, 'extractor', 'all')
-    selected = _parse_extractor_arg(extractor_arg)
+    # Parse analyzer selection
+    analyzer_arg = getattr(args, 'analyzer', 'all')
+    selected = _parse_analyzer_arg(analyzer_arg)
 
     show_window = not getattr(args, 'no_window', False)
     if not show_window and not args.output:
@@ -66,8 +66,8 @@ class DebugSession:
     pathway, simple, and distributed debug modes.
 
     Subclasses override:
-    - _setup_pipeline(): create extractors, fusion, monitor
-    - _process_frame(): run extraction and fusion for one frame
+    - _setup_pipeline(): create analyzers, fusion, monitor
+    - _process_frame(): run analysis and fusion for one frame
     - _teardown_pipeline(): cleanup pipeline-specific resources
     - _print_summary(): print session-specific summary
     """
@@ -154,8 +154,8 @@ class DebugSession:
         parts = [
             f"{self.source.frame_count} frames",
             f"{self.source.fps:.1f} fps",
-            (f"{', '.join(self.selected)} extractors" if len(self.selected) > 1
-             else f"{self.selected[0]} extractor"),
+            (f"{', '.join(self.selected)} analyzers" if len(self.selected) > 1
+             else f"{self.selected[0]} analyzer"),
         ]
         print(f"  {DIM}{' · '.join(parts)}{RESET}")
         meta = [f"backend: {self.backend_label.lower()}"]
@@ -325,26 +325,26 @@ class PathwayDebugSession(DebugSession):
         use_ml = self.args.use_ml
         backend = getattr(self.args, 'backend', None)
 
-        # Build extractor list
+        # Build analyzer list
         if use_ml is False:
-            extractor_names = ['dummy']
+            analyzer_names = ['dummy']
         else:
-            extractor_names = []
+            analyzer_names = []
             if 'pose' in self.selected or 'all' in self.selected:
-                extractor_names.append('pose')
+                analyzer_names.append('pose')
             if 'gesture' in self.selected or 'all' in self.selected:
-                extractor_names.append('gesture')
+                analyzer_names.append('gesture')
             if 'face' in self.selected or 'all' in self.selected:
-                extractor_names.append('face')
+                analyzer_names.append('face')
             if 'quality' in self.selected or 'all' in self.selected:
-                extractor_names.append('quality')
-            if not extractor_names:
-                extractor_names = ['dummy']
+                analyzer_names.append('quality')
+            if not analyzer_names:
+                analyzer_names = ['dummy']
 
         distributed = detect_distributed_mode(self.args)
 
         self.pipeline = FacemomentPipeline(
-            extractors=extractor_names,
+            analyzers=analyzer_names,
             fusion_config={"cooldown_sec": 2.0, "main_only": True},
             auto_inject_classifier=True,
             venv_paths=self._venv_paths,
@@ -378,34 +378,31 @@ class PathwayDebugSession(DebugSession):
             self._use_pathway = False
             self.backend_label = "PATHWAY (inline)"
 
-        # Print extractor status
-        initialized_names = {ext.name for ext in self.pipeline.extractors}
-        worker_names = set(self.pipeline.workers.keys())
-        origins = _get_extractor_origins()
-        print(f"{BOLD}Extractors{RESET}")
-        for name in extractor_names:
+        # Print analyzer status
+        import os
+        main_pid = os.getpid()
+        info_map = self.pipeline.analyzer_runtime_info()
+        origins = _get_analyzer_origins()
+        print(f"{BOLD}Analyzers{RESET}  {DIM}main pid={main_pid}{RESET}")
+        for name in analyzer_names:
             origin = origins.get(name, "")
-            if name in worker_names:
-                worker = self.pipeline.workers[name]
-                info = worker.worker_info
-                level = info.isolation_level.lower()
-                pid_str = f"  pid={info.pid}" if info.pid else ""
-                venv_str = f"  venv={info.venv_path}" if level == "venv" and info.venv_path else ""
-                print(f"  {name:<18}{origin:<6}{DIM}enabled  {level}{pid_str}{venv_str}{RESET}")
-            elif name in initialized_names:
-                print(f"  {name:<18}{origin:<6}{DIM}enabled  inline{RESET}")
+            ri = info_map.get(name)
+            if ri:
+                label = ri.isolation.lower()
+                print(f"  {name:<18}{origin:<6}{DIM}enabled  {label}  pid={ri.pid}{RESET}")
             else:
                 print(f"  {name:<18}{origin:<6}failed to load")
 
-        if 'face' in extractor_names:
+        if 'face' in analyzer_names:
             origin = origins.get('face_classifier', 'core')
-            if 'face_classifier' in initialized_names:
-                print(f"  {'face_classifier':<18}{origin:<6}{DIM}enabled  auto-injected{RESET}")
+            ri = info_map.get('face_classifier')
+            if ri:
+                print(f"  {'face_classifier':<18}{origin:<6}{DIM}enabled  auto-injected  pid={ri.pid}{RESET}")
             else:
                 print(f"  {'face_classifier':<18}{origin:<6}failed to load")
 
-        if not self.pipeline.extractors and not self.pipeline.workers:
-            print("Error: No extractors available")
+        if not self.pipeline.analyzers and not self.pipeline.workers:
+            print("Error: No analyzers available")
             self.vb.disconnect()
             cleanup_observability(self.hub, self.file_sink)
             sys.exit(1)
@@ -418,7 +415,7 @@ class PathwayDebugSession(DebugSession):
     def _print_backend_info(self):
         if self.pipeline:
             print("\nBackends:")
-            for ext in self.pipeline.extractors:
+            for ext in self.pipeline.analyzers:
                 if hasattr(ext, 'get_backend_info'):
                     info = ext.get_backend_info()
                     for component, backend_name in info.items():
@@ -496,7 +493,7 @@ class PathwayDebugSession(DebugSession):
         backend = PathwayBackend(window_ns=self.pipeline._window_ns)
         backend.run(
             frames=self.stream,
-            extractors=self.pipeline.extractors,
+            analyzers=self.pipeline.analyzers,
             fusion=fusion,
             on_frame_result=on_frame_result,
         )
@@ -509,7 +506,7 @@ class PathwayDebugSession(DebugSession):
         from facemoment.pipeline.frame_processor import process_frame
 
         result = process_frame(
-            frame, self.pipeline.extractors,
+            frame, self.pipeline.analyzers,
             classifier=self.pipeline._classifier,
             workers=self.pipeline.workers,
             fusion=self.pipeline.fusion,
@@ -559,15 +556,15 @@ class PathwayDebugSession(DebugSession):
 # Helper functions
 # ---------------------------------------------------------------------------
 
-def _get_extractor_origins() -> dict:
-    """Resolve extractor package origins from entry points.
+def _get_analyzer_origins() -> dict:
+    """Resolve analyzer package origins from entry points.
 
     Returns:
-        Dict mapping extractor name to origin label ("vpx" or "core").
+        Dict mapping analyzer name to origin label ("vpx" or "core").
     """
     try:
-        from visualpath.plugin import discover_extractors
-        ep_map = discover_extractors()
+        from visualpath.plugin import discover_analyzers
+        ep_map = discover_analyzers()
     except ImportError:
         return {}
     origins = {}
@@ -595,7 +592,7 @@ def _print_pathway_summary(summary: dict) -> None:
     ]
     print(f"  {DIM}{' · '.join(parts)}{RESET}")
 
-    ext_stats = summary.get("extractor_stats", {})
+    ext_stats = summary.get("analyzer_stats", {})
     fusion_avg = summary.get("fusion_avg_ms", 0)
 
     if ext_stats:
@@ -605,7 +602,7 @@ def _print_pathway_summary(summary: dict) -> None:
 
         # Table header
         print()
-        print(f"  {DIM}{'Extractor':<18} {'Avg':>7} {'P95':>7} {'Max':>7} {'Errors':>7}{RESET}")
+        print(f"  {DIM}{'Analyzer':<18} {'Avg':>7} {'P95':>7} {'Max':>7} {'Errors':>7}{RESET}")
 
         # Sort by avg_ms descending (bottleneck first)
         sorted_stats = sorted(
@@ -649,8 +646,8 @@ def _build_report_data(
     }
 
 
-def _parse_extractor_arg(arg: str) -> List[str]:
-    """Parse extractor argument into list of extractor names."""
+def _parse_analyzer_arg(arg: str) -> List[str]:
+    """Parse analyzer argument into list of analyzer names."""
     if arg == 'all':
         return ['all']
     if arg in ('raw', 'none'):
@@ -660,7 +657,7 @@ def _parse_extractor_arg(arg: str) -> List[str]:
     valid = {'face', 'pose', 'quality', 'gesture', 'all', 'raw', 'none'}
     for p in parts:
         if p not in valid:
-            print(f"Warning: Unknown extractor '{p}', valid: {valid}")
+            print(f"Warning: Unknown analyzer '{p}', valid: {valid}")
     return [p for p in parts if p in valid]
 
 

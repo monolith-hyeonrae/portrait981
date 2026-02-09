@@ -5,10 +5,10 @@ from typing import Optional
 
 from visualpath.core import Module, Observation
 from visualpath.plugin import (
-    discover_extractors,
+    discover_analyzers,
     discover_fusions,
     PluginRegistry,
-    EXTRACTORS_GROUP,
+    ANALYZERS_GROUP,
 )
 
 
@@ -17,8 +17,8 @@ from visualpath.plugin import (
 # =============================================================================
 
 
-class MockExtractor(Module):
-    """Mock extractor for testing."""
+class MockAnalyzer(Module):
+    """Mock analyzer for testing."""
 
     def __init__(self, value: float = 0.5):
         self._value = value
@@ -43,7 +43,7 @@ class MockExtractor(Module):
         self._initialized = False
 
 
-class MockExtractor2(Module):
+class MockAnalyzer2(Module):
     """Another mock extractor for testing."""
 
     @property
@@ -62,9 +62,9 @@ class MockExtractor2(Module):
 class TestDiscovery:
     """Tests for plugin discovery functions."""
 
-    def test_discover_extractors_returns_dict(self):
-        """Test that discover_extractors returns a dict."""
-        extractors = discover_extractors()
+    def test_discover_analyzers_returns_dict(self):
+        """Test that discover_analyzers returns a dict."""
+        extractors = discover_analyzers()
         assert isinstance(extractors, dict)
 
     def test_discover_fusions_returns_dict(self):
@@ -74,7 +74,7 @@ class TestDiscovery:
 
     def test_extractors_group_name(self):
         """Test the extractors group name constant."""
-        assert EXTRACTORS_GROUP == "visualpath.extractors"
+        assert ANALYZERS_GROUP == "visualpath.analyzers"
 
 
 # =============================================================================
@@ -90,12 +90,12 @@ class TestPluginRegistry:
         registry = PluginRegistry()
         assert registry is not None
 
-    def test_register_extractor(self):
+    def test_register_analyzer(self):
         """Test registering an extractor."""
         registry = PluginRegistry()
-        registry.register_extractor("mock", MockExtractor)
+        registry.register_analyzer("mock", MockAnalyzer)
 
-        assert "mock" in registry.list_extractors()
+        assert "mock" in registry.list_analyzers()
 
     def test_register_fusion(self):
         """Test registering a fusion."""
@@ -108,59 +108,59 @@ class TestPluginRegistry:
 
         assert "mock_fusion" in registry.list_fusions()
 
-    def test_get_extractor_class_registered(self):
+    def test_get_analyzer_class_registered(self):
         """Test getting a registered extractor class."""
         registry = PluginRegistry()
-        registry.register_extractor("mock", MockExtractor)
+        registry.register_analyzer("mock", MockAnalyzer)
 
-        cls = registry.get_extractor_class("mock")
+        cls = registry.get_analyzer_class("mock")
 
-        assert cls is MockExtractor
+        assert cls is MockAnalyzer
 
-    def test_get_extractor_class_not_found(self):
+    def test_get_analyzer_class_not_found(self):
         """Test getting non-existent extractor raises KeyError."""
         registry = PluginRegistry()
 
         with pytest.raises(KeyError):
-            registry.get_extractor_class("nonexistent")
+            registry.get_analyzer_class("nonexistent")
 
-    def test_create_extractor(self):
+    def test_create_analyzer(self):
         """Test creating an extractor instance."""
         registry = PluginRegistry()
-        registry.register_extractor("mock", MockExtractor)
+        registry.register_analyzer("mock", MockAnalyzer)
 
-        extractor = registry.create_extractor("mock", value=0.7)
+        extractor = registry.create_analyzer("mock", value=0.7)
 
-        assert isinstance(extractor, MockExtractor)
+        assert isinstance(extractor, MockAnalyzer)
         assert extractor._value == 0.7
 
-    def test_create_extractor_singleton(self):
+    def test_create_analyzer_singleton(self):
         """Test singleton pattern for extractors."""
         registry = PluginRegistry()
-        registry.register_extractor("mock", MockExtractor)
+        registry.register_analyzer("mock", MockAnalyzer)
 
-        ext1 = registry.create_extractor("mock", singleton=True)
-        ext2 = registry.create_extractor("mock", singleton=True)
+        ext1 = registry.create_analyzer("mock", singleton=True)
+        ext2 = registry.create_analyzer("mock", singleton=True)
 
         assert ext1 is ext2
 
-    def test_create_extractor_non_singleton(self):
+    def test_create_analyzer_non_singleton(self):
         """Test non-singleton creates new instances."""
         registry = PluginRegistry()
-        registry.register_extractor("mock", MockExtractor)
+        registry.register_analyzer("mock", MockAnalyzer)
 
-        ext1 = registry.create_extractor("mock", singleton=False)
-        ext2 = registry.create_extractor("mock", singleton=False)
+        ext1 = registry.create_analyzer("mock", singleton=False)
+        ext2 = registry.create_analyzer("mock", singleton=False)
 
         assert ext1 is not ext2
 
-    def test_list_extractors(self):
+    def test_list_analyzers(self):
         """Test listing registered extractors."""
         registry = PluginRegistry()
-        registry.register_extractor("mock1", MockExtractor)
-        registry.register_extractor("mock2", MockExtractor2)
+        registry.register_analyzer("mock1", MockAnalyzer)
+        registry.register_analyzer("mock2", MockAnalyzer2)
 
-        extractors = registry.list_extractors()
+        extractors = registry.list_analyzers()
 
         assert "mock1" in extractors
         assert "mock2" in extractors
@@ -168,9 +168,9 @@ class TestPluginRegistry:
     def test_cleanup(self):
         """Test cleanup cleans up instances."""
         registry = PluginRegistry()
-        registry.register_extractor("mock", MockExtractor)
+        registry.register_analyzer("mock", MockAnalyzer)
 
-        ext = registry.create_extractor("mock", singleton=True)
+        ext = registry.create_analyzer("mock", singleton=True)
         ext.initialize()
         assert ext._initialized
 
@@ -178,7 +178,7 @@ class TestPluginRegistry:
 
         assert not ext._initialized
         # Should create new instance after cleanup
-        ext2 = registry.create_extractor("mock", singleton=True)
+        ext2 = registry.create_analyzer("mock", singleton=True)
         assert ext2 is not ext
 
     def test_multiple_registries_independent(self):
@@ -186,19 +186,19 @@ class TestPluginRegistry:
         reg1 = PluginRegistry()
         reg2 = PluginRegistry()
 
-        reg1.register_extractor("mock", MockExtractor)
+        reg1.register_analyzer("mock", MockAnalyzer)
 
-        assert "mock" in reg1.list_extractors()
+        assert "mock" in reg1.list_analyzers()
         # Check that discovered extractors are shared, but registered are not
         # Since we register in reg1 only, it should be in reg1's list
 
-    def test_list_extractors_sorted(self):
-        """Test that list_extractors returns sorted names."""
+    def test_list_analyzers_sorted(self):
+        """Test that list_analyzers returns sorted names."""
         registry = PluginRegistry()
-        registry.register_extractor("zebra", MockExtractor)
-        registry.register_extractor("alpha", MockExtractor2)
+        registry.register_analyzer("zebra", MockAnalyzer)
+        registry.register_analyzer("alpha", MockAnalyzer2)
 
-        extractors = registry.list_extractors()
+        extractors = registry.list_analyzers()
 
         # Should be alphabetically sorted
         assert extractors.index("alpha") < extractors.index("zebra")

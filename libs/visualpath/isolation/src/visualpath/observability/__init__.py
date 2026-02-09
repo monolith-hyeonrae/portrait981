@@ -17,9 +17,9 @@ Example:
     >>> hub.configure(level=TraceLevel.NORMAL)
     >>> hub.add_sink(FileSink("/tmp/trace.jsonl"))
     >>>
-    >>> # In extractor code:
+    >>> # In analyzer code:
     >>> if hub.enabled:
-    ...     hub.emit(FrameExtractRecord(...))
+    ...     hub.emit(FrameAnalyzeRecord(...))
 """
 
 from enum import IntEnum

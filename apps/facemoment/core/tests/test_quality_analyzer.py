@@ -1,18 +1,18 @@
-"""Tests for QualityExtractor."""
+"""Tests for QualityAnalyzer."""
 
 import numpy as np
 import pytest
 
 from visualbase import Frame
 
-from facemoment.moment_detector.extractors.quality import QualityExtractor
+from facemoment.moment_detector.analyzers.quality import QualityAnalyzer
 
 
-class TestQualityExtractor:
-    def test_extractor_name(self):
-        """Test extractor name property."""
-        extractor = QualityExtractor()
-        assert extractor.name == "quality"
+class TestQualityAnalyzer:
+    def test_analyzer_name(self):
+        """Test analyzer name property."""
+        analyzer = QualityAnalyzer()
+        assert analyzer.name == "quality"
 
     def test_extract_sharp_image(self):
         """Test extraction on sharp image with edges."""
@@ -24,10 +24,10 @@ class TestQualityExtractor:
                 if (i // 20 + j // 20) % 2 == 0:
                     image[i : i + 20, j : j + 20] = 200
 
-        extractor = QualityExtractor(blur_threshold=50.0)
+        analyzer = QualityAnalyzer(blur_threshold=50.0)
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert obs.source == "quality"
@@ -48,10 +48,10 @@ class TestQualityExtractor:
         # Apply heavy blur
         blurred = cv2.GaussianBlur(image, (51, 51), 0)
 
-        extractor = QualityExtractor(blur_threshold=100.0)
+        analyzer = QualityAnalyzer(blur_threshold=100.0)
 
         frame = Frame.from_array(blurred, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["blur_score"] < 100.0  # Blurry
         assert obs.signals["quality_gate"] == 0.0  # Gate closed due to blur
@@ -61,10 +61,10 @@ class TestQualityExtractor:
         # Very dark image
         image = np.full((480, 640, 3), 20, dtype=np.uint8)
 
-        extractor = QualityExtractor(brightness_low=50.0)
+        analyzer = QualityAnalyzer(brightness_low=50.0)
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["brightness"] < 50.0
         assert obs.signals["brightness_quality"] < 1.0
@@ -75,10 +75,10 @@ class TestQualityExtractor:
         # Very bright image
         image = np.full((480, 640, 3), 240, dtype=np.uint8)
 
-        extractor = QualityExtractor(brightness_high=200.0)
+        analyzer = QualityAnalyzer(brightness_high=200.0)
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["brightness"] > 200.0
         assert obs.signals["brightness_quality"] < 1.0
@@ -91,13 +91,13 @@ class TestQualityExtractor:
         # Add some variation for contrast
         image[::2, ::2] = 140
 
-        extractor = QualityExtractor(
+        analyzer = QualityAnalyzer(
             brightness_low=50.0,
             brightness_high=200.0,
         )
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert 50.0 < obs.signals["brightness"] < 200.0
         assert obs.signals["brightness_quality"] == 1.0
@@ -110,10 +110,10 @@ class TestQualityExtractor:
         # Add very small variation
         image[::2, ::2] = 130
 
-        extractor = QualityExtractor(contrast_threshold=40.0)
+        analyzer = QualityAnalyzer(contrast_threshold=40.0)
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["contrast"] < 40.0
         assert obs.metadata["has_contrast"] is False
@@ -124,10 +124,10 @@ class TestQualityExtractor:
         image = np.zeros((480, 640, 3), dtype=np.uint8)
         image[::2] = 255  # Alternating black and white rows
 
-        extractor = QualityExtractor(contrast_threshold=40.0)
+        analyzer = QualityAnalyzer(contrast_threshold=40.0)
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["contrast"] > 40.0
         assert obs.metadata["has_contrast"] is True
@@ -144,7 +144,7 @@ class TestQualityExtractor:
                 else:
                     image[i : i + 20, j : j + 20] = 80
 
-        extractor = QualityExtractor(
+        analyzer = QualityAnalyzer(
             blur_threshold=50.0,
             brightness_low=50.0,
             brightness_high=200.0,
@@ -152,7 +152,7 @@ class TestQualityExtractor:
         )
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.signals["quality_gate"] == 1.0
         assert obs.metadata["is_sharp"] is True
@@ -163,10 +163,10 @@ class TestQualityExtractor:
         """Test that quality scores are in valid range."""
         image = np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
 
-        extractor = QualityExtractor()
+        analyzer = QualityAnalyzer()
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert 0.0 <= obs.signals["blur_quality"] <= 1.0
         assert 0.0 <= obs.signals["brightness_quality"] <= 1.0
@@ -179,10 +179,10 @@ class TestQualityExtractor:
         # Grayscale image
         image = np.random.randint(0, 256, (480, 640), dtype=np.uint8)
 
-        extractor = QualityExtractor()
+        analyzer = QualityAnalyzer()
 
         frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs is not None
         assert "blur_score" in obs.signals
@@ -193,10 +193,10 @@ class TestQualityExtractor:
         """Test that frame metadata is correctly passed through."""
         image = np.zeros((480, 640, 3), dtype=np.uint8)
 
-        extractor = QualityExtractor()
+        analyzer = QualityAnalyzer()
 
         frame = Frame.from_array(image, frame_id=42, t_src_ns=1_000_000_000)
-        obs = extractor.process(frame)
+        obs = analyzer.process(frame)
 
         assert obs.frame_id == 42
         assert obs.t_ns == 1_000_000_000

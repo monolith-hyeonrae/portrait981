@@ -18,11 +18,11 @@ import logging
 
 from visualbase import Frame, Trigger
 
-from visualpath.extractors.base import Observation
+from visualpath.analyzers.base import Observation
 
 logger = logging.getLogger(__name__)
 
-# CUDA conflict groups: extractors sharing the same CUDA runtime binding.
+# CUDA conflict groups: analyzers sharing the same CUDA runtime binding.
 _CUDA_GROUPS: Dict[str, Set[str]] = {
     "onnxruntime": {"face", "face_detect", "expression"},
     "torch": {"pose"},
@@ -46,13 +46,13 @@ class FacemomentPipeline:
 
     This class is retained for backwards compatibility.
     ``run()`` delegates to the unified FlowGraph execution path.
-    ``initialize()``/``cleanup()`` manage extractor lifecycle for
-    consumers that iterate extractors directly (e.g. debug command).
+    ``initialize()``/``cleanup()`` manage analyzer lifecycle for
+    consumers that iterate analyzers directly (e.g. debug command).
     """
 
     def __init__(
         self,
-        extractors: Optional[List[str]] = None,
+        analyzers: Optional[List[str]] = None,
         fusion_config: Optional[Dict] = None,
         window_ns: int = 100_000_000,
         auto_inject_classifier: bool = True,
@@ -65,24 +65,24 @@ class FacemomentPipeline:
             DeprecationWarning,
             stacklevel=2,
         )
-        self._extractor_names = extractors or ["face", "pose", "gesture"]
+        self._analyzer_names = analyzers or ["face", "pose", "gesture"]
         self._fusion_config = fusion_config or {}
         self._window_ns = window_ns
         self._auto_inject_classifier = auto_inject_classifier
         self._venv_paths = venv_paths or {}
         self._distributed = distributed
-        self._extractors = []
+        self._analyzers = []
         self._workers: Dict[str, object] = {}
         self._fusion = None
         self._classifier = None
         self._initialized = False
         self.actual_backend: Optional[str] = None
 
-    _TORCH_EXTRACTORS = frozenset({"pose"})
+    _TORCH_ANALYZERS = frozenset({"pose"})
 
     @staticmethod
     def _detect_cuda_conflicts(names: List[str]) -> Set[str]:
-        """Detect CUDA conflicts among active extractors.
+        """Detect CUDA conflicts among active analyzers.
 
         .. deprecated::
             Use ``facemoment.main._detect_cuda_conflicts()`` instead.
@@ -95,13 +95,13 @@ class FacemomentPipeline:
     # ------------------------------------------------------------------
 
     def initialize(self) -> None:
-        """Load extractors and fusion for direct iteration.
+        """Load analyzers and fusion for direct iteration.
 
-        Used by consumers that iterate ``self.extractors`` directly
+        Used by consumers that iterate ``self.analyzers`` directly
         (e.g. the debug command's inline frame-by-frame loop).
         For batch execution, use ``run()`` instead.
         """
-        self._extractors = self._build_extractors()
+        self._analyzers = self._build_analyzers()
         self._fusion = self._build_fusion()
 
         # Start workers
@@ -112,17 +112,17 @@ class FacemomentPipeline:
                 logger.warning("Worker '%s' failed to start: %s — removing", name, exc)
                 del self._workers[name]
 
-        # Initialize extractors
-        for ext in self._extractors:
+        # Initialize analyzers
+        for ext in self._analyzers:
             try:
                 ext.initialize()
             except Exception:
-                logger.debug("Extractor '%s' initialize() failed (non-fatal)", ext.name)
+                logger.debug("Analyzer '%s' initialize() failed (non-fatal)", ext.name)
 
         self._initialized = True
 
     def cleanup(self) -> None:
-        """Stop workers and clean up extractors."""
+        """Stop workers and clean up analyzers."""
         for name, worker in list(self._workers.items()):
             try:
                 worker.stop()
@@ -130,7 +130,7 @@ class FacemomentPipeline:
                 pass
         self._workers.clear()
 
-        for ext in self._extractors:
+        for ext in self._analyzers:
             try:
                 ext.cleanup()
             except Exception:
@@ -139,20 +139,20 @@ class FacemomentPipeline:
         self._initialized = False
 
     # ------------------------------------------------------------------
-    # Internal: build extractors and fusion
+    # Internal: build analyzers and fusion
     # ------------------------------------------------------------------
 
-    def _build_extractors(self) -> list:
-        """Create extractor instances from names.
+    def _build_analyzers(self) -> list:
+        """Create analyzer instances from names.
 
         Handles:
         - CUDA conflict detection → minority group to subprocess workers
         - Auto-inject face_classifier when face/face_detect is present
         """
-        from visualpath.plugin import create_extractor
+        from visualpath.plugin import create_analyzer
         from facemoment.main import _detect_cuda_conflicts
 
-        names = list(self._extractor_names)
+        names = list(self._analyzer_names)
 
         # Auto-inject classifier
         if self._auto_inject_classifier:
@@ -163,53 +163,53 @@ class FacemomentPipeline:
         # Detect CUDA conflicts
         isolated = _detect_cuda_conflicts(names)
 
-        # --distributed: force all vpx extractors into subprocess
+        # --distributed: force all vpx analyzers into subprocess
         if self._distributed:
-            from visualpath.plugin import discover_extractors
-            ep_map = discover_extractors()
+            from visualpath.plugin import discover_analyzers
+            ep_map = discover_analyzers()
             for name in names:
                 if name in ep_map:
                     module_path = ep_map[name].value.split(":")[0]
                     if module_path.startswith("vpx."):
                         isolated.add(name)
 
-        extractors = []
+        analyzers = []
         for name in names:
             # 1) venv path specified → VenvWorker (regardless of CUDA conflict)
             if name in self._venv_paths:
                 try:
                     from visualpath.process.launcher import VenvWorker
                     worker = VenvWorker(
-                        extractor_name=name,
+                        analyzer_name=name,
                         venv_path=self._venv_paths[name],
                     )
                     self._workers[name] = worker
-                    logger.info("Extractor '%s' will run in venv '%s'", name, self._venv_paths[name])
+                    logger.info("Analyzer '%s' will run in venv '%s'", name, self._venv_paths[name])
                 except Exception as exc:
                     logger.warning("Failed to create VenvWorker for '%s': %s", name, exc)
                 continue
 
             # 2) CUDA conflict → ProcessWorker
             if name in isolated:
-                # Create subprocess worker for isolated extractors
+                # Create subprocess worker for isolated analyzers
                 try:
                     from visualpath.process.launcher import ProcessWorker
-                    worker = ProcessWorker(extractor_name=name)
+                    worker = ProcessWorker(analyzer_name=name)
                     self._workers[name] = worker
-                    logger.info("Extractor '%s' will run in subprocess (CUDA conflict)", name)
+                    logger.info("Analyzer '%s' will run in subprocess (CUDA conflict)", name)
                 except Exception as exc:
                     logger.warning("Failed to create worker for '%s': %s", name, exc)
                 continue
 
             try:
-                ext = create_extractor(name)
-                extractors.append(ext)
+                ext = create_analyzer(name)
+                analyzers.append(ext)
                 if name == "face_classifier":
                     self._classifier = ext
             except Exception as exc:
-                logger.warning("Failed to load extractor '%s': %s", name, exc)
+                logger.warning("Failed to load analyzer '%s': %s", name, exc)
 
-        return extractors
+        return analyzers
 
     def _build_fusion(self):
         """Create fusion instance from config."""
@@ -243,13 +243,13 @@ class FacemomentPipeline:
         cooldown = self._fusion_config.get("cooldown_sec", 2.0)
         main_only = self._fusion_config.get("main_only", True)
         modules = build_modules(
-            self._extractor_names,
+            self._analyzer_names,
             cooldown=cooldown,
             main_only=main_only,
         )
 
         # Build isolation config
-        isolation_config = _build_isolation_config(self._extractor_names)
+        isolation_config = _build_isolation_config(self._analyzer_names)
 
         # Build graph
         graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
@@ -266,9 +266,21 @@ class FacemomentPipeline:
 
         return pipeline_result.triggers
 
+    def analyzer_runtime_info(self) -> Dict[str, "RuntimeInfo"]:
+        """Return runtime info for all analyzers (inline + workers)."""
+        from visualpath.core.module import RuntimeInfo
+
+        result = {}
+        for ext in self._analyzers:
+            result[ext.name] = ext.runtime_info
+        for name, worker in self._workers.items():
+            info = worker.worker_info
+            result[name] = RuntimeInfo(isolation=info.isolation_level, pid=info.pid)
+        return result
+
     @property
-    def extractors(self) -> List:
-        return self._extractors
+    def analyzers(self) -> List:
+        return self._analyzers
 
     @property
     def fusion(self):

@@ -31,7 +31,7 @@ class TestRunFunction:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
             mock_bg.return_value = MagicMock()
 
-            result = fm.run("fake_video.mp4", extractors=["dummy"])
+            result = fm.run("fake_video.mp4", analyzers=["dummy"])
 
             assert isinstance(result, fm.Result)
             assert hasattr(result, "triggers")
@@ -57,7 +57,7 @@ class TestRunFunction:
             cb = lambda t: None
             result = fm.run(
                 "fake_video.mp4",
-                extractors=["dummy"],
+                analyzers=["dummy"],
                 on_trigger=cb,
             )
             assert isinstance(result, fm.Result)
@@ -85,13 +85,13 @@ class TestRunFunction:
                 result = fm.run(
                     "fake_video.mp4",
                     output_dir=tmpdir,
-                    extractors=["dummy"],
+                    analyzers=["dummy"],
                 )
                 assert result.clips_extracted == 0
                 mock_clips.assert_called_once()
 
-    def test_run_with_specific_extractors(self):
-        """Test run with specific extractor list."""
+    def test_run_with_specific_analyzers(self):
+        """Test run with specific analyzer list."""
         import facemoment as fm
         from visualpath.backends.base import PipelineResult
 
@@ -105,15 +105,15 @@ class TestRunFunction:
             mock_cvs.return_value = (MagicMock(), MagicMock(), iter([]))
             mock_bg.return_value = MagicMock()
 
-            result = fm.run("fake_video.mp4", extractors=["quality"])
+            result = fm.run("fake_video.mp4", analyzers=["quality"])
             assert isinstance(result, fm.Result)
 
 
 class TestBuildModules:
     """Tests for build_modules() function."""
 
-    def test_default_extractors(self):
-        """Test default extractor list."""
+    def test_default_analyzers(self):
+        """Test default analyzer list."""
         from facemoment.main import build_modules
         from facemoment.moment_detector.fusion import HighlightFusion
 

@@ -1,6 +1,6 @@
 """Worker launchers for different isolation levels.
 
-This module provides worker launchers that execute extractors with
+This module provides worker launchers that execute analyzers with
 different isolation strategies:
 
 - InlineWorker: Same process, same thread (IsolationLevel.INLINE)
@@ -15,19 +15,19 @@ Example:
     >>> # Create launcher based on isolation level
     >>> launcher = WorkerLauncher.create(
     ...     level=IsolationLevel.THREAD,
-    ...     extractor=my_extractor,
+    ...     analyzer=my_analyzer,
     ... )
     >>> launcher.start()
     >>> result = launcher.process(frame)
     >>> launcher.stop()
 
 For VenvWorker/ProcessWorker with ZMQ:
-    >>> # Run extractor in a separate venv
+    >>> # Run analyzer in a separate venv
     >>> worker = WorkerLauncher.create(
     ...     level=IsolationLevel.VENV,
-    ...     extractor=None,  # Will be loaded in subprocess
+    ...     analyzer=None,  # Will be loaded in subprocess
     ...     venv_path="/path/to/venv",
-    ...     extractor_name="face",  # Entry point name
+    ...     analyzer_name="face",  # Entry point name
     ... )
     >>> worker.start()
     >>> result = worker.process(frame)
@@ -47,7 +47,7 @@ from concurrent.futures import ThreadPoolExecutor, Future
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 from visualpath.core.isolation import IsolationLevel
 from visualpath.process.serialization import (
@@ -111,7 +111,7 @@ class BaseWorker(ABC):
 
         Args:
             frame: The frame to process.
-            deps: Optional dict of observations from dependent extractors.
+            deps: Optional dict of observations from dependent analyzers.
 
         Returns:
             WorkerResult with observation or error.
@@ -135,26 +135,26 @@ class InlineWorker(BaseWorker):
     """Worker that runs extraction inline (same process, same thread).
 
     This is the simplest worker with zero overhead, but no isolation.
-    Suitable for lightweight extractors that don't need isolation.
+    Suitable for lightweight analyzers that don't need isolation.
     """
 
-    def __init__(self, extractor: Module):
+    def __init__(self, analyzer: Module):
         """Initialize the inline worker.
 
         Args:
-            extractor: The extractor to run.
+            analyzer: The analyzer to run.
         """
-        self._extractor = extractor
+        self._analyzer = analyzer
         self._running = False
 
     def start(self) -> None:
-        """Start the worker (initializes extractor)."""
-        self._extractor.initialize()
+        """Start the worker (initializes analyzer)."""
+        self._analyzer.initialize()
         self._running = True
 
     def stop(self) -> None:
-        """Stop the worker (cleans up extractor)."""
-        self._extractor.cleanup()
+        """Stop the worker (cleans up analyzer)."""
+        self._analyzer.cleanup()
         self._running = False
 
     def process(self, frame: "Frame", deps: Optional[Dict[str, Observation]] = None) -> WorkerResult:
@@ -163,14 +163,14 @@ class InlineWorker(BaseWorker):
         start = time.perf_counter()
 
         try:
-            extractor_deps = None
-            if deps and self._extractor.depends:
-                extractor_deps = {
+            analyzer_deps = None
+            if deps and self._analyzer.depends:
+                analyzer_deps = {
                     name: deps[name]
-                    for name in self._extractor.depends
+                    for name in self._analyzer.depends
                     if name in deps
                 }
-            obs = self._extractor.process(frame, extractor_deps)
+            obs = self._analyzer.process(frame, analyzer_deps)
             elapsed_ms = (time.perf_counter() - start) * 1000
             return WorkerResult(observation=obs, timing_ms=elapsed_ms)
         except Exception as e:
@@ -190,21 +190,21 @@ class ThreadWorker(BaseWorker):
     """Worker that runs extraction in a separate thread.
 
     Provides thread-level isolation. Useful for I/O-bound work or
-    extractors that can benefit from concurrent execution.
+    analyzers that can benefit from concurrent execution.
     """
 
     def __init__(
         self,
-        extractor: Module,
+        analyzer: Module,
         queue_size: int = 10,
     ):
         """Initialize the thread worker.
 
         Args:
-            extractor: The extractor to run.
+            analyzer: The analyzer to run.
             queue_size: Maximum pending frames in queue.
         """
-        self._extractor = extractor
+        self._analyzer = analyzer
         self._queue_size = queue_size
 
         self._executor: Optional[ThreadPoolExecutor] = None
@@ -212,7 +212,7 @@ class ThreadWorker(BaseWorker):
 
     def start(self) -> None:
         """Start the worker thread pool."""
-        self._extractor.initialize()
+        self._analyzer.initialize()
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._running = True
 
@@ -222,7 +222,7 @@ class ThreadWorker(BaseWorker):
         if self._executor:
             self._executor.shutdown(wait=True)
             self._executor = None
-        self._extractor.cleanup()
+        self._analyzer.cleanup()
 
     def process(self, frame: "Frame", deps: Optional[Dict[str, Observation]] = None) -> WorkerResult:
         """Submit frame for processing and wait for result."""
@@ -234,18 +234,18 @@ class ThreadWorker(BaseWorker):
         start = time.perf_counter()
 
         try:
-            extractor_deps = None
-            if deps and self._extractor.depends:
-                extractor_deps = {
+            analyzer_deps = None
+            if deps and self._analyzer.depends:
+                analyzer_deps = {
                     name: deps[name]
-                    for name in self._extractor.depends
+                    for name in self._analyzer.depends
                     if name in deps
                 }
 
-            def _do_extract():
-                return self._extractor.process(frame, extractor_deps)
+            def _do_analyze():
+                return self._analyzer.process(frame, analyzer_deps)
 
-            future = self._executor.submit(_do_extract)
+            future = self._executor.submit(_do_analyze)
             obs = future.result()  # Blocking wait
             elapsed_ms = (time.perf_counter() - start) * 1000
             return WorkerResult(observation=obs, timing_ms=elapsed_ms)
@@ -264,7 +264,7 @@ class ThreadWorker(BaseWorker):
         """
         if not self._running or self._executor is None:
             raise RuntimeError("Worker not running")
-        return self._executor.submit(self._extractor.process, frame)
+        return self._executor.submit(self._analyzer.process, frame)
 
     @property
     def is_running(self) -> bool:
@@ -328,19 +328,19 @@ class VenvWorker(BaseWorker):
     - Main -> Subprocess: Frame (REQ)
     - Subprocess -> Main: Observation (REP)
 
-    This provides full dependency isolation by running the extractor
+    This provides full dependency isolation by running the analyzer
     in a different Python virtual environment with its own set of
     installed packages.
 
     Requirements:
     - pyzmq must be installed in both the main process and the target venv
-    - The target venv must have visualpath and the extractor's dependencies
+    - The target venv must have visualpath and the analyzer's dependencies
 
     Example:
         >>> worker = VenvWorker(
-        ...     extractor=None,  # Will be loaded in subprocess
+        ...     analyzer=None,  # Will be loaded in subprocess
         ...     venv_path="/path/to/venv-face",
-        ...     extractor_name="face",
+        ...     analyzer_name="face",
         ... )
         >>> worker.start()
         >>> result = worker.process(frame)
@@ -349,9 +349,9 @@ class VenvWorker(BaseWorker):
 
     def __init__(
         self,
-        extractor: Optional[Module],
+        analyzer: Optional[Module],
         venv_path: str,
-        extractor_name: Optional[str] = None,
+        analyzer_name: Optional[str] = None,
         queue_size: int = 10,
         timeout_sec: float = 30.0,
         handshake_timeout_sec: float = 30.0,
@@ -360,18 +360,18 @@ class VenvWorker(BaseWorker):
         """Initialize the venv worker.
 
         Args:
-            extractor: Optional extractor instance (for backwards compatibility).
-                       If provided and extractor_name is None, falls back to inline.
+            analyzer: Optional analyzer instance (for backwards compatibility).
+                       If provided and analyzer_name is None, falls back to inline.
             venv_path: Path to the virtual environment.
-            extractor_name: Entry point name of the extractor to load in subprocess.
+            analyzer_name: Entry point name of the analyzer to load in subprocess.
             queue_size: Maximum pending frames in queue (reserved for future use).
             timeout_sec: Timeout for processing requests in seconds.
             handshake_timeout_sec: Timeout for initial handshake in seconds.
             jpeg_quality: JPEG quality for frame compression (0-100).
         """
-        self._extractor = extractor
+        self._analyzer = analyzer
         self._venv_path = venv_path
-        self._extractor_name = extractor_name or (extractor.name if extractor else None)
+        self._analyzer_name = analyzer_name or (analyzer.name if analyzer else None)
         self._queue_size = queue_size
         self._timeout_sec = timeout_sec
         self._handshake_timeout_sec = handshake_timeout_sec
@@ -385,7 +385,7 @@ class VenvWorker(BaseWorker):
         self._running = False
         self._use_zmq = False
 
-        # Fall back to inline if ZMQ not available or no extractor_name
+        # Fall back to inline if ZMQ not available or no analyzer_name
         self._inline: Optional[InlineWorker] = None
 
     def _should_use_zmq(self) -> bool:
@@ -394,8 +394,8 @@ class VenvWorker(BaseWorker):
             logger.warning("pyzmq not available, falling back to inline execution")
             return False
 
-        if not self._extractor_name:
-            logger.warning("No extractor_name provided, falling back to inline execution")
+        if not self._analyzer_name:
+            logger.warning("No analyzer_name provided, falling back to inline execution")
             return False
 
         # Check if venv Python exists
@@ -417,11 +417,11 @@ class VenvWorker(BaseWorker):
 
         if not self._use_zmq:
             # Fall back to inline execution
-            if self._extractor is None:
+            if self._analyzer is None:
                 raise ValueError(
-                    "Cannot fall back to inline execution without an extractor instance"
+                    "Cannot fall back to inline execution without an analyzer instance"
                 )
-            self._inline = InlineWorker(self._extractor)
+            self._inline = InlineWorker(self._analyzer)
             self._inline.start()
             self._running = True
             return
@@ -446,7 +446,7 @@ class VenvWorker(BaseWorker):
         cmd = [
             venv_python,
             "-m", "visualpath.process.worker",
-            "--extractor", self._extractor_name,
+            "--analyzer", self._analyzer_name,
             "--ipc-address", self._ipc_address,
         ]
 
@@ -485,7 +485,7 @@ class VenvWorker(BaseWorker):
             if response.get("type") != "pong":
                 raise RuntimeError(f"Unexpected handshake response: {response}")
 
-            logger.info(f"Worker handshake successful, extractor: {response.get('extractor')}")
+            logger.info(f"Worker handshake successful, analyzer: {response.get('analyzer')}")
 
             # Restore normal timeout
             self._socket.setsockopt(zmq.RCVTIMEO, int(self._timeout_sec * 1000))
@@ -572,7 +572,7 @@ class VenvWorker(BaseWorker):
 
         Args:
             frame: Frame to process.
-            deps: Optional dict of observations from dependent extractors.
+            deps: Optional dict of observations from dependent analyzers.
 
         Returns:
             WorkerResult with observation or error.
@@ -595,7 +595,7 @@ class VenvWorker(BaseWorker):
             # Serialize and send frame
             frame_data = _serialize_frame(frame, self._jpeg_quality)
             message: Dict[str, Any] = {
-                "type": "extract",
+                "type": "analyze",
                 "frame": frame_data,
             }
             # Include deps if provided
@@ -690,8 +690,8 @@ class ProcessWorker(BaseWorker):
 
     Example:
         >>> worker = ProcessWorker(
-        ...     extractor=None,
-        ...     extractor_name="face",
+        ...     analyzer=None,
+        ...     analyzer_name="face",
         ... )
         >>> worker.start()
         >>> result = worker.process(frame)
@@ -700,16 +700,16 @@ class ProcessWorker(BaseWorker):
 
     def __init__(
         self,
-        extractor: Optional[Module] = None,
-        extractor_name: Optional[str] = None,
+        analyzer: Optional[Module] = None,
+        analyzer_name: Optional[str] = None,
         queue_size: int = 10,
         timeout_sec: float = 30.0,
     ):
         """Initialize the process worker.
 
         Args:
-            extractor: Optional extractor instance (for backwards compatibility).
-            extractor_name: Entry point name of the extractor.
+            analyzer: Optional analyzer instance (for backwards compatibility).
+            analyzer_name: Entry point name of the analyzer.
             queue_size: Maximum pending frames in queue.
             timeout_sec: Timeout for processing requests in seconds.
         """
@@ -717,9 +717,9 @@ class ProcessWorker(BaseWorker):
         venv_path = os.path.dirname(os.path.dirname(sys.executable))
 
         self._delegate = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path=venv_path,
-            extractor_name=extractor_name,
+            analyzer_name=analyzer_name,
             queue_size=queue_size,
             timeout_sec=timeout_sec,
         )
@@ -751,10 +751,10 @@ class WorkerLauncher:
     """Factory for creating workers based on isolation level.
 
     Example:
-        >>> # Simple usage with extractor instance
+        >>> # Simple usage with analyzer instance
         >>> launcher = WorkerLauncher.create(
         ...     level=IsolationLevel.THREAD,
-        ...     extractor=my_extractor,
+        ...     analyzer=my_analyzer,
         ... )
         >>> with launcher:
         ...     result = launcher.process(frame)
@@ -762,29 +762,29 @@ class WorkerLauncher:
         >>> # VenvWorker with subprocess
         >>> launcher = WorkerLauncher.create(
         ...     level=IsolationLevel.VENV,
-        ...     extractor=None,
+        ...     analyzer=None,
         ...     venv_path="/path/to/venv",
-        ...     extractor_name="face",
+        ...     analyzer_name="face",
         ... )
     """
 
     @staticmethod
     def create(
         level: IsolationLevel,
-        extractor: Optional[Module],
+        analyzer: Optional[Module],
         venv_path: Optional[str] = None,
-        extractor_name: Optional[str] = None,
+        analyzer_name: Optional[str] = None,
         **kwargs,
     ) -> BaseWorker:
         """Create a worker for the specified isolation level.
 
         Args:
             level: The isolation level to use.
-            extractor: The extractor to run. Can be None for PROCESS/VENV levels
-                      if extractor_name is provided (loaded via entry points).
+            analyzer: The analyzer to run. Can be None for PROCESS/VENV levels
+                      if analyzer_name is provided (loaded via entry points).
             venv_path: Path to venv (required for VENV level).
-            extractor_name: Entry point name of the extractor. Required for
-                           PROCESS/VENV levels when extractor is None.
+            analyzer_name: Entry point name of the analyzer. Required for
+                           PROCESS/VENV levels when analyzer is None.
             **kwargs: Additional arguments passed to the worker.
 
         Returns:
@@ -794,19 +794,19 @@ class WorkerLauncher:
             ValueError: If required parameters are missing.
         """
         if level == IsolationLevel.INLINE:
-            if extractor is None:
-                raise ValueError("extractor is required for INLINE isolation level")
-            return InlineWorker(extractor)
+            if analyzer is None:
+                raise ValueError("analyzer is required for INLINE isolation level")
+            return InlineWorker(analyzer)
 
         elif level == IsolationLevel.THREAD:
-            if extractor is None:
-                raise ValueError("extractor is required for THREAD isolation level")
-            return ThreadWorker(extractor, **kwargs)
+            if analyzer is None:
+                raise ValueError("analyzer is required for THREAD isolation level")
+            return ThreadWorker(analyzer, **kwargs)
 
         elif level == IsolationLevel.PROCESS:
             return ProcessWorker(
-                extractor=extractor,
-                extractor_name=extractor_name,
+                analyzer=analyzer,
+                analyzer_name=analyzer_name,
                 **kwargs,
             )
 
@@ -814,9 +814,9 @@ class WorkerLauncher:
             if venv_path is None:
                 raise ValueError("venv_path is required for VENV isolation level")
             return VenvWorker(
-                extractor=extractor,
+                analyzer=analyzer,
                 venv_path=venv_path,
-                extractor_name=extractor_name,
+                analyzer_name=analyzer_name,
                 **kwargs,
             )
 

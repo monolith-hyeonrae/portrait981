@@ -9,7 +9,7 @@ Provides a modular visualization system with separate panels:
 Backward compatibility:
 - DebugVisualizer is re-exported with the same public API
 - VisualizationConfig is available for legacy code
-- ExtractorVisualizer and FusionVisualizer are available for direct use
+- AnalyzerVisualizer and FusionVisualizer are available for direct use
 """
 
 from dataclasses import dataclass, field
@@ -20,7 +20,7 @@ import numpy as np
 
 from visualbase import Frame
 
-from visualpath.extractors.base import Observation
+from visualpath.analyzers.base import Observation
 from facemoment.moment_detector.scoring.frame_scorer import ScoreResult
 from facemoment.moment_detector.visualize.layout import LayoutManager
 from facemoment.moment_detector.visualize.video_panel import VideoPanel
@@ -73,7 +73,7 @@ class VisualizationConfig:
     graph_height: int = 100
 
 
-class ExtractorVisualizer:
+class AnalyzerVisualizer:
     """Legacy wrapper around VideoPanel for backward compatibility.
 
     Provides the same draw_* methods that test_visualize.py expects.
@@ -176,7 +176,7 @@ class DebugVisualizer:
 
     def __init__(self, config: Optional[VisualizationConfig] = None):
         self.config = config or VisualizationConfig()
-        self.extractor_viz = ExtractorVisualizer(config)
+        self.analyzer_viz = AnalyzerVisualizer(config)
         self.layers = LayerState()
 
         self._video_panel = VideoPanel()
@@ -358,7 +358,7 @@ __all__ = [
     "RenderContext",
     "DebugVisualizer",
     "VisualizationConfig",
-    "ExtractorVisualizer",
+    "AnalyzerVisualizer",
     "FusionVisualizer",
     "LayoutManager",
     "VideoPanel",

@@ -6,13 +6,13 @@ requires-python = ">=3.10"
 dependencies = [
     "visualbase",
     "visualpath[isolation]",
-    "visualpath-extractors-base",
+    "visualpath-analyzers-base",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
 ]
 
 [project.optional-dependencies]
-# === Extractor packages (each with independent dependencies) ===
+# === Analyzer packages (each with independent dependencies) ===
 # In production, each VenvWorker installs only its sub-package:
 #   uv pip install vpx-face-detect   → onnxruntime-gpu
 #   uv pip install vpx-expression    → onnxruntime (CPU) — no conflict!
@@ -39,12 +39,12 @@ dev = [
 [project.scripts]
 facemoment = "facemoment.cli:main"
 
-# Register core extractors and fusions as plugins for visualpath.
-# ML extractors are registered by their sub-packages (vpx-face-detect, etc.)
-[project.entry-points."visualpath.extractors"]
-face_classifier = "facemoment.moment_detector.extractors.face_classifier:FaceClassifierExtractor"
-quality = "facemoment.moment_detector.extractors.quality:QualityExtractor"
-dummy = "facemoment.moment_detector.extractors.dummy:DummyExtractor"
+# Register core analyzers and fusions as plugins for visualpath.
+# ML analyzers are registered by their sub-packages (vpx-face-detect, etc.)
+[project.entry-points."visualpath.analyzers"]
+face_classifier = "facemoment.moment_detector.analyzers.face_classifier:FaceClassifierAnalyzer"
+quality = "facemoment.moment_detector.analyzers.quality:QualityAnalyzer"
+dummy = "facemoment.moment_detector.analyzers.dummy:DummyAnalyzer"
 
 [project.entry-points."visualpath.fusions"]
 highlight = "facemoment.moment_detector.fusion.highlight:HighlightFusion"
@@ -68,7 +68,7 @@ python_functions = ["test_*"]
 visualbase = { workspace = true }
 visualpath = { workspace = true }
 visualpath-isolation = { workspace = true }
-visualpath-extractors-base = { workspace = true }
+visualpath-analyzers-base = { workspace = true }
 vpx-face-detect = { workspace = true }
 vpx-expression = { workspace = true }
 vpx-face = { workspace = true }

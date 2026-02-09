@@ -51,8 +51,8 @@ def create_test_frame(frame_id: int = 1, t_src_ns: int = 1000000) -> MockFrame:
     )
 
 
-class SimpleExtractor(Module):
-    """Simple extractor for testing."""
+class SimpleAnalyzer(Module):
+    """Simple analyzer for testing."""
 
     def __init__(self, delay_ms: float = 0, fail: bool = False):
         self._delay_ms = delay_ms
@@ -70,7 +70,7 @@ class SimpleExtractor(Module):
             time.sleep(self._delay_ms / 1000)
 
         if self._fail:
-            raise RuntimeError("Extraction failed")
+            raise RuntimeError("Analysis failed")
 
         self._process_count += 1
         return Observation(
@@ -227,13 +227,13 @@ class TestObservationSerialization:
 class TestVenvWorkerFallback:
     """Tests for VenvWorker fallback to inline execution."""
 
-    def test_fallback_when_no_extractor_name(self):
-        """Test fallback when no extractor_name is provided."""
-        extractor = SimpleExtractor()
+    def test_fallback_when_no_analyzer_name(self):
+        """Test fallback when no analyzer_name is provided."""
+        analyzer = SimpleAnalyzer()
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
-            extractor_name=None,
+            analyzer_name=None,
         )
 
         worker.start()
@@ -253,11 +253,11 @@ class TestVenvWorkerFallback:
 
     def test_fallback_when_venv_not_found(self):
         """Test fallback when venv Python is not found."""
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
-            extractor_name="simple",
+            analyzer_name="simple",
         )
 
         worker.start()
@@ -273,16 +273,16 @@ class TestVenvWorkerFallback:
     )
     def test_fallback_without_zmq(self):
         """Test fallback when ZMQ is not available."""
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
 
         with mock.patch(
             "visualpath.process.launcher._check_zmq_available",
             return_value=False,
         ):
             worker = VenvWorker(
-                extractor=extractor,
+                analyzer=analyzer,
                 venv_path=sys.prefix,
-                extractor_name="simple",
+                analyzer_name="simple",
             )
 
             worker.start()
@@ -292,12 +292,12 @@ class TestVenvWorkerFallback:
 
             worker.stop()
 
-    def test_error_without_extractor_for_fallback(self):
-        """Test error when fallback is needed but no extractor provided."""
+    def test_error_without_analyzer_for_fallback(self):
+        """Test error when fallback is needed but no analyzer provided."""
         worker = VenvWorker(
-            extractor=None,
+            analyzer=None,
             venv_path="/nonexistent/venv",
-            extractor_name="simple",  # Can't load from nonexistent venv
+            analyzer_name="simple",  # Can't load from nonexistent venv
         )
 
         with pytest.raises(ValueError, match="Cannot fall back"):
@@ -314,9 +314,9 @@ class TestVenvWorkerLifecycle:
 
     def test_start_stop_inline(self):
         """Test start/stop with inline fallback."""
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
         )
 
@@ -324,17 +324,17 @@ class TestVenvWorkerLifecycle:
 
         worker.start()
         assert worker.is_running
-        assert extractor._initialized
+        assert analyzer._initialized
 
         worker.stop()
         assert not worker.is_running
-        assert extractor._cleaned_up
+        assert analyzer._cleaned_up
 
     def test_double_start(self):
         """Test that starting twice is safe."""
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
         )
 
@@ -347,9 +347,9 @@ class TestVenvWorkerLifecycle:
 
     def test_double_stop(self):
         """Test that stopping twice is safe."""
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
         )
 
@@ -361,9 +361,9 @@ class TestVenvWorkerLifecycle:
 
     def test_process_when_not_running(self):
         """Test processing when worker is not running."""
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
         )
 
@@ -384,8 +384,8 @@ class TestProcessWorker:
 
     def test_uses_current_venv(self):
         """Test that ProcessWorker uses the current venv path."""
-        extractor = SimpleExtractor()
-        worker = ProcessWorker(extractor=extractor)
+        analyzer = SimpleAnalyzer()
+        worker = ProcessWorker(analyzer=analyzer)
 
         # Check that the delegate has the correct venv path
         expected_venv = os.path.dirname(os.path.dirname(sys.executable))
@@ -394,17 +394,17 @@ class TestProcessWorker:
     def test_lifecycle_with_inline_fallback(self):
         """Test ProcessWorker lifecycle with inline fallback.
 
-        When extractor is provided but no extractor_name, and ZMQ is unavailable,
+        When analyzer is provided but no analyzer_name, and ZMQ is unavailable,
         it should fall back to inline execution.
         """
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
 
         # Mock ZMQ as unavailable to force inline fallback
         with mock.patch(
             "visualpath.process.launcher._check_zmq_available",
             return_value=False,
         ):
-            worker = ProcessWorker(extractor=extractor)
+            worker = ProcessWorker(analyzer=analyzer)
 
             worker.start()
             assert worker.is_running
@@ -418,24 +418,24 @@ class TestProcessWorker:
             worker.stop()
             assert not worker.is_running
 
-    def test_lifecycle_with_extractor_uses_name(self):
-        """Test that ProcessWorker uses extractor.name when no extractor_name is given.
+    def test_lifecycle_with_analyzer_uses_name(self):
+        """Test that ProcessWorker uses analyzer.name when no analyzer_name is given.
 
-        When extractor is provided without explicit extractor_name, VenvWorker
-        uses extractor.name as the extractor_name. This test verifies this behavior
+        When analyzer is provided without explicit analyzer_name, VenvWorker
+        uses analyzer.name as the analyzer_name. This test verifies this behavior
         by mocking ZMQ unavailability to force inline fallback.
         """
-        extractor = SimpleExtractor()
+        analyzer = SimpleAnalyzer()
 
         # Mock ZMQ unavailability - this forces inline fallback
         with mock.patch(
             "visualpath.process.launcher._check_zmq_available",
             return_value=False,
         ):
-            worker = ProcessWorker(extractor=extractor)
+            worker = ProcessWorker(analyzer=analyzer)
 
-            # The delegate should have extractor_name set from extractor.name
-            assert worker._delegate._extractor_name == "simple"
+            # The delegate should have analyzer_name set from analyzer.name
+            assert worker._delegate._analyzer_name == "simple"
 
             worker.start()
             assert worker.is_running
@@ -458,43 +458,43 @@ class TestProcessWorker:
 class TestWorkerLauncherExtended:
     """Extended tests for WorkerLauncher factory."""
 
-    def test_create_venv_with_extractor_name(self):
-        """Test creating VenvWorker with extractor_name."""
+    def test_create_venv_with_analyzer_name(self):
+        """Test creating VenvWorker with analyzer_name."""
         worker = WorkerLauncher.create(
             level=IsolationLevel.VENV,
-            extractor=None,
+            analyzer=None,
             venv_path="/tmp/test-venv",
-            extractor_name="face",
+            analyzer_name="face",
         )
 
         assert isinstance(worker, VenvWorker)
-        assert worker._extractor_name == "face"
+        assert worker._analyzer_name == "face"
 
-    def test_create_process_with_extractor_name(self):
-        """Test creating ProcessWorker with extractor_name."""
+    def test_create_process_with_analyzer_name(self):
+        """Test creating ProcessWorker with analyzer_name."""
         worker = WorkerLauncher.create(
             level=IsolationLevel.PROCESS,
-            extractor=None,
-            extractor_name="face",
+            analyzer=None,
+            analyzer_name="face",
         )
 
         assert isinstance(worker, ProcessWorker)
-        assert worker._delegate._extractor_name == "face"
+        assert worker._delegate._analyzer_name == "face"
 
-    def test_create_inline_without_extractor_raises(self):
-        """Test that creating InlineWorker without extractor raises."""
-        with pytest.raises(ValueError, match="extractor is required"):
+    def test_create_inline_without_analyzer_raises(self):
+        """Test that creating InlineWorker without analyzer raises."""
+        with pytest.raises(ValueError, match="analyzer is required"):
             WorkerLauncher.create(
                 level=IsolationLevel.INLINE,
-                extractor=None,
+                analyzer=None,
             )
 
-    def test_create_thread_without_extractor_raises(self):
-        """Test that creating ThreadWorker without extractor raises."""
-        with pytest.raises(ValueError, match="extractor is required"):
+    def test_create_thread_without_analyzer_raises(self):
+        """Test that creating ThreadWorker without analyzer raises."""
+        with pytest.raises(ValueError, match="analyzer is required"):
             WorkerLauncher.create(
                 level=IsolationLevel.THREAD,
-                extractor=None,
+                analyzer=None,
             )
 
 
@@ -603,15 +603,15 @@ class TestVenvWorkerIntegration:
         "VISUALPATH_INTEGRATION_TESTS" not in os.environ,
         reason="Integration tests disabled (set VISUALPATH_INTEGRATION_TESTS=1)",
     )
-    def test_real_subprocess_with_dummy_extractor(self, current_venv):
-        """Test VenvWorker with a real subprocess using dummy extractor."""
-        # This test requires the 'dummy' extractor to be registered
+    def test_real_subprocess_with_dummy_analyzer(self, current_venv):
+        """Test VenvWorker with a real subprocess using dummy analyzer."""
+        # This test requires the 'dummy' analyzer to be registered
         # via entry points in the test environment
 
         worker = VenvWorker(
-            extractor=None,
+            analyzer=None,
             venv_path=current_venv,
-            extractor_name="dummy",
+            analyzer_name="dummy",
             timeout_sec=10.0,
         )
 
@@ -642,9 +642,9 @@ class TestWorkerTiming:
 
     def test_inline_timing(self):
         """Test that inline worker reports timing."""
-        extractor = SimpleExtractor(delay_ms=50)
+        analyzer = SimpleAnalyzer(delay_ms=50)
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
         )
 
@@ -661,9 +661,9 @@ class TestWorkerTiming:
 
     def test_error_result_includes_timing(self):
         """Test that error results include timing."""
-        extractor = SimpleExtractor(fail=True, delay_ms=10)
+        analyzer = SimpleAnalyzer(fail=True, delay_ms=10)
         worker = VenvWorker(
-            extractor=extractor,
+            analyzer=analyzer,
             venv_path="/nonexistent/venv",
         )
 

@@ -1,6 +1,6 @@
 """Plugins command for visualpath CLI."""
 
-from visualpath.plugin.discovery import discover_extractors, discover_fusions
+from visualpath.plugin.discovery import discover_analyzers, discover_fusions
 
 
 def cmd_plugins_list() -> int:
@@ -9,12 +9,12 @@ def cmd_plugins_list() -> int:
     Returns:
         Exit code (0 for success).
     """
-    print("Available Extractors:")
+    print("Available Analyzers:")
     print("-" * 40)
 
-    extractors = discover_extractors()
-    if extractors:
-        for name, ep in sorted(extractors.items()):
+    analyzers = discover_analyzers()
+    if analyzers:
+        for name, ep in sorted(analyzers.items()):
             # Get module path from entry point
             module_path = f"{ep.value}" if hasattr(ep, "value") else str(ep)
             print(f"  {name:<20} {module_path}")
@@ -35,7 +35,7 @@ def cmd_plugins_list() -> int:
 
     print()
     print("To register plugins, add entry points in pyproject.toml:")
-    print('  [project.entry-points."visualpath.extractors"]')
-    print('  my_extractor = "mypackage.extractors:MyExtractor"')
+    print('  [project.entry-points."visualpath.analyzers"]')
+    print('  my_analyzer = "mypackage.analyzers:MyAnalyzer"')
 
     return 0

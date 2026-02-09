@@ -1,7 +1,7 @@
 [project]
 name = "visualpath"
 dynamic = ["version"]
-description = "Video analysis pipeline platform for plugin-based extractors"
+description = "Video analysis pipeline platform for plugin-based analyzers"
 requires-python = ">=3.10"
 dependencies = [
     "visualbase",
@@ -36,9 +36,9 @@ all = [
     "visualpath-pathway",
 ]
 
-[project.entry-points."visualpath.extractors"]
-# Test dummy extractor for integration tests
-dummy = "visualpath.core.extractor:DummyExtractor"
+[project.entry-points."visualpath.analyzers"]
+# Test dummy analyzer for integration tests
+dummy = "visualpath.core.observation:DummyAnalyzer"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]

@@ -1,7 +1,7 @@
-"""Base module interface for feature extraction (B modules).
+"""Base module interface for feature analysis (B modules).
 
 This module re-exports the base classes from visualpath and provides
-extractor-specific observation types.
+analyzer-specific observation types.
 
 Usage:
     Inherit from Module and implement process():
@@ -21,13 +21,13 @@ if TYPE_CHECKING:
 
 
 class Module(VisualPathModule):
-    """Module with backwards-compatible extract() alias.
+    """Module with backwards-compatible analyze() alias.
 
-    This class extends visualpath's Module to provide the legacy `extract()`
+    This class extends visualpath's Module to provide the legacy `analyze()`
     method as an alias for `process()`.
     """
 
-    def extract(self, frame: "Frame", deps=None) -> Optional["Observation"]:
+    def analyze(self, frame: "Frame", deps=None) -> Optional["Observation"]:
         """Backwards-compatible alias for process().
 
         Args:
@@ -41,7 +41,7 @@ class Module(VisualPathModule):
 
 
 # Backwards compatibility alias
-BaseExtractor = Module
+BaseAnalyzer = Module
 
 # Re-export for backward compatibility
 from visualbase import Frame  # noqa: F401
@@ -49,9 +49,9 @@ from visualbase import Frame  # noqa: F401
 
 @dataclass
 class ProcessingStep:
-    """Describes a single processing step within an extractor.
+    """Describes a single processing step within an analyzer.
 
-    Used to define and visualize the internal data flow of extractors.
+    Used to define and visualize the internal data flow of analyzers.
     Steps are registered via the @processing_step decorator.
 
     Attributes:
@@ -91,12 +91,12 @@ def processing_step(
     """Decorator to register a method as a processing step.
 
     This decorator:
-    1. Registers the step in the extractor's step registry
+    1. Registers the step in the analyzer's step registry
     2. Can optionally wrap the method for timing tracking
     3. Enables DAG visualization and runtime monitoring
 
     Args:
-        name: Unique identifier for this step within the extractor.
+        name: Unique identifier for this step within the analyzer.
         description: Human-readable description.
         backend: Backend/library name (shown in visualizations).
         input_type: Description of input data type.
@@ -105,7 +105,7 @@ def processing_step(
         depends_on: List of step names this step depends on.
 
     Example:
-        class FaceExtractor(Module):
+        class FaceAnalyzer(Module):
             @processing_step(
                 "detection",
                 description="Detect faces with landmarks",
@@ -144,7 +144,7 @@ def processing_step(
 
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            # Track timing if extractor has _step_timings dict
+            # Track timing if analyzer has _step_timings dict
             if hasattr(self, '_step_timings') and self._step_timings is not None:
                 start = time.perf_counter_ns()
                 result = func(self, *args, **kwargs)
@@ -161,10 +161,10 @@ def processing_step(
 
 
 def get_processing_steps(cls_or_instance) -> List[ProcessingStep]:
-    """Get all registered processing steps from an extractor class or instance.
+    """Get all registered processing steps from an analyzer class or instance.
 
     Args:
-        cls_or_instance: Extractor class or instance.
+        cls_or_instance: Analyzer class or instance.
 
     Returns:
         List of ProcessingStep in dependency order.
@@ -248,10 +248,10 @@ class FaceObservation:
 
 @dataclass
 class Observation:
-    """Observation output from an extractor.
+    """Observation output from an analyzer.
 
-    Observations are timestamped feature extractions that flow from
-    B modules (extractors) to C module (fusion).
+    Observations are timestamped feature analyses that flow from
+    B modules (analyzers) to C module (fusion).
 
     For trigger modules, set trigger info in signals:
     - signals["should_trigger"]: Whether to fire a trigger
@@ -260,7 +260,7 @@ class Observation:
     - metadata["trigger"]: Trigger object
 
     Attributes:
-        source: Name of the extractor that produced this observation.
+        source: Name of the analyzer that produced this observation.
         frame_id: Frame identifier from the source video.
         t_ns: Timestamp in nanoseconds (source timeline).
         signals: Dictionary of extracted signals/features.
@@ -315,7 +315,7 @@ class Observation:
 
 __all__ = [
     "Module",
-    "BaseExtractor",  # Alias for Module
+    "BaseAnalyzer",  # Alias for Module
     "ProcessingStep",
     "processing_step",
     "get_processing_steps",

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from visualpath.extractors.base import Observation
+from visualpath.analyzers.base import Observation
 from facemoment.moment_detector.visualize.components import (
     COLOR_DARK_BGR,
     COLOR_WHITE_BGR,

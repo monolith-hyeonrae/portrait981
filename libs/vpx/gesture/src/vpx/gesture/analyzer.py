@@ -1,4 +1,4 @@
-"""Gesture extractor for hand gesture recognition."""
+"""Gesture analyzer for hand gesture recognition."""
 
 from typing import Optional, List, Dict
 import logging
@@ -8,21 +8,21 @@ import numpy as np
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     ProcessingStep,
     processing_step,
     get_processing_steps,
 )
-from visualpath.extractors.types import GestureType, HandLandmarkIndex
-from visualpath.extractors.outputs import GestureOutput
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.types import GestureType, HandLandmarkIndex
+from visualpath.analyzers.outputs import GestureOutput
+from visualpath.analyzers.backends.base import (
     HandLandmarkBackend,
     HandLandmarks,
 )
 from visualpath.observability import ObservabilityHub, TraceLevel
-from visualpath.observability.records import FrameExtractRecord, TimingRecord
+from visualpath.observability.records import FrameAnalyzeRecord, TimingRecord
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 _hub = ObservabilityHub.get_instance()
 
 
-class GestureExtractor(Module):
-    """Extractor for hand gesture recognition using MediaPipe Hands.
+class GestureAnalyzer(Module):
+    """Analyzer for hand gesture recognition using MediaPipe Hands.
 
     Detects specific hand gestures useful for gokart scenario:
     - V-sign (peace sign)
@@ -53,9 +53,9 @@ class GestureExtractor(Module):
         min_gesture_confidence: Minimum confidence for gesture (default: 0.6).
 
     Example:
-        >>> extractor = GestureExtractor()
-        >>> with extractor:
-        ...     obs = extractor.process(frame)
+        >>> analyzer = GestureAnalyzer()
+        >>> with analyzer:
+        ...     obs = analyzer.process(frame)
         ...     if obs.signals.get("gesture_detected", 0) > 0:
         ...         print(f"Gesture: {obs.metadata.get('gesture_type')}")
     """
@@ -97,7 +97,7 @@ class GestureExtractor(Module):
 
         self._hand_backend.initialize(self._device)
         self._initialized = True
-        logger.info("GestureExtractor initialized")
+        logger.info("GestureAnalyzer initialized")
 
     def cleanup(self) -> None:
         """Release backend resources."""
@@ -105,7 +105,7 @@ class GestureExtractor(Module):
             self._hand_backend.cleanup()
 
         self._initialized = False
-        logger.info("GestureExtractor cleaned up")
+        logger.info("GestureAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 
@@ -216,7 +216,7 @@ class GestureExtractor(Module):
             Observation with gesture signals.
         """
         if not self._initialized or self._hand_backend is None:
-            raise RuntimeError("Extractor not initialized. Call initialize() first.")
+            raise RuntimeError("Analyzer not initialized. Call initialize() first.")
 
         # Start timing for observability
         start_ns = time.perf_counter_ns() if _hub.enabled else 0
@@ -454,7 +454,7 @@ class GestureExtractor(Module):
             signals: Signal dictionary.
         """
         threshold_ms = 60.0  # Gesture detection can be slower
-        _hub.emit(FrameExtractRecord(
+        _hub.emit(FrameAnalyzeRecord(
             frame_id=frame.frame_id,
             t_ns=frame.t_src_ns,
             source=self.name,

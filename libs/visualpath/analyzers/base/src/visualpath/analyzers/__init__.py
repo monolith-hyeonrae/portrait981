@@ -1,9 +1,9 @@
 import pkgutil
 __path__ = pkgutil.extend_path(__path__, __name__)
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
-    BaseExtractor,
+    BaseAnalyzer,
     Observation,
     FaceObservation,
     ProcessingStep,
@@ -14,7 +14,7 @@ from visualpath.extractors.base import (
 
 __all__ = [
     "Module",
-    "BaseExtractor",
+    "BaseAnalyzer",
     "Observation",
     "FaceObservation",
     "ProcessingStep",

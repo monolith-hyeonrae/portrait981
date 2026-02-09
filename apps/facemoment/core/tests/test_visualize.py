@@ -5,21 +5,21 @@ import pytest
 from unittest.mock import MagicMock
 
 from facemoment.moment_detector.visualize import (
-    ExtractorVisualizer,
+    AnalyzerVisualizer,
     DebugVisualizer,
     VisualizationConfig,
 )
-from visualpath.extractors.base import Observation, FaceObservation
-from visualpath.extractors.outputs import PoseOutput
-from visualpath.extractors.types import KeypointIndex
+from visualpath.analyzers.base import Observation, FaceObservation
+from visualpath.analyzers.outputs import PoseOutput
+from visualpath.analyzers.types import KeypointIndex
 
 
-class TestExtractorVisualizer:
-    """Tests for ExtractorVisualizer."""
+class TestAnalyzerVisualizer:
+    """Tests for AnalyzerVisualizer."""
 
     @pytest.fixture
     def visualizer(self):
-        return ExtractorVisualizer()
+        return AnalyzerVisualizer()
 
     @pytest.fixture
     def sample_image(self):
@@ -200,7 +200,7 @@ class TestFaceClassifierVisualization:
 
     @pytest.fixture
     def visualizer(self):
-        return ExtractorVisualizer()
+        return AnalyzerVisualizer()
 
     @pytest.fixture
     def sample_image(self):

@@ -1,28 +1,28 @@
 """Plugin discovery system for visualpath.
 
 This module provides infrastructure for discovering and loading
-extractor plugins via Python entry points.
+analyzer plugins via Python entry points.
 
-Plugins register themselves using the `visualpath.extractors` entry point
+Plugins register themselves using the `visualpath.analyzers` entry point
 group in their pyproject.toml:
 
 ```toml
-[project.entry-points."visualpath.extractors"]
-face = "myplugin.extractors:FaceExtractor"
-pose = "myplugin.extractors:PoseExtractor"
+[project.entry-points."visualpath.analyzers"]
+face = "myplugin.analyzers:FaceAnalyzer"
+pose = "myplugin.analyzers:PoseAnalyzer"
 ```
 
 Example:
-    >>> from visualpath.plugin import discover_extractors, load_extractor
+    >>> from visualpath.plugin import discover_analyzers, load_analyzer
     >>>
-    >>> # Discover all available extractor plugins
-    >>> extractors = discover_extractors()
-    >>> for name, entry_point in extractors.items():
-    ...     print(f"Found extractor: {name}")
+    >>> # Discover all available analyzer plugins
+    >>> analyzers = discover_analyzers()
+    >>> for name, entry_point in analyzers.items():
+    ...     print(f"Found analyzer: {name}")
     >>>
-    >>> # Load a specific extractor
-    >>> FaceExtractor = load_extractor("face")
-    >>> extractor = FaceExtractor()
+    >>> # Load a specific analyzer
+    >>> FaceAnalyzer = load_analyzer("face")
+    >>> analyzer = FaceAnalyzer()
 """
 
 import sys
@@ -31,7 +31,7 @@ from typing import Dict, Optional, Type, Any
 from visualpath.core.module import Module
 
 # Entry point group names
-EXTRACTORS_GROUP = "visualpath.extractors"
+ANALYZERS_GROUP = "visualpath.analyzers"
 FUSIONS_GROUP = "visualpath.fusions"
 
 
@@ -61,21 +61,21 @@ def _get_entry_points(group: str) -> Dict[str, Any]:
         return {ep.name: ep for ep in eps}
 
 
-def discover_extractors() -> Dict[str, Any]:
-    """Discover all available extractor plugins.
+def discover_analyzers() -> Dict[str, Any]:
+    """Discover all available analyzer plugins.
 
-    Scans the `visualpath.extractors` entry point group for registered
-    extractors.
+    Scans the `visualpath.analyzers` entry point group for registered
+    analyzers.
 
     Returns:
-        Dict mapping extractor names to their entry points.
+        Dict mapping analyzer names to their entry points.
 
     Example:
-        >>> extractors = discover_extractors()
-        >>> print(list(extractors.keys()))
+        >>> analyzers = discover_analyzers()
+        >>> print(list(analyzers.keys()))
         ['face', 'pose', 'gesture', 'quality']
     """
-    return _get_entry_points(EXTRACTORS_GROUP)
+    return _get_entry_points(ANALYZERS_GROUP)
 
 
 def discover_fusions() -> Dict[str, Any]:
@@ -90,30 +90,30 @@ def discover_fusions() -> Dict[str, Any]:
     return _get_entry_points(FUSIONS_GROUP)
 
 
-def load_extractor(name: str) -> Type[Module]:
-    """Load an extractor class by name.
+def load_analyzer(name: str) -> Type[Module]:
+    """Load an analyzer class by name.
 
     Args:
-        name: The registered name of the extractor.
+        name: The registered name of the analyzer.
 
     Returns:
-        The extractor class.
+        The analyzer class.
 
     Raises:
-        KeyError: If no extractor with the given name is registered.
-        ImportError: If the extractor cannot be loaded.
+        KeyError: If no analyzer with the given name is registered.
+        ImportError: If the analyzer cannot be loaded.
 
     Example:
-        >>> FaceExtractor = load_extractor("face")
-        >>> extractor = FaceExtractor()
+        >>> FaceAnalyzer = load_analyzer("face")
+        >>> analyzer = FaceAnalyzer()
     """
-    extractors = discover_extractors()
-    if name not in extractors:
+    analyzers = discover_analyzers()
+    if name not in analyzers:
         raise KeyError(
-            f"No extractor registered with name '{name}'. "
-            f"Available: {list(extractors.keys())}"
+            f"No analyzer registered with name '{name}'. "
+            f"Available: {list(analyzers.keys())}"
         )
-    entry_point = extractors[name]
+    entry_point = analyzers[name]
     return entry_point.load()
 
 
@@ -140,23 +140,23 @@ def load_fusion(name: str) -> Type:
     return entry_point.load()
 
 
-def create_extractor(name: str, **kwargs) -> Module:
-    """Create an extractor instance by name.
+def create_analyzer(name: str, **kwargs) -> Module:
+    """Create an analyzer instance by name.
 
-    Convenience function that loads and instantiates an extractor.
+    Convenience function that loads and instantiates an analyzer.
 
     Args:
-        name: The registered name of the extractor.
-        **kwargs: Arguments passed to the extractor constructor.
+        name: The registered name of the analyzer.
+        **kwargs: Arguments passed to the analyzer constructor.
 
     Returns:
-        An initialized extractor instance.
+        An initialized analyzer instance.
 
     Example:
-        >>> extractor = create_extractor("face", device="cuda:0")
+        >>> analyzer = create_analyzer("face", device="cuda:0")
     """
-    ExtractorClass = load_extractor(name)
-    return ExtractorClass(**kwargs)
+    AnalyzerClass = load_analyzer(name)
+    return AnalyzerClass(**kwargs)
 
 
 class PluginRegistry:
@@ -166,28 +166,28 @@ class PluginRegistry:
 
     Example:
         >>> registry = PluginRegistry()
-        >>> registry.register_extractor("face", FaceExtractor)
-        >>> extractor = registry.create_extractor("face")
+        >>> registry.register_analyzer("face", FaceAnalyzer)
+        >>> analyzer = registry.create_analyzer("face")
     """
 
     def __init__(self):
         """Initialize the plugin registry."""
-        self._extractors: Dict[str, Type[Module]] = {}
+        self._analyzers: Dict[str, Type[Module]] = {}
         self._fusions: Dict[str, Type] = {}
         self._instances: Dict[str, Module] = {}
 
-    def register_extractor(
+    def register_analyzer(
         self,
         name: str,
-        extractor_class: Type[Module],
+        analyzer_class: Type[Module],
     ) -> None:
-        """Register an extractor class.
+        """Register an analyzer class.
 
         Args:
             name: Name to register under.
-            extractor_class: The extractor class.
+            analyzer_class: The analyzer class.
         """
-        self._extractors[name] = extractor_class
+        self._analyzers[name] = analyzer_class
 
     def register_fusion(self, name: str, fusion_class: Type) -> None:
         """Register a fusion class.
@@ -198,58 +198,58 @@ class PluginRegistry:
         """
         self._fusions[name] = fusion_class
 
-    def get_extractor_class(self, name: str) -> Type[Module]:
-        """Get a registered extractor class.
+    def get_analyzer_class(self, name: str) -> Type[Module]:
+        """Get a registered analyzer class.
 
         Args:
-            name: The extractor name.
+            name: The analyzer name.
 
         Returns:
-            The extractor class.
+            The analyzer class.
 
         Raises:
             KeyError: If not registered.
         """
-        if name in self._extractors:
-            return self._extractors[name]
+        if name in self._analyzers:
+            return self._analyzers[name]
         # Fall back to entry point discovery
-        return load_extractor(name)
+        return load_analyzer(name)
 
-    def create_extractor(
+    def create_analyzer(
         self,
         name: str,
         singleton: bool = False,
         **kwargs,
     ) -> Module:
-        """Create an extractor instance.
+        """Create an analyzer instance.
 
         Args:
-            name: The extractor name.
+            name: The analyzer name.
             singleton: If True, return cached instance.
             **kwargs: Constructor arguments.
 
         Returns:
-            Extractor instance.
+            Analyzer instance.
         """
         if singleton and name in self._instances:
             return self._instances[name]
 
-        ExtractorClass = self.get_extractor_class(name)
-        instance = ExtractorClass(**kwargs)
+        AnalyzerClass = self.get_analyzer_class(name)
+        instance = AnalyzerClass(**kwargs)
 
         if singleton:
             self._instances[name] = instance
 
         return instance
 
-    def list_extractors(self) -> list[str]:
-        """List all available extractor names.
+    def list_analyzers(self) -> list[str]:
+        """List all available analyzer names.
 
         Returns:
-            List of extractor names (registered + discovered).
+            List of analyzer names (registered + discovered).
         """
-        discovered = set(discover_extractors().keys())
-        registered = set(self._extractors.keys())
+        discovered = set(discover_analyzers().keys())
+        registered = set(self._analyzers.keys())
         return sorted(discovered | registered)
 
     def list_fusions(self) -> list[str]:

@@ -100,7 +100,7 @@ class FrameDropRecord(TraceRecord):
 class SyncDelayRecord(TraceRecord):
     """Record of observation synchronization delay.
 
-    Emitted when fusion waits for observations from multiple extractors.
+    Emitted when fusion waits for observations from multiple analyzers.
     """
     record_type: str = field(default="sync_delay", init=False)
 
@@ -160,7 +160,7 @@ class SessionStartRecord(TraceRecord):
     target_fps: float = 0.0
 
     # Configuration
-    extractors: List[str] = field(default_factory=list)
+    analyzers: List[str] = field(default_factory=list)
     config: Dict[str, Any] = field(default_factory=dict)
     trace_level: str = ""
     isolation_config: Dict[str, str] = field(default_factory=dict)
@@ -189,10 +189,10 @@ class SessionEndRecord(TraceRecord):
 
 
 @dataclass
-class FrameExtractRecord(TraceRecord):
+class FrameAnalyzeRecord(TraceRecord):
     """Generic record of frame extraction results.
 
-    Emitted by extractors after processing each frame.
+    Emitted by analyzers after processing each frame.
     Contains summary of what was extracted.
     """
     record_type: str = field(default="frame_extract", init=False)
@@ -235,6 +235,6 @@ __all__ = [
     "FPSRecord",
     "SessionStartRecord",
     "SessionEndRecord",
-    "FrameExtractRecord",
+    "FrameAnalyzeRecord",
     "WorkerStartRecord",
 ]

@@ -5,7 +5,7 @@ members = [
     "libs/visualpath/isolation",
     "libs/visualpath/cli",
     "libs/visualpath/pathway",
-    "libs/visualpath/extractors/base",
+    "libs/visualpath/analyzers/base",
     "libs/vpx/face-detect",
     "libs/vpx/expression",
     "libs/vpx/face",
@@ -15,7 +15,7 @@ members = [
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.
-# In production VenvWorker, each extractor package installs in its own venv,
+# In production VenvWorker, each analyzer package installs in its own venv,
 # so this override is unnecessary (package isolation resolves the conflict).
 [tool.uv]
 dev-dependencies = [

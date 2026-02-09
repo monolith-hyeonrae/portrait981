@@ -1,4 +1,4 @@
-"""Pose extractor for gesture and body analysis."""
+"""Pose analyzer for gesture and body analysis."""
 
 from typing import Optional, Dict, List
 from collections import deque
@@ -9,21 +9,21 @@ import numpy as np
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     ProcessingStep,
     processing_step,
     get_processing_steps,
 )
-from visualpath.extractors.types import KeypointIndex
-from visualpath.extractors.outputs import PoseOutput
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.types import KeypointIndex
+from visualpath.analyzers.outputs import PoseOutput
+from visualpath.analyzers.backends.base import (
     PoseBackend,
     PoseKeypoints,
 )
 from visualpath.observability import ObservabilityHub, TraceLevel
-from visualpath.observability.records import FrameExtractRecord, TimingRecord
+from visualpath.observability.records import FrameAnalyzeRecord, TimingRecord
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 _hub = ObservabilityHub.get_instance()
 
 
-class PoseExtractor(Module):
-    """Extractor for pose estimation and gesture detection.
+class PoseAnalyzer(Module):
+    """Analyzer for pose estimation and gesture detection.
 
     Uses YOLOv8-Pose or similar backends to extract body keypoints
     and detect gestures like hand waving.
@@ -52,9 +52,9 @@ class PoseExtractor(Module):
         wave_amplitude_threshold: Minimum x-movement for wave (default: 0.05 normalized).
 
     Example:
-        >>> extractor = PoseExtractor()
-        >>> with extractor:
-        ...     obs = extractor.process(frame)
+        >>> analyzer = PoseAnalyzer()
+        >>> with analyzer:
+        ...     obs = analyzer.process(frame)
         ...     if obs.signals.get("hand_wave_detected", 0) > 0:
         ...         print("Hand wave detected!")
     """
@@ -107,7 +107,7 @@ class PoseExtractor(Module):
 
         self._pose_backend.initialize(self._device)
         self._initialized = True
-        logger.info("PoseExtractor initialized")
+        logger.info("PoseAnalyzer initialized")
 
     def cleanup(self) -> None:
         """Release backend resources."""
@@ -115,7 +115,7 @@ class PoseExtractor(Module):
             self._pose_backend.cleanup()
 
         self._wrist_history.clear()
-        logger.info("PoseExtractor cleaned up")
+        logger.info("PoseAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 
@@ -251,7 +251,7 @@ class PoseExtractor(Module):
             Observation with pose signals and gesture detection.
         """
         if self._pose_backend is None:
-            raise RuntimeError("Extractor not initialized. Call initialize() first.")
+            raise RuntimeError("Analyzer not initialized. Call initialize() first.")
 
         # Start timing for observability
         start_ns = time.perf_counter_ns() if _hub.enabled else 0
@@ -476,7 +476,7 @@ class PoseExtractor(Module):
             signals: Signal dictionary.
         """
         threshold_ms = 30.0  # Pose is generally faster
-        _hub.emit(FrameExtractRecord(
+        _hub.emit(FrameAnalyzeRecord(
             frame_id=frame.frame_id,
             t_ns=frame.t_src_ns,
             source=self.name,

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.backends.base import (
     DetectedFace,
     FaceExpression,
 )
@@ -220,12 +220,12 @@ class TestHSEmotionBackend:
             assert results[0].action_units == {}
 
 
-class TestFaceExtractorBackendSelection:
-    """Tests for FaceExtractor backend selection logic."""
+class TestFaceAnalyzerBackendSelection:
+    """Tests for FaceAnalyzer backend selection logic."""
 
     def test_hsemotion_preferred_over_pyfeat(self):
         """Test that HSEmotion is preferred when available."""
-        from vpx.face import FaceExtractor
+        from vpx.face import FaceAnalyzer
         from vpx.expression.backends.hsemotion import HSEmotionBackend
 
         # Mock both backends available
@@ -240,17 +240,17 @@ class TestFaceExtractorBackendSelection:
             "insightface": mock_insightface,
             "insightface.app": mock_insightface.app,
         }):
-            extractor = FaceExtractor()
-            extractor.initialize()
+            analyzer = FaceAnalyzer()
+            analyzer.initialize()
 
             # Should use HSEmotionBackend
-            assert isinstance(extractor._expression_backend, HSEmotionBackend)
+            assert isinstance(analyzer._expression_backend, HSEmotionBackend)
 
-            extractor.cleanup()
+            analyzer.cleanup()
 
     def test_fallback_to_pyfeat_when_hsemotion_unavailable(self):
         """Test that PyFeat is used when HSEmotion is not available."""
-        from vpx.face import FaceExtractor
+        from vpx.face import FaceAnalyzer
 
         # Mock hsemotion import failure
         def raise_import_error(*args, **kwargs):

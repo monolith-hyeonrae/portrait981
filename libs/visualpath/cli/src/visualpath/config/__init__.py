@@ -9,7 +9,7 @@ Example YAML config:
     version: "1.0"
     pipelines:
       face_analysis:
-        extractors:
+        analyzers:
           - name: face
             isolation: venv
             venv_path: "${FACE_VENV:-/opt/venvs/face}"
@@ -35,7 +35,7 @@ Example usage:
 from visualpath.config.schema import (
     ConfigSchema,
     PipelineSchema,
-    ExtractorSchema,
+    AnalyzerSchema,
     FusionSchema,
     ObservabilitySchema,
     SinkSchema,
@@ -50,7 +50,7 @@ __all__ = [
     # Schema models
     "ConfigSchema",
     "PipelineSchema",
-    "ExtractorSchema",
+    "AnalyzerSchema",
     "FusionSchema",
     "ObservabilitySchema",
     "SinkSchema",

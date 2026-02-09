@@ -29,8 +29,8 @@ except ImportError:
 # =============================================================================
 
 
-class CountingExtractor(Module):
-    """Extractor that counts calls."""
+class CountingAnalyzer(Module):
+    """Analyzer that counts calls."""
 
     def __init__(self, name: str, value: float = 0.5):
         self._name = name
@@ -111,7 +111,7 @@ class TestResolveModules:
     """Tests for resolve_modules."""
 
     def test_resolve_instance(self):
-        ext = CountingExtractor("test")
+        ext = CountingAnalyzer("test")
         result = resolve_modules([ext])
         assert result == [ext]
 
@@ -121,10 +121,10 @@ class TestResolveModules:
 
     def test_resolve_registered_name(self):
         import visualpath as vp
-        from visualpath.api import _extractor_registry
+        from visualpath.api import _analyzer_registry
 
-        # Register an extractor
-        @vp.extractor("test_resolve_ext")
+        # Register an analyzer
+        @vp.analyzer("test_resolve_ext")
         def my_ext(frame):
             return {"x": 1.0}
 
@@ -133,23 +133,23 @@ class TestResolveModules:
             assert len(result) == 1
             assert result[0].name == "test_resolve_ext"
         finally:
-            _extractor_registry.pop("test_resolve_ext", None)
+            _analyzer_registry.pop("test_resolve_ext", None)
 
     def test_resolve_mixed(self):
         import visualpath as vp
-        from visualpath.api import _extractor_registry
+        from visualpath.api import _analyzer_registry
 
-        @vp.extractor("test_resolve_mix")
+        @vp.analyzer("test_resolve_mix")
         def my_ext(frame):
             return {"x": 1.0}
 
-        instance = CountingExtractor("inst")
+        instance = CountingAnalyzer("inst")
 
         try:
             result = resolve_modules(["test_resolve_mix", instance])
             assert len(result) == 2
         finally:
-            _extractor_registry.pop("test_resolve_mix", None)
+            _analyzer_registry.pop("test_resolve_mix", None)
 
     def test_resolve_fusion_registered_name(self):
         import visualpath as vp

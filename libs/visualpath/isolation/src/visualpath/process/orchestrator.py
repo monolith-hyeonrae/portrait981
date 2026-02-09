@@ -1,26 +1,26 @@
-"""ExtractorOrchestrator - Thread-parallel extractor execution.
+"""AnalyzerOrchestrator - Thread-parallel analyzer execution.
 
-Provides thread-based parallelism for running multiple extractors
+Provides thread-based parallelism for running multiple analyzers
 simultaneously on the same frame. Useful for Library mode where
-extractors run in the same process.
+analyzers run in the same process.
 
 Architecture:
     Frame ──→ [Thread Pool] ──→ Observations
                   │
-                  ├── Extractor1 (thread 1)
-                  ├── Extractor2 (thread 2)
-                  └── Extractor3 (thread 3)
+                  ├── Analyzer1 (thread 1)
+                  ├── Analyzer2 (thread 2)
+                  └── Analyzer3 (thread 3)
 
 Example:
-    >>> from visualpath.process import ExtractorOrchestrator
+    >>> from visualpath.process import AnalyzerOrchestrator
     >>>
-    >>> orchestrator = ExtractorOrchestrator(
-    ...     extractors=[ext1, ext2, ext3],
+    >>> orchestrator = AnalyzerOrchestrator(
+    ...     analyzers=[ext1, ext2, ext3],
     ...     max_workers=3,
     ... )
     >>> orchestrator.initialize()
     >>> for frame in frames:
-    ...     observations = orchestrator.extract_all(frame)
+    ...     observations = orchestrator.analyze_all(frame)
     ...     for obs in observations:
     ...         process(obs)
     >>> orchestrator.cleanup()
@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, Future, as_completed, Timeout
 
 from visualbase import Frame
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 from visualpath.observability import ObservabilityHub
 
@@ -43,36 +43,36 @@ logger = logging.getLogger(__name__)
 _hub = ObservabilityHub.get_instance()
 
 
-class ExtractorOrchestrator:
-    """Orchestrates parallel execution of multiple extractors.
+class AnalyzerOrchestrator:
+    """Orchestrates parallel execution of multiple analyzers.
 
-    Manages a pool of extractors and runs them in parallel using threads.
+    Manages a pool of analyzers and runs them in parallel using threads.
     Collects observations and provides unified access to results.
 
     Args:
-        extractors: List of extractors to run in parallel.
-        max_workers: Maximum number of worker threads. Default: len(extractors).
-        timeout: Timeout in seconds for each extraction. Default: 5.0.
+        analyzers: List of analyzers to run in parallel.
+        max_workers: Maximum number of worker threads. Default: len(analyzers).
+        timeout: Timeout in seconds for each analysis. Default: 5.0.
         observability_hub: Optional custom observability hub (uses global if None).
 
     Thread Safety:
-        - Each extractor runs in its own thread
+        - Each analyzer runs in its own thread
         - Observations are collected thread-safely
         - Initialize/cleanup are called from the main thread
     """
 
     def __init__(
         self,
-        extractors: List[Module],
+        analyzers: List[Module],
         max_workers: Optional[int] = None,
         timeout: float = 5.0,
         observability_hub: Optional[ObservabilityHub] = None,
     ):
-        if not extractors:
-            raise ValueError("At least one extractor is required")
+        if not analyzers:
+            raise ValueError("At least one analyzer is required")
 
-        self._extractors = extractors
-        self._max_workers = max_workers or len(extractors)
+        self._analyzers = analyzers
+        self._max_workers = max_workers or len(analyzers)
         self._timeout = timeout
         self._hub = observability_hub or _hub
 
@@ -87,18 +87,18 @@ class ExtractorOrchestrator:
         self._total_time_ns = 0
 
     def initialize(self) -> None:
-        """Initialize all extractors and create thread pool.
+        """Initialize all analyzers and create thread pool.
 
-        Must be called before extract_all().
+        Must be called before analyze_all().
         """
         if self._initialized:
             return
 
-        # Initialize all extractors
-        for ext in self._extractors:
+        # Initialize all analyzers
+        for ext in self._analyzers:
             try:
                 ext.initialize()
-                logger.debug(f"Initialized extractor: {ext.name}")
+                logger.debug(f"Initialized analyzer: {ext.name}")
             except Exception as e:
                 logger.error(f"Failed to initialize {ext.name}: {e}")
                 raise
@@ -106,24 +106,24 @@ class ExtractorOrchestrator:
         # Create thread pool
         self._executor = ThreadPoolExecutor(
             max_workers=self._max_workers,
-            thread_name_prefix="extractor_",
+            thread_name_prefix="analyzer_",
         )
 
         self._initialized = True
         logger.info(
-            f"ExtractorOrchestrator initialized with {len(self._extractors)} extractors, "
+            f"AnalyzerOrchestrator initialized with {len(self._analyzers)} analyzers, "
             f"{self._max_workers} workers"
         )
 
-    def extract_all(self, frame: Frame) -> List[Observation]:
-        """Run all extractors on a frame in parallel.
+    def analyze_all(self, frame: Frame) -> List[Observation]:
+        """Run all analyzers on a frame in parallel.
 
         Args:
             frame: Frame to process.
 
         Returns:
-            List of observations from all extractors.
-            May be fewer than number of extractors if some return None.
+            List of observations from all analyzers.
+            May be fewer than number of analyzers if some return None.
 
         Raises:
             RuntimeError: If not initialized.
@@ -133,12 +133,12 @@ class ExtractorOrchestrator:
 
         start_ns = time.perf_counter_ns()
         observations: List[Observation] = []
-        timed_out_extractors: List[str] = []
+        timed_out_analyzers: List[str] = []
 
-        # Submit all extractors
+        # Submit all analyzers
         futures: Dict[Future, Module] = {}
-        for ext in self._extractors:
-            future = self._executor.submit(self._safe_extract, ext, frame)
+        for ext in self._analyzers:
+            future = self._executor.submit(self._safe_analyze, ext, frame)
             futures[future] = ext
 
         # Collect results with timeout
@@ -151,19 +151,19 @@ class ExtractorOrchestrator:
                         observations.append(obs)
                         self._total_observations += 1
                 except TimeoutError:
-                    logger.warning(f"Extractor {ext.name} timed out")
+                    logger.warning(f"Analyzer {ext.name} timed out")
                     self._timeouts += 1
-                    timed_out_extractors.append(ext.name)
+                    timed_out_analyzers.append(ext.name)
                 except Exception as e:
-                    logger.error(f"Extractor {ext.name} error: {e}")
+                    logger.error(f"Analyzer {ext.name} error: {e}")
                     self._errors += 1
         except TimeoutError:
             # Some futures didn't complete in time
             for future, ext in futures.items():
                 if not future.done():
-                    timed_out_extractors.append(ext.name)
+                    timed_out_analyzers.append(ext.name)
                     self._timeouts += 1
-                    logger.warning(f"Extractor {ext.name} timed out")
+                    logger.warning(f"Analyzer {ext.name} timed out")
 
         self._frames_processed += 1
         elapsed_ns = time.perf_counter_ns() - start_ns
@@ -173,8 +173,8 @@ class ExtractorOrchestrator:
         if self._hub.enabled:
             processing_ms = elapsed_ns / 1_000_000
             self._emit_timing(frame.frame_id, processing_ms)
-            if timed_out_extractors:
-                self._emit_timeout(frame.frame_id, timed_out_extractors)
+            if timed_out_analyzers:
+                self._emit_timeout(frame.frame_id, timed_out_analyzers)
 
         return observations
 
@@ -204,27 +204,27 @@ class ExtractorOrchestrator:
             },
         ))
 
-    def _safe_extract(
-        self, extractor: Module, frame: Frame
+    def _safe_analyze(
+        self, analyzer: Module, frame: Frame
     ) -> Optional[Observation]:
-        """Safely run extraction with error handling.
+        """Safely run analysis with error handling.
 
         Args:
-            extractor: Extractor to run.
+            analyzer: Analyzer to run.
             frame: Frame to process.
 
         Returns:
             Observation or None on error.
         """
         try:
-            return extractor.process(frame)
+            return analyzer.process(frame)
         except Exception as e:
-            logger.error(f"Extract error in {extractor.name}: {e}")
+            logger.error(f"Analyze error in {analyzer.name}: {e}")
             self._errors += 1
             return None
 
-    def extract_sequential(self, frame: Frame) -> List[Observation]:
-        """Run all extractors sequentially (no parallelism).
+    def analyze_sequential(self, frame: Frame) -> List[Observation]:
+        """Run all analyzers sequentially (no parallelism).
 
         Useful for debugging or when parallelism is not needed.
 
@@ -232,7 +232,7 @@ class ExtractorOrchestrator:
             frame: Frame to process.
 
         Returns:
-            List of observations from all extractors.
+            List of observations from all analyzers.
         """
         if not self._initialized:
             raise RuntimeError("Orchestrator not initialized. Call initialize() first.")
@@ -240,14 +240,14 @@ class ExtractorOrchestrator:
         start_ns = time.perf_counter_ns()
         observations: List[Observation] = []
 
-        for ext in self._extractors:
+        for ext in self._analyzers:
             try:
                 obs = ext.process(frame)
                 if obs is not None:
                     observations.append(obs)
                     self._total_observations += 1
             except Exception as e:
-                logger.error(f"Extract error in {ext.name}: {e}")
+                logger.error(f"Analyze error in {ext.name}: {e}")
                 self._errors += 1
 
         self._frames_processed += 1
@@ -256,7 +256,7 @@ class ExtractorOrchestrator:
         return observations
 
     def cleanup(self) -> None:
-        """Clean up all extractors and shutdown thread pool."""
+        """Clean up all analyzers and shutdown thread pool."""
         if not self._initialized:
             return
 
@@ -265,16 +265,16 @@ class ExtractorOrchestrator:
             self._executor.shutdown(wait=True)
             self._executor = None
 
-        # Cleanup extractors
-        for ext in self._extractors:
+        # Cleanup analyzers
+        for ext in self._analyzers:
             try:
                 ext.cleanup()
-                logger.debug(f"Cleaned up extractor: {ext.name}")
+                logger.debug(f"Cleaned up analyzer: {ext.name}")
             except Exception as e:
                 logger.error(f"Failed to cleanup {ext.name}: {e}")
 
         self._initialized = False
-        logger.info("ExtractorOrchestrator shut down")
+        logger.info("AnalyzerOrchestrator shut down")
 
     def get_stats(self) -> Dict[str, Any]:
         """Get orchestrator statistics.
@@ -293,7 +293,7 @@ class ExtractorOrchestrator:
             "timeouts": self._timeouts,
             "errors": self._errors,
             "avg_time_ms": avg_time_ms,
-            "extractors": [ext.name for ext in self._extractors],
+            "analyzers": [ext.name for ext in self._analyzers],
             "max_workers": self._max_workers,
         }
 
@@ -303,11 +303,11 @@ class ExtractorOrchestrator:
         return self._initialized
 
     @property
-    def extractor_names(self) -> List[str]:
-        """Get names of all extractors."""
-        return [ext.name for ext in self._extractors]
+    def analyzer_names(self) -> List[str]:
+        """Get names of all analyzers."""
+        return [ext.name for ext in self._analyzers]
 
-    def __enter__(self) -> "ExtractorOrchestrator":
+    def __enter__(self) -> "AnalyzerOrchestrator":
         """Context manager entry."""
         self.initialize()
         return self

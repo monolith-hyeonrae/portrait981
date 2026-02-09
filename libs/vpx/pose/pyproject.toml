@@ -1,15 +1,15 @@
 [project]
 name = "vpx-pose"
 version = "0.1.0"
-description = "Pose estimation extractor (YOLO-Pose)"
+description = "Pose estimation analyzer (YOLO-Pose)"
 requires-python = ">=3.10"
 dependencies = [
-    "visualpath-extractors-base",
+    "visualpath-analyzers-base",
     "ultralytics>=8.0.0",
 ]
 
-[project.entry-points."visualpath.extractors"]
-pose = "vpx.pose:PoseExtractor"
+[project.entry-points."visualpath.analyzers"]
+pose = "vpx.pose:PoseAnalyzer"
 
 [build-system]
 requires = ["hatchling"]
@@ -19,4 +19,4 @@ build-backend = "hatchling.build"
 packages = ["src/vpx"]
 
 [tool.uv.sources]
-visualpath-extractors-base = { workspace = true }
+visualpath-analyzers-base = { workspace = true }

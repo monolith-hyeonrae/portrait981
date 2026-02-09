@@ -7,7 +7,7 @@ import logging
 
 import numpy as np
 
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.backends.base import (
     DetectedFace,
     FaceExpression,
 )

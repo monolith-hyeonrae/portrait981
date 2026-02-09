@@ -1,3 +1,3 @@
-from vpx.expression.extractor import ExpressionExtractor
+from vpx.expression.analyzer import ExpressionAnalyzer
 
-__all__ = ["ExpressionExtractor"]
+__all__ = ["ExpressionAnalyzer"]

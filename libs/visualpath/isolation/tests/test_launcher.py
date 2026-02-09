@@ -50,7 +50,7 @@ class SimpleModule(Module):
             time.sleep(self._delay_ms / 1000)
 
         if self._fail:
-            raise RuntimeError("Extraction failed")
+            raise RuntimeError("Analysis failed")
 
         self._process_count += 1
         return Observation(

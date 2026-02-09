@@ -1,13 +1,13 @@
 """Source preprocessing stage definition.
 
 Defines the processing steps for video input pipeline.
-This is not an actual extractor but provides step definitions
+This is not an actual analyzer but provides step definitions
 for visualization and documentation purposes.
 """
 
 from typing import List
 
-from visualpath.extractors.base import ProcessingStep
+from visualpath.analyzers.base import ProcessingStep
 
 
 class SourceProcessor:

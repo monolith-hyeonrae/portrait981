@@ -163,9 +163,9 @@ class WorkerBackend(ExecutionBackend):
             try:
                 worker = WorkerLauncher.create(
                     level=level,
-                    extractor=module if level <= IsolationLevel.THREAD else None,
+                    analyzer=module if level <= IsolationLevel.THREAD else None,
                     venv_path=venv_path,
-                    extractor_name=module.name,
+                    analyzer_name=module.name,
                 )
                 wrapped = WorkerModule(
                     name=module.name,

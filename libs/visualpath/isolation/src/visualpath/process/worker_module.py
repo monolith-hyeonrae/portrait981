@@ -12,8 +12,8 @@ Example:
     >>>
     >>> worker = WorkerLauncher.create(
     ...     level=IsolationLevel.PROCESS,
-    ...     extractor=None,
-    ...     extractor_name="pose",
+    ...     analyzer=None,
+    ...     analyzer_name="pose",
     ... )
     >>> module = WorkerModule(name="pose", worker=worker, depends=[])
     >>> module.initialize()  # starts the worker
@@ -28,7 +28,7 @@ from visualpath.core.module import Module
 
 if TYPE_CHECKING:
     from visualbase import Frame
-    from visualpath.core.extractor import Observation
+    from visualpath.core.observation import Observation
     from visualpath.process.launcher import BaseWorker
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ class WorkerModule(Module):
     module.process() as usual, and WorkerModule forwards it to the worker.
 
     Args:
-        name: Module name (must match the extractor's name).
+        name: Module name (must match the analyzer's name).
         worker: BaseWorker instance to delegate to.
         depends: List of module names this module depends on.
     """
@@ -109,6 +109,13 @@ class WorkerModule(Module):
             return None
 
         return result.observation
+
+    @property
+    def runtime_info(self):
+        from visualpath.core.module import RuntimeInfo
+
+        info = self._worker.worker_info
+        return RuntimeInfo(isolation=info.isolation_level, pid=info.pid)
 
     @property
     def worker(self) -> "BaseWorker":

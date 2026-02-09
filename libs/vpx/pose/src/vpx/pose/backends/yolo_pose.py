@@ -5,8 +5,8 @@ import logging
 
 import numpy as np
 
-from visualpath.extractors.backends.base import PoseKeypoints
-from visualpath.extractors.types import COCO_KEYPOINT_NAMES
+from visualpath.analyzers.backends.base import PoseKeypoints
+from visualpath.analyzers.types import COCO_KEYPOINT_NAMES
 
 logger = logging.getLogger(__name__)
 

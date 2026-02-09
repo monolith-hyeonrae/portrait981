@@ -31,9 +31,9 @@ CLI 실행 시 서드파티 라이브러리의 C++ stdout/stderr 출력과 내�
 
 4. Python 로거 레벨 조정 (configure_log_levels)                  ← 이 파일
    비-verbose 모드에서 INFO → WARNING 승격:
-   - vpx.*                                : extractor init/cleanup 메시지
+   - vpx.*                                : analyzer init/cleanup 메시지
    - facemoment.main                      : CUDA conflict 등 내부 로그
-   - facemoment.moment_detector.extractors: classifier init/cleanup
+   - facemoment.moment_detector.analyzers: classifier init/cleanup
    - facemoment.pipeline.pathway_pipeline : debug header 중복
    - visualpath.process.launcher          : worker 시작/handshake
    - visualbase.sources.decoder           : NVDEC/VAAPI 선택 로그
@@ -96,7 +96,7 @@ def configure_log_levels():
     for name in (
         "vpx",
         "facemoment.main",
-        "facemoment.moment_detector.extractors",
+        "facemoment.moment_detector.analyzers",
         "facemoment.pipeline.pathway_pipeline",
         "visualpath.process.launcher",
         "visualbase.sources.decoder",
@@ -291,7 +291,7 @@ def check_ml_dependencies(module_name: str, require_expression: bool = False) ->
             missing.append(dep)
 
     if missing:
-        print(f"Error: ML dependencies not installed for {module_name} extractor.")
+        print(f"Error: ML dependencies not installed for {module_name} analyzer.")
         print(f"Missing: {', '.join(missing)}")
         print()
         print("Install with:")
@@ -381,17 +381,17 @@ def detect_ml_mode(args) -> str:
     return "enabled" if use_ml else "disabled"
 
 
-def probe_extractors(use_ml=None, device="cuda:0", roi=None) -> dict:
-    """Probe which extractors are available.
+def probe_analyzers(use_ml=None, device="cuda:0", roi=None) -> dict:
+    """Probe which analyzers are available.
 
     Args:
         use_ml: None (auto), True (force ML), False (disable ML).
         device: Device for ML backends.
-        roi: Optional ROI tuple for face extractor.
+        roi: Optional ROI tuple for face analyzer.
 
     Returns:
         Dict with keys "face", "pose", "gesture", "quality" (bool),
-        "names" (list of available extractor names),
+        "names" (list of available analyzer names),
         and "face_mode" ("enabled", "disabled", or "dummy").
     """
     result = {
@@ -404,35 +404,35 @@ def probe_extractors(use_ml=None, device="cuda:0", roi=None) -> dict:
     }
 
     if use_ml is not False:
-        # Try face extractor
+        # Try face analyzer
         try:
-            from vpx.face import FaceExtractor
-            FaceExtractor()
+            from vpx.face import FaceAnalyzer
+            FaceAnalyzer()
             result["face"] = True
             result["names"].append("face")
             result["face_mode"] = "enabled"
         except Exception:
             pass
 
-        # Try pose extractor
+        # Try pose analyzer
         try:
-            from vpx.pose import PoseExtractor
-            PoseExtractor()
+            from vpx.pose import PoseAnalyzer
+            PoseAnalyzer()
             result["pose"] = True
             result["names"].append("pose")
         except Exception:
             pass
 
-        # Try gesture extractor
+        # Try gesture analyzer
         try:
-            from vpx.gesture import GestureExtractor
-            GestureExtractor()
+            from vpx.gesture import GestureAnalyzer
+            GestureAnalyzer()
             result["gesture"] = True
             result["names"].append("gesture")
         except Exception:
             pass
 
-    # Fall back to dummy if no face extractor
+    # Fall back to dummy if no face analyzer
     if not result["face"]:
         result["names"].insert(0, "dummy")
         result["face_mode"] = "dummy" if use_ml is False else "disabled"
@@ -464,7 +464,7 @@ def score_frame(scorer, observations):
 
     Args:
         scorer: FrameScorer instance (or None).
-        observations: Dict of {extractor_name: observation}.
+        observations: Dict of {analyzer_name: observation}.
 
     Returns:
         ScoreResult or None.

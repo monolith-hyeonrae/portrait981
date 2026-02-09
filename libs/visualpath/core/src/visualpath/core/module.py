@@ -1,7 +1,7 @@
 """Unified Module interface for video analysis.
 
 Module is the base class for all processing components in visualpath.
-It unifies the previously separate Extractor and Fusion concepts into
+It unifies the previously separate Analyzer and Fusion concepts into
 a single, consistent interface.
 
 A Module:
@@ -70,12 +70,22 @@ Dependency chain example:
     >>> # Dependencies are resolved automatically by name
 """
 
+import os
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from visualbase import Frame
-    from visualpath.core.extractor import Observation
+    from visualpath.core.observation import Observation
+
+
+@dataclass(frozen=True)
+class RuntimeInfo:
+    """Module 실행 환경 정보."""
+
+    isolation: str  # "INLINE", "THREAD", "PROCESS", "VENV"
+    pid: int
 
 
 # Type alias for dependency context
@@ -169,6 +179,11 @@ class Module(ABC):
         """
         pass
 
+    @property
+    def runtime_info(self) -> "RuntimeInfo":
+        """실행 환경 정보. 기본값: INLINE + 현재 PID."""
+        return RuntimeInfo(isolation="INLINE", pid=os.getpid())
+
     def reset(self) -> None:
         """Reset module state.
 
@@ -187,4 +202,4 @@ class Module(ABC):
         self.cleanup()
 
 
-__all__ = ["Module", "DepsContext"]
+__all__ = ["Module", "RuntimeInfo", "DepsContext"]

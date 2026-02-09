@@ -7,7 +7,7 @@
 ## 프로젝트 역할
 
 **범용 영상 분석 프레임워크** (재사용 가능):
-- **통합 Module 인터페이스** (Extractor/Fusion 통합 완료)
+- **통합 Module 인터페이스** (Analyzer/Fusion 통합 완료)
 - **통합 Observation 출력** (모든 모듈은 Observation 반환)
 - **NodeSpec 기반 선언적 노드 정의** (ModuleSpec 등)
 - Worker 격리 실행 (venv, process, thread)
@@ -60,7 +60,7 @@ from visualpath.cli import main                    # ← visualpath-cli
 |------|------|------|
 | `core.Module` | **통합 모듈 ABC** | Observation 반환 (통합) |
 | `core.Observation` | **통합 결과 컨테이너** | 분석 + 트리거 결과 (signals에 trigger info) |
-| `core.DummyExtractor` | 테스트용 모듈 | 간단한 테스트용 |
+| `core.DummyAnalyzer` | 테스트용 모듈 | 간단한 테스트용 |
 | `core.IsolationLevel` | 격리 수준 | INLINE, THREAD, PROCESS, VENV |
 | `flow.specs.*` | **NodeSpec 선언적 스펙** | ModuleSpec 등 17종 |
 | `process.WorkerLauncher` | Worker 팩토리 | 격리 수준별 Worker 생성 |
@@ -78,7 +78,7 @@ from visualpath.cli import main                    # ← visualpath-cli
 visualpath/
 ├── __init__.py, _version.py, api.py, runner.py
 ├── core/
-│   ├── module.py, extractor.py, isolation.py, path.py
+│   ├── module.py, observation.py, isolation.py, path.py
 ├── flow/
 │   ├── node.py, specs.py, interpreter.py, graph.py
 │   ├── executor.py, builder.py, viz.py
@@ -278,24 +278,24 @@ uv pip install -e . -e ../visualpath-isolation -e ../visualpath-pathway -e ../vi
 
 다음 클래스/파일들이 완전히 제거됨:
 - `core/fusion.py` 파일 전체 (FusionResult, BaseFusion)
-- `BaseExtractor` 클래스
+- `BaseAnalyzer` 클래스
 - `Module.is_trigger` 프로퍼티
 - `vp.run()` 함수
-- `vp.process_video()`의 `extractors`/`fusion` 파라미터
+- `vp.process_video()`의 `analyzers`/`fusion` 파라미터
 
 #### 마이그레이션
 
 | 이전 | 이후 |
 |------|------|
-| `class MyExtractor(BaseExtractor)` | `class MyExtractor(Module)` |
-| `def extract(self, frame)` | `def process(self, frame, deps=None)` |
+| `class MyAnalyzer(BaseAnalyzer)` | `class MyAnalyzer(Module)` |
+| `def analyze(self, frame)` | `def process(self, frame, deps=None)` |
 | `class MyFusion(BaseFusion)` | `class MyFusion(Module)` with `depends=[...]` |
 | `def update(self, observation)` | `def process(self, frame, deps=None)` |
 | `return FusionResult(should_trigger=True, ...)` | `return Observation(signals={"should_trigger": True, ...})` |
 | `result.score` | `result.trigger_score` |
 | `result.reason` | `result.trigger_reason` |
 | `vp.run(...)` | `vp.process_video(...)` |
-| `process_video(extractors=[...], fusion=...)` | `process_video(modules=[...])` |
+| `process_video(analyzers=[...], fusion=...)` | `process_video(modules=[...])` |
 
 ### Trigger 컨벤션
 

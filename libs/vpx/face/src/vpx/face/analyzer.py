@@ -1,4 +1,4 @@
-"""Face extractor using pluggable backends."""
+"""Face analyzer using pluggable backends."""
 
 from typing import Optional, Dict, List
 import logging
@@ -8,7 +8,7 @@ import numpy as np
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     FaceObservation,
@@ -16,13 +16,13 @@ from visualpath.extractors.base import (
     processing_step,
     get_processing_steps,
 )
-from visualpath.extractors.backends.base import (
+from visualpath.analyzers.backends.base import (
     FaceDetectionBackend,
     ExpressionBackend,
     DetectedFace,
 )
 from visualpath.observability import ObservabilityHub, TraceLevel
-from visualpath.observability.records import FrameExtractRecord, TimingRecord
+from visualpath.observability.records import FrameAnalyzeRecord, TimingRecord
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 _hub = ObservabilityHub.get_instance()
 
 
-class FaceExtractor(Module):
-    """Extractor for face detection and expression analysis.
+class FaceAnalyzer(Module):
+    """Analyzer for face detection and expression analysis.
 
     Uses pluggable backends for face detection and expression analysis,
     allowing different ML models to be swapped without changing the
@@ -51,9 +51,9 @@ class FaceExtractor(Module):
         iou_threshold: IoU threshold for track matching (default: 0.5).
 
     Example:
-        >>> extractor = FaceExtractor()
-        >>> with extractor:
-        ...     obs = extractor.process(frame)
+        >>> analyzer = FaceAnalyzer()
+        >>> with analyzer:
+        ...     obs = analyzer.process(frame)
         ...     for face in obs.faces:
         ...         print(f"Face {face.face_id}: expression={face.expression:.2f}")
     """
@@ -67,7 +67,7 @@ class FaceExtractor(Module):
         iou_threshold: float = 0.5,
         roi: Optional[tuple[float, float, float, float]] = None,
     ):
-        """Initialize FaceExtractor.
+        """Initialize FaceAnalyzer.
 
         Args:
             face_backend: Face detection backend.
@@ -113,7 +113,7 @@ class FaceExtractor(Module):
         if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
             raise ValueError(f"Invalid ROI: {value}. Must be (x1, y1, x2, y2) with 0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1")
         self._roi = value
-        logger.info(f"FaceExtractor ROI set to {value}")
+        logger.info(f"FaceAnalyzer ROI set to {value}")
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:
@@ -181,7 +181,7 @@ class FaceExtractor(Module):
             f"{int(self._roi[1]*100)}%-{int(self._roi[3]*100)}%"
         )
         logger.info(
-            f"FaceExtractor initialized (expression={backend_name}, ROI={roi_pct})"
+            f"FaceAnalyzer initialized (expression={backend_name}, ROI={roi_pct})"
         )
 
     def get_backend_info(self) -> Dict[str, str]:
@@ -221,7 +221,7 @@ class FaceExtractor(Module):
         self._next_face_id = 0
         self._prev_faces = []
 
-        logger.info("FaceExtractor cleaned up")
+        logger.info("FaceAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 
@@ -382,13 +382,13 @@ class FaceExtractor(Module):
 
         Args:
             frame: Input frame to analyze.
-            deps: Optional dependencies (not used by this composite extractor).
+            deps: Optional dependencies (not used by this composite analyzer).
 
         Returns:
             Observation with detected faces and their features.
         """
         if self._face_backend is None:
-            raise RuntimeError("Extractor not initialized. Call initialize() first.")
+            raise RuntimeError("Analyzer not initialized. Call initialize() first.")
 
         # Start timing (always measure for profile mode)
         start_ns = time.perf_counter_ns()
@@ -567,7 +567,7 @@ class FaceExtractor(Module):
             signals: Signal dictionary.
         """
         threshold_ms = 50.0
-        _hub.emit(FrameExtractRecord(
+        _hub.emit(FrameAnalyzeRecord(
             frame_id=frame.frame_id,
             t_ns=frame.t_src_ns,
             source=self.name,

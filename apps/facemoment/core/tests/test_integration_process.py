@@ -1,9 +1,9 @@
 """Integration tests for A-B*-C process architecture.
 
 Tests the full flow:
-- ExtractorProcess with interface-based dependencies
+- AnalyzerProcess with interface-based dependencies
 - FusionProcess with interface-based dependencies
-- ExtractorOrchestrator for Library mode
+- AnalyzerOrchestrator for Library mode
 """
 
 import threading
@@ -16,16 +16,16 @@ import numpy as np
 from visualbase.core.frame import Frame
 from visualbase.ipc.interfaces import VideoReader, MessageSender, MessageReceiver
 
-from visualpath.extractors.base import (
-    BaseExtractor,
+from visualpath.analyzers.base import (
+    BaseAnalyzer,
     Observation,
     FaceObservation,
 )
 from facemoment.moment_detector.fusion.base import BaseFusion, Trigger
 from facemoment.process import (
-    ExtractorProcess,
+    AnalyzerProcess,
     FusionProcess,
-    ExtractorOrchestrator,
+    AnalyzerOrchestrator,
     FacemomentMapper,
 )
 
@@ -118,8 +118,8 @@ class MockMessageReceiver(MessageReceiver):
         return self._running
 
 
-class MockExtractor(BaseExtractor):
-    """Mock extractor for testing."""
+class MockAnalyzer(BaseAnalyzer):
+    """Mock analyzer for testing."""
 
     def __init__(self, name: str = "mock"):
         self._name = name
@@ -263,8 +263,8 @@ class MockFusion(BaseFusion):
         return self._in_cooldown
 
 
-class TestExtractorProcessIntegration:
-    """Integration tests for ExtractorProcess."""
+class TestAnalyzerProcessIntegration:
+    """Integration tests for AnalyzerProcess."""
 
     def test_full_extraction_pipeline(self):
         """Test complete extraction pipeline with mock interfaces."""
@@ -277,11 +277,11 @@ class TestExtractorProcessIntegration:
 
         reader = MockVideoReader(frames=frames)
         sender = MockMessageSender()
-        extractor = MockExtractor(name="face")
+        analyzer = MockAnalyzer(name="face")
         mapper = FacemomentMapper()
 
-        process = ExtractorProcess(
-            extractor=extractor,
+        process = AnalyzerProcess(
+            analyzer=analyzer,
             observation_mapper=mapper,
             video_reader=reader,
             message_sender=sender,
@@ -308,19 +308,19 @@ class TestExtractorProcessIntegration:
             assert msg.startswith("OBS src=face")
             assert "faces=1" in msg
 
-    def test_multiple_extractor_types(self):
-        """Test different extractor types produce correct message types."""
+    def test_multiple_analyzer_types(self):
+        """Test different analyzer types produce correct message types."""
         data = np.zeros((480, 640, 3), dtype=np.uint8)
         frames = [Frame.from_array(data, frame_id=0, t_src_ns=0)]
 
         for ext_type in ["face", "pose", "quality"]:
             reader = MockVideoReader(frames=frames.copy())
             sender = MockMessageSender()
-            extractor = MockExtractor(name=ext_type)
+            analyzer = MockAnalyzer(name=ext_type)
             mapper = FacemomentMapper()
 
-            process = ExtractorProcess(
-                extractor=extractor,
+            process = AnalyzerProcess(
+                analyzer=analyzer,
                 observation_mapper=mapper,
                 video_reader=reader,
                 message_sender=sender,
@@ -377,25 +377,25 @@ class TestFusionProcessIntegration:
         assert process._obs_received == 5
 
 
-class TestExtractorOrchestratorIntegration:
-    """Integration tests for ExtractorOrchestrator."""
+class TestAnalyzerOrchestratorIntegration:
+    """Integration tests for AnalyzerOrchestrator."""
 
     def test_parallel_extraction(self):
         """Test parallel extraction produces correct results."""
-        extractors = [
-            MockExtractor(name="face"),
-            MockExtractor(name="pose"),
-            MockExtractor(name="quality"),
+        analyzers = [
+            MockAnalyzer(name="face"),
+            MockAnalyzer(name="pose"),
+            MockAnalyzer(name="quality"),
         ]
 
-        with ExtractorOrchestrator(extractors, max_workers=3) as orchestrator:
+        with AnalyzerOrchestrator(analyzers, max_workers=3) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
 
             for i in range(5):
                 frame = Frame.from_array(data, frame_id=i, t_src_ns=i * 100_000_000)
-                observations = orchestrator.extract_all(frame)
+                observations = orchestrator.analyze_all(frame)
 
-                # Should get observations from all 3 extractors
+                # Should get observations from all 3 analyzers
                 assert len(observations) == 3
                 sources = {obs.source for obs in observations}
                 assert sources == {"face", "pose", "quality"}
@@ -406,14 +406,14 @@ class TestExtractorOrchestratorIntegration:
 
     def test_sequential_vs_parallel_consistency(self):
         """Test sequential and parallel modes produce same results."""
-        extractors = [MockExtractor(name="face"), MockExtractor(name="pose")]
+        analyzers = [MockAnalyzer(name="face"), MockAnalyzer(name="pose")]
 
-        with ExtractorOrchestrator(extractors, max_workers=2) as orchestrator:
+        with AnalyzerOrchestrator(analyzers, max_workers=2) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
             frame = Frame.from_array(data, frame_id=0, t_src_ns=0)
 
-            parallel_obs = orchestrator.extract_all(frame)
-            sequential_obs = orchestrator.extract_sequential(frame)
+            parallel_obs = orchestrator.analyze_all(frame)
+            sequential_obs = orchestrator.analyze_sequential(frame)
 
             # Should have same sources
             parallel_sources = {obs.source for obs in parallel_obs}
@@ -424,24 +424,24 @@ class TestExtractorOrchestratorIntegration:
 class TestEndToEndFlow:
     """End-to-end tests for the complete A-B*-C flow."""
 
-    def test_extractor_message_format(self):
-        """Test extractor produces correctly formatted OBS messages.
+    def test_analyzer_message_format(self):
+        """Test analyzer produces correctly formatted OBS messages.
 
         This tests the message format that would flow between
-        ExtractorProcess and FusionProcess in the A-B*-C architecture.
+        AnalyzerProcess and FusionProcess in the A-B*-C architecture.
         """
         # Create a single frame
         data = np.zeros((480, 640, 3), dtype=np.uint8)
         frame = Frame.from_array(data, frame_id=1, t_src_ns=100_000_000)
 
         # Extract and convert to message
-        extractor = MockExtractor(name="face")
+        analyzer = MockAnalyzer(name="face")
         reader = MockVideoReader(frames=[frame])
         sender = MockMessageSender()
         mapper = FacemomentMapper()
 
-        process = ExtractorProcess(
-            extractor=extractor,
+        process = AnalyzerProcess(
+            analyzer=analyzer,
             observation_mapper=mapper,
             video_reader=reader,
             message_sender=sender,
@@ -476,21 +476,21 @@ class TestEndToEndFlow:
         assert len(parsed.faces) == 1
 
     def test_orchestrator_produces_fusable_observations(self):
-        """Test ExtractorOrchestrator output can be used by Fusion."""
-        extractors = [
-            MockExtractor(name="face"),
-            MockExtractor(name="pose"),
-            MockExtractor(name="quality"),
+        """Test AnalyzerOrchestrator output can be used by Fusion."""
+        analyzers = [
+            MockAnalyzer(name="face"),
+            MockAnalyzer(name="pose"),
+            MockAnalyzer(name="quality"),
         ]
 
         fusion = MockFusion(trigger_interval=3)
 
-        with ExtractorOrchestrator(extractors, max_workers=3) as orchestrator:
+        with AnalyzerOrchestrator(analyzers, max_workers=3) as orchestrator:
             data = np.zeros((480, 640, 3), dtype=np.uint8)
 
             for i in range(6):
                 frame = Frame.from_array(data, frame_id=i, t_src_ns=i * 100_000_000)
-                observations = orchestrator.extract_all(frame)
+                observations = orchestrator.analyze_all(frame)
 
                 # Feed each observation to fusion
                 for obs in observations:
@@ -500,6 +500,6 @@ class TestEndToEndFlow:
                 # Frame 1: 6 obs (trigger at obs 6)
                 # ...
 
-        # 6 frames * 3 extractors = 18 observations
+        # 6 frames * 3 analyzers = 18 observations
         # Triggers at obs 3, 6, 9, 12, 15, 18 = 6 triggers
         assert len(fusion._observations) == 18

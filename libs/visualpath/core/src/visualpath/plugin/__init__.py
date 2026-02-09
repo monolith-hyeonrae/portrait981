@@ -1,27 +1,27 @@
 """Plugin discovery and loading system.
 
 This module provides infrastructure for discovering and loading
-extractor plugins via Python entry points.
+analyzer plugins via Python entry points.
 """
 
 from visualpath.plugin.discovery import (
-    discover_extractors,
+    discover_analyzers,
     discover_fusions,
-    load_extractor,
+    load_analyzer,
     load_fusion,
-    create_extractor,
+    create_analyzer,
     PluginRegistry,
-    EXTRACTORS_GROUP,
+    ANALYZERS_GROUP,
     FUSIONS_GROUP,
 )
 
 __all__ = [
-    "discover_extractors",
+    "discover_analyzers",
     "discover_fusions",
-    "load_extractor",
+    "load_analyzer",
     "load_fusion",
-    "create_extractor",
+    "create_analyzer",
     "PluginRegistry",
-    "EXTRACTORS_GROUP",
+    "ANALYZERS_GROUP",
     "FUSIONS_GROUP",
 ]

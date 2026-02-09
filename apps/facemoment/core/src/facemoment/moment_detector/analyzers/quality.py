@@ -1,4 +1,4 @@
-"""Quality extractor for image quality assessment."""
+"""Quality analyzer for image quality assessment."""
 
 from typing import Dict, List, Optional
 import logging
@@ -8,7 +8,7 @@ import numpy as np
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     ProcessingStep,
@@ -19,8 +19,8 @@ from visualpath.extractors.base import (
 logger = logging.getLogger(__name__)
 
 
-class QualityExtractor(Module):
-    """Extractor for image quality signals.
+class QualityAnalyzer(Module):
+    """Analyzer for image quality signals.
 
     Analyzes frames for quality metrics that affect composition:
     - Blur detection using Laplacian variance
@@ -37,8 +37,8 @@ class QualityExtractor(Module):
         contrast_threshold: Contrast below this is considered low (default: 40).
 
     Example:
-        >>> extractor = QualityExtractor()
-        >>> obs = extractor.process(frame)
+        >>> analyzer = QualityAnalyzer()
+        >>> obs = analyzer.process(frame)
         >>> if obs.signals["quality_gate"] > 0.5:
         ...     print("Frame quality is acceptable")
     """
@@ -173,7 +173,7 @@ class QualityExtractor(Module):
     # ========== Main process method ==========
 
     def process(self, frame: Frame, deps=None) -> Optional[Observation]:
-        """Extract quality signals from a frame.
+        """Analyze quality signals from a frame.
 
         Args:
             frame: Input frame to analyze.

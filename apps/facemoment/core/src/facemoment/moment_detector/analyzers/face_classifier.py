@@ -1,4 +1,4 @@
-"""Face classifier extractor - classifies detected faces by role.
+"""Face classifier analyzer - classifies detected faces by role.
 
 Depends on face_detect to classify faces as:
 - main: Primary subject (driver/main person)
@@ -15,7 +15,7 @@ import time
 
 from visualbase import Frame
 
-from visualpath.extractors.base import (
+from visualpath.analyzers.base import (
     Module,
     Observation,
     FaceObservation,
@@ -23,7 +23,7 @@ from visualpath.extractors.base import (
     processing_step,
     get_processing_steps,
 )
-from visualpath.extractors.outputs import FaceDetectOutput
+from visualpath.analyzers.outputs import FaceDetectOutput
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class ClassifiedFace:
 
 @dataclass
 class FaceClassifierOutput:
-    """Output from FaceClassifierExtractor."""
+    """Output from FaceClassifierAnalyzer."""
     faces: List[ClassifiedFace] = field(default_factory=list)
     main_face: Optional[ClassifiedFace] = None
     passenger_faces: List[ClassifiedFace] = field(default_factory=list)
@@ -48,7 +48,7 @@ class FaceClassifierOutput:
     noise_count: int = 0
 
 
-class FaceClassifierExtractor(Module):
+class FaceClassifierAnalyzer(Module):
     """Classifies detected faces by their role in the scene.
 
     Uses temporal tracking and spatial analysis to classify faces:
@@ -67,12 +67,12 @@ class FaceClassifierExtractor(Module):
         edge_margin: Margin from edge to be considered valid (default: 0.05)
 
     Example:
-        >>> classifier = FaceClassifierExtractor()
+        >>> classifier = FaceClassifierAnalyzer()
         >>> # Use with FlowGraph
         >>> graph = (FlowGraphBuilder()
         ...     .source()
-        ...     .path("detect", modules=[FaceDetectionExtractor()])
-        ...     .path("classify", modules=[FaceClassifierExtractor()])
+        ...     .path("detect", modules=[FaceDetectionAnalyzer()])
+        ...     .path("classify", modules=[FaceClassifierAnalyzer()])
         ...     .build())
     """
 
@@ -111,12 +111,12 @@ class FaceClassifierExtractor(Module):
     def initialize(self) -> None:
         self._track_history.clear()
         self._track_stats.clear()
-        logger.info("FaceClassifierExtractor initialized")
+        logger.info("FaceClassifierAnalyzer initialized")
 
     def cleanup(self) -> None:
         self._track_history.clear()
         self._track_stats.clear()
-        logger.info("FaceClassifierExtractor cleaned up")
+        logger.info("FaceClassifierAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 
@@ -242,7 +242,7 @@ class FaceClassifierExtractor(Module):
         frame: Frame,
         deps: Optional[Dict[str, Observation]] = None,
     ) -> Optional[Observation]:
-        # Support both face_detect (split) and face (composite) extractors
+        # Support both face_detect (split) and face (composite) analyzers
         face_obs = None
         faces = []
 
@@ -256,7 +256,7 @@ class FaceClassifierExtractor(Module):
                 faces = face_obs.faces if face_obs.faces else []
 
         if face_obs is None:
-            logger.warning("FaceClassifierExtractor: no face_detect or face dependency")
+            logger.warning("FaceClassifierAnalyzer: no face_detect or face dependency")
             return None
 
         if not faces:

@@ -1,12 +1,12 @@
-"""Pathway operators for extractor execution.
+"""Pathway operators for analyzer execution.
 
 This module provides operator wrappers that integrate visualpath's
-extractors with Pathway's streaming operators.
+analyzers with Pathway's streaming operators.
 
-Pure Python functions (create_extractor_udf, create_multi_extractor_udf)
+Pure Python functions (create_analyzer_udf, create_multi_analyzer_udf)
 can be used independently.
 
-Pathway-specific functions (apply_extractors) require Pathway installed
+Pathway-specific functions (apply_analyzers) require Pathway installed
 and operate on pw.Table with PyObjectWrapper columns.
 """
 
@@ -15,7 +15,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from visualbase import Frame
-    from visualpath.core.extractor import Observation
+    from visualpath.core.observation import Observation
     from visualpath.core.module import Module
 
 try:
@@ -26,13 +26,13 @@ except ImportError:
 
 
 @dataclass
-class ExtractorResult:
-    """Result from extractor execution in Pathway.
+class AnalyzerResult:
+    """Result from analyzer execution in Pathway.
 
     Attributes:
         frame_id: Frame identifier.
         t_ns: Timestamp in nanoseconds.
-        source: Extractor name.
+        source: Analyzer name.
         observation: The Observation, or None if filtered.
     """
     frame_id: int
@@ -41,109 +41,109 @@ class ExtractorResult:
     observation: Optional["Observation"]
 
 
-def create_extractor_udf(
-    extractor: "Module",
+def create_analyzer_udf(
+    analyzer: "Module",
     deps: Optional[Dict[str, "Observation"]] = None,
 ):
-    """Create a callable for a single extractor.
+    """Create a callable for a single analyzer.
 
     Args:
-        extractor: The extractor to wrap.
-        deps: Optional pre-built deps for this extractor.
+        analyzer: The analyzer to wrap.
+        deps: Optional pre-built deps for this analyzer.
 
     Returns:
-        A function that takes a Frame and returns list of ExtractorResult.
+        A function that takes a Frame and returns list of AnalyzerResult.
     """
-    def extract_fn(frame: "Frame") -> List[ExtractorResult]:
-        """Extract observations from a frame."""
+    def analyze_fn(frame: "Frame") -> List[AnalyzerResult]:
+        """Analyze observations from a frame."""
         try:
-            extractor_deps = None
-            if extractor.depends and deps:
-                extractor_deps = {
+            analyzer_deps = None
+            if analyzer.depends and deps:
+                analyzer_deps = {
                     name: deps[name]
-                    for name in extractor.depends
+                    for name in analyzer.depends
                     if name in deps
                 }
-                if "face_detect" in extractor.depends and "face_detect" not in extractor_deps and "face" in deps:
-                    extractor_deps["face"] = deps["face"]
-            observation = extractor.process(frame, extractor_deps)
-            return [ExtractorResult(
+                if "face_detect" in analyzer.depends and "face_detect" not in analyzer_deps and "face" in deps:
+                    analyzer_deps["face"] = deps["face"]
+            observation = analyzer.process(frame, analyzer_deps)
+            return [AnalyzerResult(
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
-                source=extractor.name,
+                source=analyzer.name,
                 observation=observation,
             )]
         except Exception:
             return []
 
-    return extract_fn
+    return analyze_fn
 
 
-def create_multi_extractor_udf(extractors: List["Module"]):
-    """Create a callable that runs multiple extractors on each frame.
+def create_multi_analyzer_udf(analyzers: List["Module"]):
+    """Create a callable that runs multiple analyzers on each frame.
 
-    Extractors are run in order with dependency resolution: each
-    extractor receives observations from its dependencies via the
+    Analyzers are run in order with dependency resolution: each
+    analyzer receives observations from its dependencies via the
     deps parameter.
 
     Args:
-        extractors: List of extractors to run (order matters for deps).
+        analyzers: List of analyzers to run (order matters for deps).
 
     Returns:
-        A function that takes a Frame and returns list of ExtractorResults.
+        A function that takes a Frame and returns list of AnalyzerResults.
     """
-    def extract_all(frame: "Frame") -> List[ExtractorResult]:
-        """Run all extractors on a frame with deps accumulation."""
+    def analyze_all(frame: "Frame") -> List[AnalyzerResult]:
+        """Run all analyzers on a frame with deps accumulation."""
         results = []
         deps: Dict[str, "Observation"] = {}
-        for extractor in extractors:
+        for analyzer in analyzers:
             try:
-                extractor_deps = None
-                if extractor.depends:
-                    extractor_deps = {
+                analyzer_deps = None
+                if analyzer.depends:
+                    analyzer_deps = {
                         name: deps[name]
-                        for name in extractor.depends
+                        for name in analyzer.depends
                         if name in deps
                     }
-                    if "face_detect" in extractor.depends and "face_detect" not in extractor_deps and "face" in deps:
-                        extractor_deps["face"] = deps["face"]
-                observation = extractor.process(frame, extractor_deps)
-                results.append(ExtractorResult(
+                    if "face_detect" in analyzer.depends and "face_detect" not in analyzer_deps and "face" in deps:
+                        analyzer_deps["face"] = deps["face"]
+                observation = analyzer.process(frame, analyzer_deps)
+                results.append(AnalyzerResult(
                     frame_id=frame.frame_id,
                     t_ns=frame.t_src_ns,
-                    source=extractor.name,
+                    source=analyzer.name,
                     observation=observation,
                 ))
                 if observation is not None:
-                    deps[extractor.name] = observation
+                    deps[analyzer.name] = observation
             except Exception:
                 pass
         return results
 
-    return extract_all
+    return analyze_all
 
 
 if PATHWAY_AVAILABLE:
-    def apply_extractors(
+    def apply_analyzers(
         frames_table: "pw.Table",
-        extractors: List["Module"],
+        analyzers: List["Module"],
     ) -> "pw.Table":
-        """Apply extractors to a Pathway frames table.
+        """Apply analyzers to a Pathway frames table.
 
-        Runs all extractors on each frame via a @pw.udf, wrapping
+        Runs all analyzers on each frame via a @pw.udf, wrapping
         results in PyObjectWrapper for Pathway transport.
 
         Args:
             frames_table: Table with FrameSchema (frame column is PyObjectWrapper).
-            extractors: List of extractors.
+            analyzers: List of analyzers.
 
         Returns:
             Table with columns: frame_id, t_ns, observations (PyObjectWrapper).
         """
-        raw_udf = create_multi_extractor_udf(extractors)
+        raw_udf = create_multi_analyzer_udf(analyzers)
 
         @pw.udf
-        def extract_all_udf(
+        def analyze_all_udf(
             frame_wrapped: pw.PyObjectWrapper,
         ) -> pw.PyObjectWrapper:
             frame = frame_wrapped.value
@@ -153,15 +153,15 @@ if PATHWAY_AVAILABLE:
         return frames_table.select(
             frame_id=pw.this.frame_id,
             t_ns=pw.this.t_ns,
-            observations=extract_all_udf(pw.this.frame),
+            observations=analyze_all_udf(pw.this.frame),
         )
 
 
 __all__ = [
-    "ExtractorResult",
-    "create_extractor_udf",
-    "create_multi_extractor_udf",
+    "AnalyzerResult",
+    "create_analyzer_udf",
+    "create_multi_analyzer_udf",
 ]
 
 if PATHWAY_AVAILABLE:
-    __all__.append("apply_extractors")
+    __all__.append("apply_analyzers")

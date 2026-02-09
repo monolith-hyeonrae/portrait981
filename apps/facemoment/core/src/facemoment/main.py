@@ -21,8 +21,8 @@ DEFAULT_FPS = 10
 DEFAULT_COOLDOWN = 2.0
 DEFAULT_BACKEND = 'pathway'
 
-# CUDA conflict groups: extractors sharing the same CUDA runtime binding.
-# If extractors from 2+ groups are active, the minority group must run in
+# CUDA conflict groups: analyzers sharing the same CUDA runtime binding.
+# If analyzers from 2+ groups are active, the minority group must run in
 # a subprocess to avoid symbol conflicts (e.g. onnxruntime-gpu vs torch).
 _CUDA_GROUPS: Dict[str, Set[str]] = {
     "onnxruntime": {"face", "face_detect", "expression"},
@@ -40,15 +40,15 @@ class Result:
     actual_backend: str = ""
 
 
-def build_modules(extractors=None, *, cooldown=2.0, main_only=True):
-    """facemoment 도메인 로직: extractor 이름 → Module 리스트 구성.
+def build_modules(analyzers=None, *, cooldown=2.0, main_only=True):
+    """facemoment 도메인 로직: analyzer 이름 → Module 리스트 구성.
 
     - FaceClassifier 자동 주입 (face/face_detect 사용 시)
     - HighlightFusion 생성
     - 문자열 이름은 visualpath 플러그인 레지스트리에서 해석됨
 
     Args:
-        extractors: Extractor names. None = ["face", "pose", "gesture"].
+        analyzers: Analyzer names. None = ["face", "pose", "gesture"].
         cooldown: Seconds between triggers.
         main_only: Only trigger for main face.
 
@@ -57,7 +57,7 @@ def build_modules(extractors=None, *, cooldown=2.0, main_only=True):
     """
     from facemoment.moment_detector.fusion import HighlightFusion
 
-    names = list(extractors) if extractors else ["face", "pose", "gesture"]
+    names = list(analyzers) if analyzers else ["face", "pose", "gesture"]
 
     if any(n in ("face", "face_detect") for n in names):
         if "face_classifier" not in names:
@@ -68,22 +68,22 @@ def build_modules(extractors=None, *, cooldown=2.0, main_only=True):
     return names + [fusion]
 
 
-def _build_isolation_config(extractor_names):
+def _build_isolation_config(analyzer_names):
     """Build IsolationConfig based on CUDA conflict detection.
 
-    When extractors from 2+ CUDA groups are active (e.g. onnxruntime-gpu
+    When analyzers from 2+ CUDA groups are active (e.g. onnxruntime-gpu
     for face + torch for pose), the minority group is configured for
     PROCESS isolation.
 
     Args:
-        extractor_names: List of extractor names.
+        analyzer_names: List of analyzer names.
 
     Returns:
         IsolationConfig if isolation is needed, None otherwise.
     """
     from visualpath.core.isolation import IsolationConfig, IsolationLevel
 
-    conflicts = _detect_cuda_conflicts(extractor_names)
+    conflicts = _detect_cuda_conflicts(analyzer_names)
     if not conflicts:
         return None
 
@@ -94,18 +94,18 @@ def _build_isolation_config(extractor_names):
 
 
 def _detect_cuda_conflicts(names):
-    """Detect CUDA conflicts among active extractors.
+    """Detect CUDA conflicts among active analyzers.
 
-    When extractors from 2+ CUDA groups are active, the minority
+    When analyzers from 2+ CUDA groups are active, the minority
     group is returned for subprocess isolation.
 
     Returns empty set if pyzmq is unavailable (falls back to ordering).
 
     Args:
-        names: List of extractor names to check.
+        names: List of analyzer names to check.
 
     Returns:
-        Set of extractor names that should run in a subprocess.
+        Set of analyzer names that should run in a subprocess.
     """
     try:
         import zmq  # noqa: F401
@@ -113,7 +113,7 @@ def _detect_cuda_conflicts(names):
         logger.debug("pyzmq not available, skipping CUDA conflict detection")
         return set()
 
-    # Map each extractor to its CUDA group
+    # Map each analyzer to its CUDA group
     active_groups: Dict[str, List[str]] = {}
     for name in names:
         for group, members in _CUDA_GROUPS.items():
@@ -124,7 +124,7 @@ def _detect_cuda_conflicts(names):
     if len(active_groups) < 2:
         return set()
 
-    # Isolate the smallest group (fewest extractors).
+    # Isolate the smallest group (fewest analyzers).
     # On tie, prefer isolating "torch" so onnxruntime stays in-process.
     _ISOLATE_PREFERENCE = {"torch": 0, "onnxruntime": 1}
     minority_group = min(
@@ -133,7 +133,7 @@ def _detect_cuda_conflicts(names):
     )
     isolated = set(active_groups[minority_group])
     logger.info(
-        "CUDA conflict detected: groups %s. Isolating %s extractors %s to subprocess.",
+        "CUDA conflict detected: groups %s. Isolating %s analyzers %s to subprocess.",
         list(active_groups.keys()), minority_group, isolated,
     )
     return isolated
@@ -187,7 +187,7 @@ def _get_backend(backend):
 def run(
     video: Union[str, Path],
     *,
-    extractors: Optional[Sequence[str]] = None,
+    analyzers: Optional[Sequence[str]] = None,
     output_dir: Optional[Union[str, Path]] = None,
     fps: int = DEFAULT_FPS,
     cooldown: float = DEFAULT_COOLDOWN,
@@ -201,8 +201,8 @@ def run(
 
     Args:
         video: Path to video file.
-        extractors: Extractor names ["face", "pose", "gesture", "quality"].
-                   None = use all ML extractors.
+        analyzers: Analyzer names ["face", "pose", "gesture", "quality"].
+                   None = use all ML analyzers.
         output_dir: Directory for extracted clips. None = no clips.
         fps: Frames per second to process.
         cooldown: Seconds between triggers.
@@ -215,19 +215,19 @@ def run(
     Example:
         >>> result = fm.run("video.mp4")
         >>> result = fm.run("video.mp4", output_dir="./clips")
-        >>> result = fm.run("video.mp4", extractors=["face", "pose"])
+        >>> result = fm.run("video.mp4", analyzers=["face", "pose"])
         >>> result = fm.run("video.mp4", backend="pathway")
     """
     from facemoment.cli.utils import create_video_stream
 
-    # 1. Build extractor name list
-    extractor_names = list(extractors) if extractors else ["face", "pose", "gesture"]
+    # 1. Build analyzer name list
+    analyzer_names = list(analyzers) if analyzers else ["face", "pose", "gesture"]
 
     # 2. Build modules (facemoment domain logic)
-    modules = build_modules(extractor_names, cooldown=cooldown)
+    modules = build_modules(analyzer_names, cooldown=cooldown)
 
     # 3. Build isolation config (CUDA conflict detection)
-    isolation_config = _build_isolation_config(extractor_names)
+    isolation_config = _build_isolation_config(analyzer_names)
 
     # 4. Build FlowGraph (with isolation info in ModuleSpec)
     graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
@@ -270,13 +270,13 @@ def _extract_clips(video_path, triggers, output_dir):
 
 
 # Legacy compatibility
-def _needs_cuda_isolation(extractor_names):
-    """Check if the extractor combination requires CUDA subprocess isolation.
+def _needs_cuda_isolation(analyzer_names):
+    """Check if the analyzer combination requires CUDA subprocess isolation.
 
     .. deprecated::
         Use ``_build_isolation_config()`` instead.
     """
-    return bool(_detect_cuda_conflicts(extractor_names))
+    return bool(_detect_cuda_conflicts(analyzer_names))
 
 
 if __name__ == "__main__":

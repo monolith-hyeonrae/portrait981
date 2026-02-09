@@ -24,7 +24,7 @@ Example:
 from abc import ABC, abstractmethod
 from typing import Optional, Protocol, runtime_checkable, Any
 
-from visualpath.core.extractor import Observation
+from visualpath.core.observation import Observation
 
 
 @runtime_checkable

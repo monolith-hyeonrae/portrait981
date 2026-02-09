@@ -25,11 +25,11 @@ from visualpath.process import (
     BaseWorker,
     WorkerResult,
 )
-from visualpath.plugin import create_extractor, load_fusion
+from visualpath.plugin import create_analyzer, load_fusion
 
-from facemoment.pipeline.config import ExtractorConfig, FusionConfig, PipelineConfig
+from facemoment.pipeline.config import AnalyzerConfig, FusionConfig, PipelineConfig
 from facemoment.moment_detector.fusion.base import BaseFusion
-from visualpath.extractors.base import Observation
+from visualpath.analyzers.base import Observation
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class PipelineOrchestrator:
 
     def __init__(
         self,
-        extractor_configs: List[ExtractorConfig],
+        analyzer_configs: List[AnalyzerConfig],
         fusion: Optional[BaseFusion] = None,
         fusion_config: Optional[FusionConfig] = None,
         clip_output_dir: Optional[Path] = None,
@@ -76,10 +76,10 @@ class PipelineOrchestrator:
             stacklevel=2,
         )
 
-        if not extractor_configs:
-            raise ValueError("At least one extractor config is required")
+        if not analyzer_configs:
+            raise ValueError("At least one analyzer config is required")
 
-        self._extractor_configs = extractor_configs
+        self._analyzer_configs = analyzer_configs
         self._fusion = fusion
         self._fusion_config = fusion_config or FusionConfig()
         self._clip_output_dir = Path(clip_output_dir) if clip_output_dir else Path("./clips")
@@ -99,7 +99,7 @@ class PipelineOrchestrator:
     def from_config(cls, config: PipelineConfig) -> "PipelineOrchestrator":
         """Create orchestrator from a PipelineConfig."""
         return cls(
-            extractor_configs=config.extractors,
+            analyzer_configs=config.analyzers,
             fusion_config=config.fusion,
             clip_output_dir=Path(config.clip_output_dir),
             backend=config.backend,
@@ -146,17 +146,17 @@ class PipelineOrchestrator:
         start_time = time.time()
         self._stats = PipelineStats()
 
-        # Build modules from extractor configs
-        extractor_names = [c.name for c in self._extractor_configs]
+        # Build modules from analyzer configs
+        analyzer_names = [c.name for c in self._analyzer_configs]
         modules = build_modules(
-            extractor_names,
+            analyzer_names,
             cooldown=self._fusion_config.cooldown_sec,
         )
 
-        # Build isolation config from extractor configs
+        # Build isolation config from analyzer configs
         overrides = {}
         venv_paths = {}
-        for config in self._extractor_configs:
+        for config in self._analyzer_configs:
             if config.effective_isolation > IL.INLINE:
                 overrides[config.name] = config.effective_isolation
             if config.venv_path:
@@ -172,7 +172,7 @@ class PipelineOrchestrator:
 
         # If no explicit isolation, fall back to CUDA conflict detection
         if isolation_config is None:
-            isolation_config = _build_isolation_config(extractor_names)
+            isolation_config = _build_isolation_config(analyzer_names)
 
         # Build graph
         triggers = []

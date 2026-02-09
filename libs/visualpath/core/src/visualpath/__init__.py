@@ -8,8 +8,8 @@ Quick Start:
     >>> # Process a video with modules (preferred)
     >>> result = vp.process_video("video.mp4", modules=[face_detector, smile_trigger])
     >>>
-    >>> # Create a custom extractor (decorator)
-    >>> @vp.extractor("brightness")
+    >>> # Create a custom analyzer (decorator)
+    >>> @vp.analyzer("brightness")
     >>> def check_brightness(frame):
     ...     return {"brightness": float(frame.data.mean())}
     >>>
@@ -45,13 +45,13 @@ from visualpath.api import (
     DEFAULT_PRE_SEC,
     DEFAULT_POST_SEC,
     # Decorators
-    extractor,
+    analyzer,
     fusion,
     trigger,
     # Registry
-    get_extractor,
+    get_analyzer,
     get_fusion,
-    list_extractors,
+    list_analyzers,
     list_fusions,
     # Types
     TriggerSpec,
@@ -69,7 +69,7 @@ from visualpath.runner import (
 # Core exports (for advanced use)
 # =============================================================================
 from visualpath.core.module import Module
-from visualpath.core.extractor import Observation, DummyExtractor
+from visualpath.core.observation import Observation, DummyAnalyzer
 from visualpath.core.isolation import IsolationLevel, IsolationConfig
 from visualpath.core.path import Path, PathConfig, PathOrchestrator
 
@@ -80,22 +80,22 @@ __all__ = [
     "DEFAULT_PRE_SEC",
     "DEFAULT_POST_SEC",
     # High-level API
-    "extractor",
+    "analyzer",
     "fusion",
     "trigger",
     "process_video",
     "get_backend",
     "resolve_modules",
-    "get_extractor",
+    "get_analyzer",
     "get_fusion",
-    "list_extractors",
+    "list_analyzers",
     "list_fusions",
     "ProcessResult",
     "TriggerSpec",
     # Core (unified API)
     "Module",
     "Observation",
-    "DummyExtractor",
+    "DummyAnalyzer",
     "IsolationLevel",
     "IsolationConfig",
     "Path",

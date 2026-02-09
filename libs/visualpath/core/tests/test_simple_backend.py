@@ -27,8 +27,8 @@ class MockFrame:
     data: np.ndarray
 
 
-class CountingExtractor(Module):
-    """Extractor that counts calls."""
+class CountingAnalyzer(Module):
+    """Analyzer that counts calls."""
 
     def __init__(self, name: str, value: float = 0.5):
         self._name = name
@@ -139,13 +139,13 @@ def make_frames(count: int, interval_ns: int = 100_000_000) -> List[MockFrame]:
 class TestSimpleBackendExecute:
     """Tests for SimpleBackend.execute() with FlowGraph."""
 
-    def test_execute_single_extractor(self):
-        """Test execute() with a single extractor."""
+    def test_execute_single_analyzer(self):
+        """Test execute() with a single analyzer."""
         from visualpath.backends.simple import SimpleBackend
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test", value=0.3)
+        ext = CountingAnalyzer("test", value=0.3)
         graph = FlowGraph.from_modules([ext])
         frames = make_frames(5)
 
@@ -162,7 +162,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test", value=0.7)
+        ext = CountingAnalyzer("test", value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
         graph = FlowGraph.from_modules([ext, fusion])
         frames = make_frames(5)
@@ -179,7 +179,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test", value=0.3)
+        ext = CountingAnalyzer("test", value=0.3)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
         graph = FlowGraph.from_modules([ext, fusion])
         frames = make_frames(3)
@@ -189,14 +189,14 @@ class TestSimpleBackendExecute:
         assert result.frame_count == 3
         assert len(result.triggers) == 0
 
-    def test_execute_multiple_extractors(self):
-        """Test execute() with multiple extractors."""
+    def test_execute_multiple_analyzers(self):
+        """Test execute() with multiple analyzers."""
         from visualpath.backends.simple import SimpleBackend
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext1 = CountingExtractor("ext1", value=0.3)
-        ext2 = CountingExtractor("ext2", value=0.7)
+        ext1 = CountingAnalyzer("ext1", value=0.3)
+        ext2 = CountingAnalyzer("ext2", value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="ext1")
         graph = FlowGraph.from_modules([ext1, ext2, fusion])
         frames = make_frames(3)
@@ -213,7 +213,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test")
+        ext = CountingAnalyzer("test")
         graph = FlowGraph.from_modules([ext])
 
         result = backend.execute(iter([]), graph)
@@ -227,7 +227,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow import FlowGraphBuilder
 
         backend = SimpleBackend()
-        ext = CountingExtractor("ext1", value=0.7)
+        ext = CountingAnalyzer("ext1", value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="ext1")
 
         graph = (FlowGraphBuilder()
@@ -252,7 +252,7 @@ class TestSimpleBackendExecute:
         from visualpath.flow.graph import FlowGraph
 
         backend = SimpleBackend()
-        ext = CountingExtractor("test", value=0.7)
+        ext = CountingAnalyzer("test", value=0.7)
         fusion = ThresholdFusion(threshold=0.5, depends_on="test")
         graph = FlowGraph.from_modules([ext, fusion])
         frames = make_frames(3)

@@ -1,6 +1,6 @@
-"""Observation dataclass and DummyExtractor for testing.
+"""Observation dataclass and DummyAnalyzer for testing.
 
-Observations are timestamped feature extractions that flow from
+Observations are timestamped feature analyses that flow from
 modules to downstream consumers.
 
 Example:
@@ -101,7 +101,7 @@ class Observation(Generic[T]):
 
 
 
-class DummyExtractor:
+class DummyAnalyzer:
     """Dummy module for testing.
 
     Always returns a simple observation with fixed signals.
@@ -160,7 +160,7 @@ class DummyExtractor:
         """Reset state."""
         self._process_count = 0
 
-    def __enter__(self) -> "DummyExtractor":
+    def __enter__(self) -> "DummyAnalyzer":
         self.initialize()
         return self
 

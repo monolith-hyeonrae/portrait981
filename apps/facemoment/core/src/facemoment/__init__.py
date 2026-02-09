@@ -22,7 +22,7 @@ Frame Scoring:
 
 Pipeline (recommended):
     >>> from facemoment.pipeline import FacemomentPipeline
-    >>> pipeline = FacemomentPipeline(extractors=["face", "pose"])
+    >>> pipeline = FacemomentPipeline(analyzers=["face", "pose"])
     >>> triggers = pipeline.run(frames)
 """
 
