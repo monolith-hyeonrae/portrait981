@@ -79,8 +79,13 @@ portrait981/                        ← repo root (uv workspace)
 │   └── facemoment/
 │       └── core/                   # 얼굴/장면 분석 앱
 ├── docs/
-│   ├── ROADMAP.md
-│   └── planning/
+│   ├── index.md                    # 문서 인덱스
+│   ├── architecture.md             # 아키텍처
+│   ├── stream-synchronization.md   # 스트림 동기화
+│   ├── isolation.md                # ML 의존성 격리
+│   ├── algorithms.md               # 하이라이트 알고리즘
+│   ├── roadmap.md                  # 로드맵 (이 파일)
+│   └── planning/                   # 기획/히스토리
 ├── models/
 │   └── yolov8m-pose.pt
 ├── pyproject.toml                  # workspace root

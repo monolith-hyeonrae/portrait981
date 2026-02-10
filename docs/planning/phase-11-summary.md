@@ -332,6 +332,6 @@ facemoment debug video.mp4 -e raw        # 원본만 (분석 없음)
 
 ## 관련 문서
 
-- [visualpath Architecture](../../visualpath/docs/architecture.md): 플러그인 생태계 아키텍처
-- [Problems and Solutions](./problems-and-solutions.md): 981파크 분석 알고리즘
-- [Stream Synchronization](../../visualpath/docs/stream-synchronization.md): 스트림 동기화 (visualpath)
+- [visualpath Architecture](../architecture.md): 플러그인 생태계 아키텍처
+- [Problems and Solutions](../algorithms.md): 981파크 분석 알고리즘
+- [Stream Synchronization](../stream-synchronization.md): 스트림 동기화 (visualpath)

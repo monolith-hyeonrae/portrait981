@@ -279,7 +279,7 @@ plugin-scene (씬 분류)
 | 개발 환경 vs 프로덕션 격리 수준 차이 | 배포 시 | 코드 분기 | 설정으로 전환 |
 | extractor 추가 시 루프 코드 수정 | 확장 시 | 루프에 코드 추가 | 플러그인 등록 |
 
-자세한 기술 분석은 [facemoment/docs/cuda-conflict-isolation.md](../../facemoment/docs/cuda-conflict-isolation.md)를 참조하세요.
+자세한 기술 분석은 [isolation.md](../isolation.md)를 참조하세요.
 
 ---
 

@@ -14,7 +14,7 @@ FaceMoment에서 하이라이트 순간을 감지하기 위해 사용하는 알�
 8. [프레임 스코어링](#8-프레임-스코어링)
 9. [다양성 기반 프레임 선택](#9-다양성-기반-프레임-선택)
 
-> **타이밍/동기화 문제**는 [visualpath/docs/stream-synchronization.md](../../visualpath/docs/stream-synchronization.md)를 참조하세요.
+> **타이밍/동기화 문제**는 [stream-synchronization.md](stream-synchronization.md)를 참조하세요.
 
 ---
 
@@ -753,7 +753,7 @@ for f in best_frames:
 | `GateConditionRecord` | VERBOSE | 프레임별 게이트 조건 체크 |
 
 > 타이밍 관련 레코드 (`TimingRecord`, `FrameDropRecord`, `SyncDelayRecord`)는
-> [visualpath/docs/stream-synchronization.md](../../visualpath/docs/stream-synchronization.md#observability-연동)를 참조하세요.
+> [stream-synchronization.md](stream-synchronization.md#observability-연동)를 참조하세요.
 
 ### 예시: 표정 급변 민감도 분석
 

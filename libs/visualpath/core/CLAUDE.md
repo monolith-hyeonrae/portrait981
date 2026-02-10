@@ -260,8 +260,10 @@ uv pip install -e . -e ../visualpath-isolation -e ../visualpath-pathway -e ../vi
 
 ## 문서
 
+문서는 repo root의 `docs/`에 통합 관리:
 - `docs/architecture.md`: 아키텍처 및 플러그인 시스템
 - `docs/stream-synchronization.md`: 스트림 동기화
+- `docs/index.md`: 전체 문서 인덱스
 
 ## 관련 패키지
 

@@ -612,8 +612,7 @@ composite = CompositeMapper([FaceMapper(), DefaultObservationMapper()])
 
 ## 관련 문서
 
-- [왜 visualpath인가](./why-visualpath.md): 단순 루프에서 플랫폼이 필요해지는 과정
-- [ML 의존성 충돌과 격리](../../facemoment/docs/cuda-conflict-isolation.md): CUDA/onnxruntime 충돌 사례
-- [Stream Synchronization](./stream-synchronization.md): 스트림 동기화 아키텍처
-- visualbase/CLAUDE.md: 미디어 I/O 라이브러리
-- facemoment/CLAUDE.md: 981파크 분석 앱 (플러그인 예시)
+- [왜 visualpath인가](planning/why-visualpath.md): 단순 루프에서 플랫폼이 필요해지는 과정
+- [ML 의존성 충돌과 격리](isolation.md): CUDA/onnxruntime 충돌 사례
+- [Stream Synchronization](stream-synchronization.md): 스트림 동기화 아키텍처
+- [문서 인덱스](index.md): 전체 문서 목록
