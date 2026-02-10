@@ -61,9 +61,10 @@ class TestRunFunction:
                 on_trigger=cb,
             )
             assert isinstance(result, fm.Result)
-            # on_trigger should be passed to build_graph
+            # on_trigger should be wrapped in adapter and passed to build_graph
             _, kwargs = mock_bg.call_args
-            assert kwargs.get("on_trigger") is cb
+            assert kwargs.get("on_trigger") is not None
+            assert callable(kwargs["on_trigger"])
 
     def test_run_with_output_dir(self):
         """Test run with output directory for clips."""

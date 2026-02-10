@@ -265,13 +265,19 @@ class FacemomentPipeline:
         # Build isolation config
         isolation_config = _build_isolation_config(self._analyzer_names)
 
-        # Build graph
-        graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
+        # Build graph (adapt user callback: Trigger → FlowData)
+        flow_cb = None
+        if on_trigger:
+            def _trigger_adapter(data):
+                for result in data.results:
+                    if result.should_trigger and result.trigger:
+                        on_trigger(result.trigger)
+            flow_cb = _trigger_adapter
+        graph = build_graph(modules, isolation=isolation_config, on_trigger=flow_cb)
 
         # Select backend
         from facemoment.main import _get_backend
-        engine = _get_backend("pathway" if PATHWAY_AVAILABLE else "simple",
-                              has_isolation=isolation_config is not None)
+        engine = _get_backend("pathway" if PATHWAY_AVAILABLE else "simple")
         self.actual_backend = engine.name
 
         # Execute

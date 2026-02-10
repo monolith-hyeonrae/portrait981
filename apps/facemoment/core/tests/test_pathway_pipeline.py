@@ -93,8 +93,10 @@ class TestFacemomentPipelineExecution:
             frames = [create_mock_frame(0, 0)]
             pipeline.run(frames, on_trigger=cb)
 
+            # on_trigger is wrapped in adapter (FlowData → Trigger)
             _, kwargs = mock_bg.call_args
-            assert kwargs.get("on_trigger") is cb
+            assert kwargs.get("on_trigger") is not None
+            assert callable(kwargs["on_trigger"])
 
 
 class TestPathwayAvailability:
@@ -180,8 +182,10 @@ class TestHighlevelAPIBackend:
             from facemoment.main import run
             run("test.mp4", analyzers=["mock.dummy"], on_trigger=cb)
 
+            # on_trigger is wrapped in adapter (FlowData → Trigger)
             _, kwargs = mock_bg.call_args
-            assert kwargs["on_trigger"] is cb
+            assert kwargs["on_trigger"] is not None
+            assert callable(kwargs["on_trigger"])
 
 
 class TestPipelineConfigBackend:

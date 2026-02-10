@@ -222,7 +222,9 @@ class PipelineConfig:
 
 
 def create_default_config(
+    *,
     venv_face: Optional[str] = None,
+    venv_expression: Optional[str] = None,
     venv_pose: Optional[str] = None,
     venv_gesture: Optional[str] = None,
     clip_output_dir: str = "./clips",
@@ -232,13 +234,15 @@ def create_default_config(
 ) -> PipelineConfig:
     """Create a default pipeline configuration.
 
-    Creates a configuration with face, pose, and optionally gesture
-    analyzers based on provided venv paths.
+    Creates a configuration with the same default analyzer set as
+    ``fm.run()``: face.detect, face.expression, body.pose, hand.gesture,
+    plus frame.quality.
 
     Args:
-        venv_face: Path to venv for face analyzer. If None, runs inline.
+        venv_face: Path to venv for face.detect analyzer. If None, runs inline.
+        venv_expression: Path to venv for face.expression analyzer. If None, runs inline.
         venv_pose: Path to venv for pose analyzer. If None, runs inline.
-        venv_gesture: Path to venv for gesture analyzer. If provided, adds gesture analyzer.
+        venv_gesture: Path to venv for gesture analyzer. If None, runs inline.
         clip_output_dir: Directory for extracted clips.
         fps: Analysis frame rate.
         cooldown_sec: Cooldown between triggers.
@@ -252,32 +256,18 @@ def create_default_config(
         ...     venv_pose="/opt/venvs/venv-pose",
         ... )
     """
-    analyzers = []
-
-    # Face analyzer
-    analyzers.append(AnalyzerConfig(
-        name="face.detect",
-        venv_path=venv_face,
-    ))
-
-    # Pose analyzer
-    analyzers.append(AnalyzerConfig(
-        name="body.pose",
-        venv_path=venv_pose,
-    ))
-
-    # Gesture analyzer (if venv provided)
-    if venv_gesture:
-        analyzers.append(AnalyzerConfig(
-            name="hand.gesture",
-            venv_path=venv_gesture,
-        ))
-
-    # Quality analyzer (always inline - lightweight)
-    analyzers.append(AnalyzerConfig(
-        name="frame.quality",
-        isolation=IsolationLevel.INLINE,
-    ))
+    analyzers = [
+        # Face detection
+        AnalyzerConfig(name="face.detect", venv_path=venv_face),
+        # Expression analysis (depends on face.detect)
+        AnalyzerConfig(name="face.expression", venv_path=venv_expression),
+        # Pose estimation
+        AnalyzerConfig(name="body.pose", venv_path=venv_pose),
+        # Gesture recognition
+        AnalyzerConfig(name="hand.gesture", venv_path=venv_gesture),
+        # Quality gate (always inline - lightweight)
+        AnalyzerConfig(name="frame.quality", isolation=IsolationLevel.INLINE),
+    ]
 
     return PipelineConfig(
         analyzers=analyzers,

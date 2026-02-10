@@ -10,8 +10,6 @@ from facemoment.cli.utils import (
     setup_observability,
     cleanup_observability,
     detect_distributed_mode,
-    detect_ml_mode,
-    probe_analyzers,
 )
 
 
@@ -26,6 +24,7 @@ def run_process(args):
             args,
             getattr(args, 'config', None),
             getattr(args, 'venv_face', None),
+            getattr(args, 'venv_expression', None),
             getattr(args, 'venv_pose', None),
             getattr(args, 'venv_gesture', None),
             backend,
@@ -34,7 +33,7 @@ def run_process(args):
         _run_library(args, backend)
 
 
-def _run_distributed(args, config_path, venv_face, venv_pose, venv_gesture, backend="pathway"):
+def _run_distributed(args, config_path, venv_face, venv_expression, venv_pose, venv_gesture, backend="pathway"):
     """Run processing in distributed mode using PipelineOrchestrator."""
     from facemoment.pipeline import (
         PipelineOrchestrator,
@@ -71,6 +70,7 @@ def _run_distributed(args, config_path, venv_face, venv_pose, venv_gesture, back
     else:
         config = create_default_config(
             venv_face=venv_face,
+            venv_expression=venv_expression,
             venv_pose=venv_pose,
             venv_gesture=venv_gesture,
             clip_output_dir=str(output_dir),
@@ -141,10 +141,11 @@ def _run_distributed(args, config_path, venv_face, venv_pose, venv_gesture, back
     print(f"  Clips extracted: {stats.clips_extracted}")
     if stats.avg_frame_time_ms > 0:
         print(f"  Avg frame time: {stats.avg_frame_time_ms:.1f}ms")
-    print()
+    _print_backend_stats(stats.backend_stats)
 
     # Print worker stats
     if stats.worker_stats:
+        print()
         print("Worker statistics:")
         for name, ws in stats.worker_stats.items():
             if ws["frames"] > 0:
@@ -229,15 +230,46 @@ def _run_distributed(args, config_path, venv_face, venv_pose, venv_gesture, back
     cleanup_observability(hub, file_sink)
 
 
-def _run_library(args, backend="pathway"):
-    """Run processing in library mode using FacemomentPipeline.
+def _print_backend_stats(stats):
+    """Print backend execution statistics."""
+    if not stats:
+        return
 
-    Uses the same pipeline as distributed mode for consistent behavior:
-    - FaceClassifier auto-injection when face analyzer is used
-    - HighlightFusion main_only mode
+    throughput = stats.get("throughput_fps", 0)
+    if throughput > 0:
+        print(f"  Throughput: {throughput:.1f} FPS")
+
+    pipeline_sec = stats.get("pipeline_duration_sec", 0)
+    if pipeline_sec > 0:
+        print(f"  Pipeline time: {pipeline_sec:.1f}s")
+
+    per_analyzer = stats.get("per_analyzer_time_ms", {})
+    if per_analyzer:
+        avg_ms = stats.get("avg_analysis_ms", 0)
+        p95_ms = stats.get("p95_analysis_ms", 0)
+        completed = stats.get("analyses_completed", 0)
+        failed = stats.get("analyses_failed", 0)
+        print()
+        print("Analyzer statistics:")
+        for name, ema_ms in sorted(per_analyzer.items()):
+            print(f"  {name:20s}  avg {ema_ms:6.1f}ms (EMA)")
+        if avg_ms > 0:
+            print(f"  {'(all)':20s}  avg {avg_ms:6.1f}ms, p95 {p95_ms:.1f}ms")
+        if failed > 0:
+            print(f"  Analyses: {completed} ok, {failed} failed")
+
+
+def _run_library(args, backend="pathway"):
+    """Run processing in library mode using fm.run().
+
+    Uses the unified execution path:
+        fm.run() → build_graph(isolation) → Backend.execute()
+
+    Clip extraction is done via on_trigger callback (real-time),
+    not fm.run(output_dir=...) post-processing.
     """
-    from visualbase import VisualBase, FileSource, ClipResult
-    from facemoment.pipeline.pathway_pipeline import FacemomentPipeline, PATHWAY_AVAILABLE
+    import facemoment as fm
+    from visualbase import VisualBase, FileSource
 
     # Setup observability
     trace_level = getattr(args, 'trace', 'off')
@@ -247,82 +279,29 @@ def _run_library(args, backend="pathway"):
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    use_ml = args.use_ml
-    ml_mode = detect_ml_mode(args)
-
-    # Determine effective backend
-    effective_backend = backend if PATHWAY_AVAILABLE or backend == "simple" else "simple"
+    # Determine analyzer set — same as debug: use defaults, let
+    # fm.run() → resolve_modules() handle loading via plugin registry.
+    use_ml = getattr(args, 'use_ml', None)
+    if use_ml is False:
+        analyzer_names = ["mock.dummy"]
+    else:
+        # None = fm.run() default: face.detect, face.expression, body.pose, hand.gesture
+        analyzer_names = None
 
     print(f"Processing: {args.path}")
     print(f"FPS: {args.fps}")
     print(f"Output: {output_dir}")
-    print(f"Mode: LIBRARY")
-    print(f"Backend: {effective_backend}" + (" (pathway unavailable, using simple)" if backend == "pathway" and not PATHWAY_AVAILABLE else ""))
-    print(f"ML backends: {ml_mode}")
+    print(f"Backend: {backend}")
+    print(f"Cooldown: {args.cooldown}s")
     print("-" * 50)
 
-    # Determine which analyzers to use
-    probed = probe_analyzers(use_ml=use_ml)
-    analyzer_names = probed["names"]
-    face_available = probed["face.detect"]
-    pose_available = probed["body.pose"]
-    gesture_available = probed["hand.gesture"]
-
-    for name in analyzer_names:
-        if name == "mock.dummy":
-            print("  DummyAnalyzer: enabled (fallback)")
-        else:
-            print(f"  {name.capitalize()}Analyzer: enabled")
-
-    # Print FaceClassifier info (auto-injected by FacemomentPipeline)
-    if face_available:
-        print("  FaceClassifierAnalyzer: enabled (auto-injected)")
-
-    # Set up fusion config
-    fusion_config = {
-        "cooldown_sec": args.cooldown,
-        "head_turn_velocity_threshold": args.head_turn_threshold,
-        "main_only": True,  # Use main face for triggers
-    }
-
-    if face_available:
-        print(f"  HighlightFusion: enabled (cooldown={args.cooldown}s)")
-    else:
-        print(f"  DummyFusion: enabled (threshold={args.threshold})")
-
-    # Show available triggers
-    print()
-    print("Available triggers:")
-    if face_available:
-        print(f"  - expression_spike: enabled")
-        print(f"  - head_turn: enabled")
-        print(f"  - camera_gaze: enabled")
-        print(f"  - passenger_interaction: enabled")
-    if pose_available:
-        print(f"  - hand_wave: enabled")
-    if gesture_available:
-        print(f"  - gesture_vsign: enabled")
-        print(f"  - gesture_thumbsup: enabled")
-    if not face_available and not pose_available:
-        print(f"  - dummy triggers only")
-
-    print("-" * 50)
-
-    # Create pipeline
-    pipeline = FacemomentPipeline(
-        analyzers=analyzer_names,
-        fusion_config=fusion_config,
-        auto_inject_classifier=face_available,
-    )
-
-    # Initialize visualbase for clip extraction
+    # Initialize visualbase for real-time clip extraction
     vb = VisualBase(clip_output_dir=output_dir)
     vb.connect(FileSource(args.path))
 
     # Track metadata for each clip
     clip_metadata = []
     clips = []
-    frames_processed = 0
     triggers_fired = 0
     start_time = time.time()
 
@@ -331,7 +310,6 @@ def _run_library(args, backend="pathway"):
         triggers_fired += 1
         event_time_sec = trigger.event_time_ns / 1e9 if trigger.event_time_ns else 0
 
-        # Get reason and score from trigger metadata
         reason = trigger.metadata.get("reason", "highlight") if trigger.metadata else "highlight"
         score = trigger.metadata.get("score", 0.0) if trigger.metadata else 0.0
 
@@ -345,26 +323,21 @@ def _run_library(args, backend="pathway"):
         clip_metadata.append(meta)
         print(f"\n  TRIGGER #{meta['trigger_id']}: {reason} (score={score:.2f}, t={event_time_sec:.2f}s)")
 
-        # Extract clip
+        # Extract clip via visualbase
         clip_result = vb.trigger(trigger)
         clips.append(clip_result)
 
-    # Progress tracking
-    last_progress = [0]
-
-    def frame_generator():
-        nonlocal frames_processed
-        for frame in vb.get_stream(fps=args.fps):
-            frames_processed += 1
-            if frame.frame_id % 100 == 0 and frame.frame_id > last_progress[0]:
-                last_progress[0] = frame.frame_id
-                print(f"\r  Processing frame {frame.frame_id}...", end="", flush=True)
-            yield frame
-
-    # Process video
+    # Process video via unified path
     print("Processing video...")
     try:
-        pipeline.run(frame_generator(), on_trigger=on_trigger)
+        result = fm.run(
+            args.path,
+            analyzers=analyzer_names,
+            fps=args.fps,
+            cooldown=args.cooldown,
+            backend=backend,
+            on_trigger=on_trigger,
+        )
     except Exception as e:
         print(f"\nError during processing: {e}")
         vb.disconnect()
@@ -379,9 +352,11 @@ def _run_library(args, backend="pathway"):
 
     print("-" * 50)
     print(f"Processing complete in {elapsed:.1f}s")
-    print(f"  Frames processed: {frames_processed}")
+    print(f"  Frames processed: {result.frame_count}")
     print(f"  Triggers fired: {triggers_fired}")
     print(f"  Clips extracted: {clips_extracted}")
+    print(f"  Backend: {result.actual_backend}")
+    _print_backend_stats(result.stats)
     print()
 
     # Save metadata for each clip
@@ -419,15 +394,14 @@ def _run_library(args, backend="pathway"):
             "video_source": str(Path(args.path).resolve()),
             "processed_at": datetime.now().isoformat(),
             "mode": "library",
-            "backend": pipeline.actual_backend or effective_backend,
+            "backend": result.actual_backend,
             "settings": {
                 "fps": args.fps,
                 "cooldown_sec": args.cooldown,
-                "ml_mode": ml_mode,
-                "analyzers": analyzer_names,
+                "analyzers": list(result.stats.get("per_analyzer_time_ms", {}).keys()),
             },
             "results": {
-                "frames_processed": frames_processed,
+                "frames_processed": result.frame_count,
                 "triggers_fired": triggers_fired,
                 "clips_extracted": clips_extracted,
                 "processing_time_sec": elapsed,

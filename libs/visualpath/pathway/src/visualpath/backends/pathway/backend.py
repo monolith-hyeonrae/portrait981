@@ -16,9 +16,15 @@ Example:
     >>> result = backend.execute(frames, graph)
 """
 
+import logging
+import os
+import signal
+import threading
 import time as _time_mod
 import uuid
 from typing import Iterator, TYPE_CHECKING
+
+_logger = logging.getLogger(__name__)
 
 from visualpath.backends.base import ExecutionBackend, PipelineResult
 from visualpath.backends.pathway.stats import PathwayStats
@@ -217,10 +223,6 @@ class PathwayBackend(ExecutionBackend):
                 },
             ))
 
-        # Fusion is now part of the modules pipeline in the UDF,
-        # so we don't re-run it in the subscribe callback.
-        # Instead, we inspect UDF output for trigger observations directly.
-
         # Initialize graph nodes (analyzers, fusions)
         graph.initialize()
 
@@ -240,13 +242,18 @@ class PathwayBackend(ExecutionBackend):
             )
             output_table = converter.convert(graph, frames_table)
 
-            # 3. Subscribe — collect triggers from output
+            # Stateful modules (is_trigger=True) are deferred from the UDF.
+            # Pathway UDFs execute rows in arbitrary order within a batch,
+            # so stateful modules run after the engine completes, sorted
+            # by t_ns for correct temporal ordering.
+            deferred = converter.deferred_modules
+            deferred_queue: list = []  # (t_ns, frame, analyzer_deps)
+
+            # 3. Subscribe — collect analyzer results from output
             def on_output(key, row, time, is_addition):
                 if not is_addition:
                     return
                 stats.record_observation_output()
-
-                t0 = _time_mod.perf_counter()
 
                 # Extract results from output row if available
                 results_wrapper = row.get("results")
@@ -258,15 +265,16 @@ class PathwayBackend(ExecutionBackend):
                     )
                     if isinstance(result_list, list):
                         frame_id_val = 0
+                        analyzer_deps = {}
                         for r in result_list:
-                            # Record analysis stats
+                            # Record per-analyzer stats using UDF-measured timing
                             if hasattr(r, "observation") and r.observation is not None:
-                                stats.record_frame_analyzed()
-                                elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
+                                elapsed_ms = getattr(r, "elapsed_ms", 0.0)
                                 stats.record_analysis(
                                     r.source, elapsed_ms, success=True,
                                 )
                                 frame_id_val = r.frame_id
+                                analyzer_deps[r.source] = r.observation
                                 # Check if the observation itself is a trigger
                                 obs = r.observation
                                 if obs.should_trigger and obs.trigger is not None:
@@ -282,21 +290,103 @@ class PathwayBackend(ExecutionBackend):
                                     r.source, 0.0, success=False,
                                 )
 
+                        # Queue frame+deps for deferred fusion (sorted later)
+                        if deferred:
+                            frame_wrapper = row.get("frame")
+                            frame = (
+                                frame_wrapper.value
+                                if hasattr(frame_wrapper, "value")
+                                else frame_wrapper
+                            )
+                            deferred_queue.append(
+                                (frame.t_src_ns, frame, dict(analyzer_deps))
+                            )
+
+                        # Record one frame analyzed per batch of results
+                        stats.record_frame_analyzed()
+
                         # Emit timing record via ObservabilityHub
                         if hub.enabled:
+                            total_ms = sum(
+                                getattr(r, "elapsed_ms", 0.0)
+                                for r in result_list
+                            )
                             from visualpath.observability.records import TimingRecord
-                            elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
                             hub.emit(TimingRecord(
                                 frame_id=frame_id_val,
                                 component="pathway_udf",
-                                processing_ms=elapsed_ms,
+                                processing_ms=total_ms,
                             ))
 
             pw.io.subscribe(output_table, on_change=on_output)
 
-            # 4. Run the Pathway engine
+            # 4. Run the Pathway engine in a background thread so
+            #    the main thread can receive SIGINT (Ctrl+C).
             stats.mark_pipeline_start()
-            pw.run()
+            engine_error = [None]
+
+            def _run_engine():
+                try:
+                    pw.run(
+                        monitoring_level=pw.MonitoringLevel.NONE,
+                        default_logging=False,
+                    )
+                except Exception as exc:
+                    engine_error[0] = exc
+
+            engine_thread = threading.Thread(
+                target=_run_engine, daemon=True,
+            )
+            engine_thread.start()
+
+            try:
+                # Wait with a poll loop so SIGINT reaches the main thread
+                while engine_thread.is_alive():
+                    engine_thread.join(timeout=0.5)
+            except KeyboardInterrupt:
+                _logger.info("Interrupted — terminating Pathway engine")
+                # Send SIGINT to self so the Rust engine sees it too
+                os.kill(os.getpid(), signal.SIGINT)
+                engine_thread.join(timeout=5.0)
+                raise
+
+            if engine_error[0] is not None:
+                raise engine_error[0]
+
+            # 5. Run deferred stateful modules in temporal order
+            if deferred:
+                deferred_queue.sort(key=lambda x: x[0])  # sort by t_ns
+                for _t_ns, frame, analyzer_deps in deferred_queue:
+                    for dm in deferred:
+                        t0 = _time_mod.perf_counter()
+                        try:
+                            dm_dep_names = (
+                                list(getattr(dm, 'depends', None) or [])
+                                + list(getattr(dm, 'optional_depends', None) or [])
+                            )
+                            dm_deps = (
+                                {n: analyzer_deps[n] for n in dm_dep_names if n in analyzer_deps}
+                                if dm_dep_names else None
+                            )
+                            dm_obs = dm.process(frame, dm_deps)
+                            elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
+                            stats.record_analysis(dm.name, elapsed_ms, success=True)
+                            if dm_obs is not None:
+                                analyzer_deps[dm.name] = dm_obs
+                                if dm_obs.should_trigger and dm_obs.trigger is not None:
+                                    stats.record_trigger()
+                                    triggers.append(dm_obs.trigger)
+                                    from visualpath.flow.node import FlowData
+                                    trigger_data = FlowData(results=[dm_obs])
+                                    graph.fire_triggers(trigger_data)
+                        except Exception as exc:
+                            elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
+                            stats.record_analysis(dm.name, elapsed_ms, success=False)
+                            _logger.warning(
+                                "Deferred module '%s' failed: %s",
+                                dm.name, exc,
+                            )
+
             stats.mark_pipeline_end()
 
         finally:

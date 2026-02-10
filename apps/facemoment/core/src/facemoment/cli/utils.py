@@ -99,7 +99,9 @@ def configure_log_levels():
         "facemoment.moment_detector.analyzers",
         "facemoment.pipeline.pathway_pipeline",
         "visualpath.process.launcher",
+        "visualpath.backends.pathway",
         "visualbase.sources.decoder",
+        "pathway_engine",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
 

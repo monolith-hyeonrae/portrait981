@@ -64,6 +64,7 @@ class FlowGraphConverter:
         self._window_ns = window_ns
         self._allowed_lateness_ns = allowed_lateness_ns
         self._tables: Dict[str, "pw.Table"] = {}
+        self._deferred_modules: list = []
 
     def convert(
         self,
@@ -99,6 +100,17 @@ class FlowGraphConverter:
         if order:
             return self._tables.get(order[-1], frames_table)
         return frames_table
+
+    @property
+    def deferred_modules(self) -> list:
+        """Stateful modules deferred from UDF to ordered subscribe callback.
+
+        Pathway UDFs execute in arbitrary order across rows. Stateful
+        modules (``is_trigger=True``) require temporal ordering, so they
+        are excluded from the UDF and returned here for the backend to
+        run in the subscribe callback, which Pathway delivers in order.
+        """
+        return list(self._deferred_modules)
 
     def _convert_node(
         self,
@@ -202,18 +214,35 @@ class FlowGraphConverter:
         When ``spec.isolation`` is set, modules needing isolation are
         wrapped in WorkerModule before being converted to UDFs.
 
-        When ``spec.parallel=True`` and there are independent module
-        groups (based on dependency analysis), each group gets its own
-        UDF so Pathway can schedule them in parallel.  The branches are
-        then rejoined via ``interval_join``.
+        When ``spec.parallel=True``, each analyzer gets its own Pathway
+        UDF so the Rust engine can schedule independent branches in
+        parallel.  Dependent analyzers chain from their upstream table.
+        All per-analyzer tables are joined via ``interval_join``.
         """
-        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
-
         input_table = self._get_input_table(node_name, graph)
         if input_table is None:
             return
 
         modules = list(spec.modules)
+        if not modules:
+            self._tables[node_name] = input_table
+            return
+
+        # Defer stateful trigger modules — Pathway UDFs execute in
+        # arbitrary row order, but subscribe delivers rows in temporal
+        # order.  Stateful modules (is_trigger=True) need ordering, so
+        # they are excluded from the UDF and run in the subscribe callback.
+        analyzers = [m for m in modules if not getattr(m, 'is_trigger', False)]
+        deferred = [m for m in modules if getattr(m, 'is_trigger', False)]
+        if deferred:
+            self._deferred_modules.extend(deferred)
+            logger.info(
+                "Deferred %d stateful module(s) to ordered subscribe: %s",
+                len(deferred),
+                [m.name for m in deferred],
+            )
+        modules = analyzers
+
         if not modules:
             self._tables[node_name] = input_table
             return
@@ -229,27 +258,16 @@ class FlowGraphConverter:
             )
             return
 
-        # Dependency graph analysis: split into independent groups
-        groups = self._split_by_dependency(modules)
+        # Per-analyzer DAG: each analyzer gets its own UDF + table
+        branch_tables = self._build_per_analyzer_dag(
+            modules, input_table, spec.join_window_ns,
+        )
 
-        if len(groups) == 1:
-            # All modules in a dependency chain — single UDF
-            self._tables[node_name] = self._build_single_udf(
-                node_name, modules, input_table,
-            )
+        if len(branch_tables) == 1:
+            self._tables[node_name] = branch_tables[0]
             return
 
-        # Independent groups — separate UDFs, then interval_join
-        branch_tables = []
-        for i, group in enumerate(groups):
-            branch_name = f"{node_name}__branch_{i}"
-            branch_table = self._build_single_udf(
-                branch_name, group, input_table,
-            )
-            branch_tables.append(branch_table)
-            self._tables[branch_name] = branch_table
-
-        # Auto interval_join to merge branches
+        # Merge all per-analyzer tables via interval_join
         joined = self._auto_join(branch_tables, spec.join_window_ns)
         self._tables[node_name] = joined
 
@@ -279,82 +297,153 @@ class FlowGraphConverter:
             results=analyze_udf(pw.this.frame),
         )
 
-    @staticmethod
-    def _split_by_dependency(analyzers: list) -> List[list]:
-        """Split analyzers into independent groups by dependency graph.
+    def _build_per_analyzer_dag(
+        self,
+        analyzers: list,
+        input_table: "pw.Table",
+        window_ns: int,
+    ) -> List["pw.Table"]:
+        """Build per-analyzer DAG: each analyzer → individual UDF + table.
 
-        Analyzers sharing a dependency chain (direct or transitive) are
-        placed in the same group.  Analyzers with no dependency
-        relationship are placed in separate groups.
-
-        Example::
-
-            [face_detect, pose_detect, face_expression(depends=face_detect)]
-            -> [[face_detect, face_expression], [pose_detect]]
+        Independent analyzers branch from input_table (Rust engine
+        parallelizes them automatically). Dependent analyzers chain
+        from their upstream table(s).
 
         Returns:
-            List of analyzer groups.  Each group preserves insertion order.
+            List of per-analyzer tables (leaf tables only — those not
+            depended on by other analyzers in this set, plus independent
+            analyzers).
         """
-        # Build name -> analyzer map
-        by_name = {a.name: a for a in analyzers}
+        from visualpath.backends.pathway.operators import (
+            create_single_analyzer_udf,
+            create_dep_analyzer_udf,
+            _toposort_modules,
+        )
 
-        # Build undirected adjacency (connected component analysis)
-        adj: Dict[str, set] = {a.name: set() for a in analyzers}
+        sorted_analyzers = _toposort_modules(analyzers)
+        analyzer_names = {a.name for a in analyzers}
+        analyzer_tables: Dict[str, "pw.Table"] = {}
+
+        for analyzer in sorted_analyzers:
+            dep_names = [
+                d for d in (getattr(analyzer, 'depends', None) or [])
+                if d in analyzer_tables
+            ]
+
+            if not dep_names:
+                # Independent: branch from input_table
+                raw_udf = create_single_analyzer_udf(analyzer)
+
+                @pw.udf
+                def _single_udf(
+                    frame_wrapped: pw.PyObjectWrapper,
+                    _fn=raw_udf,
+                ) -> pw.PyObjectWrapper:
+                    frame = frame_wrapped.value
+                    return pw.PyObjectWrapper(_fn(frame))
+
+                table = input_table.select(
+                    frame_id=pw.this.frame_id,
+                    t_ns=pw.this.t_ns,
+                    frame=pw.this.frame,
+                    results=_single_udf(pw.this.frame),
+                )
+            elif len(dep_names) == 1:
+                # Single dependency: chain from upstream table
+                dep_table = analyzer_tables[dep_names[0]]
+                raw_udf = create_dep_analyzer_udf(analyzer)
+
+                @pw.udf
+                def _dep_udf(
+                    frame_wrapped: pw.PyObjectWrapper,
+                    results_wrapped: pw.PyObjectWrapper,
+                    _fn=raw_udf,
+                ) -> pw.PyObjectWrapper:
+                    frame = frame_wrapped.value
+                    upstream = results_wrapped.value if hasattr(results_wrapped, 'value') else results_wrapped
+                    new_results = _fn(frame, upstream)
+                    # Combine upstream + own results
+                    return pw.PyObjectWrapper(list(upstream) + new_results)
+
+                table = dep_table.select(
+                    frame_id=pw.this.frame_id,
+                    t_ns=pw.this.t_ns,
+                    frame=pw.this.frame,
+                    results=_dep_udf(pw.this.frame, pw.this.results),
+                )
+            else:
+                # Multiple dependencies: join upstream tables, then chain
+                dep_tables = [analyzer_tables[n] for n in dep_names]
+                joined_deps = self._auto_join(dep_tables, window_ns)
+                raw_udf = create_dep_analyzer_udf(analyzer)
+
+                @pw.udf
+                def _multi_dep_udf(
+                    frame_wrapped: pw.PyObjectWrapper,
+                    results_wrapped: pw.PyObjectWrapper,
+                    _fn=raw_udf,
+                ) -> pw.PyObjectWrapper:
+                    frame = frame_wrapped.value
+                    upstream = results_wrapped.value if hasattr(results_wrapped, 'value') else results_wrapped
+                    new_results = _fn(frame, upstream)
+                    return pw.PyObjectWrapper(list(upstream) + new_results)
+
+                table = joined_deps.select(
+                    frame_id=pw.this.frame_id,
+                    t_ns=pw.this.t_ns,
+                    frame=pw.this.frame,
+                    results=_multi_dep_udf(pw.this.frame, pw.this.results),
+                )
+
+            analyzer_tables[analyzer.name] = table
+
+        # Return leaf tables: analyzers not depended on by others in this set
+        depended_on = set()
         for a in analyzers:
-            for dep_name in (a.depends or []):
-                if dep_name in adj:
-                    adj[a.name].add(dep_name)
-                    adj[dep_name].add(a.name)
-
-        # Find connected components via BFS
-        visited: set = set()
-        components: List[List[str]] = []
-        for a in analyzers:
-            if a.name in visited:
-                continue
-            # BFS
-            component = []
-            queue = [a.name]
-            while queue:
-                current = queue.pop(0)
-                if current in visited:
-                    continue
-                visited.add(current)
-                component.append(current)
-                for neighbour in adj.get(current, set()):
-                    if neighbour not in visited:
-                        queue.append(neighbour)
-            components.append(component)
-
-        # Convert name lists back to analyzer lists (preserving order)
-        name_order = {a.name: i for i, a in enumerate(analyzers)}
-        groups = []
-        for comp in components:
-            comp_sorted = sorted(comp, key=lambda n: name_order[n])
-            groups.append([by_name[n] for n in comp_sorted])
-
-        return groups
+            for d in (getattr(a, 'depends', None) or []):
+                if d in analyzer_names:
+                    depended_on.add(d)
+        leaf_tables = [
+            analyzer_tables[a.name]
+            for a in sorted_analyzers
+            if a.name not in depended_on
+        ]
+        return leaf_tables if leaf_tables else list(analyzer_tables.values())
 
     def _auto_join(
         self,
         tables: List["pw.Table"],
         window_ns: int,
     ) -> "pw.Table":
-        """Join multiple branch tables via interval_join."""
+        """Join multiple branch tables, merging results.
+
+        Per-analyzer tables derive from the same input_table (same
+        universe), so we join on ``frame_id`` for exact 1:1 matching.
+        This avoids the cross-product problem of ``interval_join``
+        where nearby frames would spuriously match.
+        """
         if len(tables) == 1:
             return tables[0]
 
+        @pw.udf
+        def merge_results_udf(
+            left: pw.PyObjectWrapper,
+            right: pw.PyObjectWrapper,
+        ) -> pw.PyObjectWrapper:
+            left_list = left.value if hasattr(left, 'value') else left
+            right_list = right.value if hasattr(right, 'value') else right
+            return pw.PyObjectWrapper(list(left_list) + list(right_list))
+
         joined = tables[0]
         for table in tables[1:]:
-            joined = joined.interval_join(
+            joined = joined.join(
                 table,
-                pw.left.t_ns,
-                pw.right.t_ns,
-                pw.temporal.interval(-window_ns, window_ns),
+                pw.left.frame_id == pw.right.frame_id,
             ).select(
                 frame_id=pw.left.frame_id,
                 t_ns=pw.left.t_ns,
                 frame=pw.left.frame,
+                results=merge_results_udf(pw.left.results, pw.right.results),
             )
 
         return joined
@@ -394,6 +483,15 @@ class FlowGraphConverter:
             level = isolation.get_level(module.name)
 
             if level == IsolationLevel.INLINE:
+                result.append(module)
+                continue
+
+            if level == IsolationLevel.PROCESS:
+                logger.info(
+                    "Skipping PROCESS isolation for '%s' — "
+                    "Pathway UDF already provides parallelism",
+                    module.name,
+                )
                 result.append(module)
                 continue
 

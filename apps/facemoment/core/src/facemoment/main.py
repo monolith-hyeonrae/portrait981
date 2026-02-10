@@ -11,7 +11,7 @@ All execution goes through a single path:
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Set, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Union
 
 from visualbase import Trigger
 
@@ -39,6 +39,7 @@ class Result:
     duration_sec: float = 0.0
     clips_extracted: int = 0
     actual_backend: str = ""
+    stats: Dict[str, Any] = field(default_factory=dict)
 
 
 def build_modules(analyzers=None, *, cooldown=2.0, main_only=True):
@@ -163,6 +164,7 @@ def build_graph(modules, *, isolation=None, on_trigger=None):
     graph.add_node(PathNode(
         name="pipeline",
         modules=module_instances,
+        parallel=True,
         isolation=isolation,
     ))
     graph.add_edge("source", "pipeline")
@@ -241,8 +243,21 @@ def run(
     else:
         isolation_config = _build_isolation_config(analyzer_names)
 
+    # 3.5 Pathway already parallelizes via UDF — skip PROCESS isolation
+    if effective_backend == "pathway" and isolation_config is not None:
+        logger.info("Skipping PROCESS isolation for Pathway (UDF parallelism)")
+        isolation_config = None
+
     # 4. Build FlowGraph (with isolation info in ModuleSpec)
-    graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger)
+    #    Adapt user callback: Callable[[Trigger], None] → Callable[[FlowData], None]
+    flow_cb = None
+    if on_trigger:
+        def _trigger_adapter(data):
+            for result in data.results:
+                if result.should_trigger and result.trigger:
+                    on_trigger(result.trigger)
+        flow_cb = _trigger_adapter
+    graph = build_graph(modules, isolation=isolation_config, on_trigger=flow_cb)
 
     # 5. Select backend (WorkerBackend if isolation needed)
     engine = _get_backend(effective_backend)
@@ -267,6 +282,7 @@ def run(
         duration_sec=pipeline_result.frame_count / fps if pipeline_result.frame_count > 0 else 0.0,
         clips_extracted=clips_extracted,
         actual_backend=engine.name,
+        stats=pipeline_result.stats,
     )
 
 

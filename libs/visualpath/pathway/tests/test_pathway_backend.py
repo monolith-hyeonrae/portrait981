@@ -931,6 +931,229 @@ class TestMultiAnalyzerUDFWithDeps:
         assert "dependent" in level2.received_deps[-1]
 
 
+class TestGroupByDependencyLevel:
+    """Tests for _group_by_dependency_level."""
+
+    def test_all_independent(self):
+        """All independent modules land in level 0."""
+        from visualpath.backends.pathway.operators import _group_by_dependency_level
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        c = CountingAnalyzer("c")
+        levels = _group_by_dependency_level([a, b, c])
+
+        assert len(levels) == 1
+        assert len(levels[0]) == 3
+        names = {m.name for m in levels[0]}
+        assert names == {"a", "b", "c"}
+
+    def test_linear_chain(self):
+        """Linear chain: each module in its own level."""
+        from visualpath.backends.pathway.operators import (
+            _toposort_modules,
+            _group_by_dependency_level,
+        )
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        b.depends = ["a"]
+        c = CountingAnalyzer("c")
+        c.depends = ["b"]
+
+        sorted_mods = _toposort_modules([a, b, c])
+        levels = _group_by_dependency_level(sorted_mods)
+
+        assert len(levels) == 3
+        assert levels[0][0].name == "a"
+        assert levels[1][0].name == "b"
+        assert levels[2][0].name == "c"
+
+    def test_diamond_dependency(self):
+        """Diamond: A -> B, A -> C, B+C -> D."""
+        from visualpath.backends.pathway.operators import (
+            _toposort_modules,
+            _group_by_dependency_level,
+        )
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        b.depends = ["a"]
+        c = CountingAnalyzer("c")
+        c.depends = ["a"]
+        d = CountingAnalyzer("d")
+        d.depends = ["b", "c"]
+
+        sorted_mods = _toposort_modules([a, b, c, d])
+        levels = _group_by_dependency_level(sorted_mods)
+
+        assert len(levels) == 3
+        assert {m.name for m in levels[0]} == {"a"}
+        assert {m.name for m in levels[1]} == {"b", "c"}
+        assert {m.name for m in levels[2]} == {"d"}
+
+    def test_empty_list(self):
+        """Empty input returns empty output."""
+        from visualpath.backends.pathway.operators import _group_by_dependency_level
+
+        levels = _group_by_dependency_level([])
+        assert levels == []
+
+    def test_facemoment_typical_layout(self):
+        """Typical facemoment layout: 4 independent + 2 dependent + 1 final."""
+        from visualpath.backends.pathway.operators import (
+            _toposort_modules,
+            _group_by_dependency_level,
+        )
+
+        face_detect = CountingAnalyzer("face.detect")
+        body_pose = CountingAnalyzer("body.pose")
+        hand_gesture = CountingAnalyzer("hand.gesture")
+        frame_quality = CountingAnalyzer("frame.quality")
+        face_expression = CountingAnalyzer("face.expression")
+        face_expression.depends = ["face.detect"]
+        face_classify = CountingAnalyzer("face.classify")
+        face_classify.depends = ["face.detect"]
+        highlight = CountingAnalyzer("highlight")
+        highlight.depends = ["face.detect"]
+        highlight.optional_depends = ["face.expression", "face.classify"]
+
+        all_mods = [
+            face_detect, body_pose, hand_gesture, frame_quality,
+            face_expression, face_classify, highlight,
+        ]
+        sorted_mods = _toposort_modules(all_mods)
+        levels = _group_by_dependency_level(sorted_mods)
+
+        assert len(levels) == 3
+        level0_names = {m.name for m in levels[0]}
+        level1_names = {m.name for m in levels[1]}
+        level2_names = {m.name for m in levels[2]}
+        assert level0_names == {"face.detect", "body.pose", "hand.gesture", "frame.quality"}
+        assert level1_names == {"face.expression", "face.classify"}
+        assert level2_names == {"highlight"}
+
+
+class TestParallelMultiAnalyzerUDF:
+    """Tests for parallel execution in create_multi_analyzer_udf."""
+
+    def test_parallel_independent_analyzers(self):
+        """Independent analyzers produce same results as sequential."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
+
+        a = CountingAnalyzer("a", return_value=1.0)
+        b = CountingAnalyzer("b", return_value=2.0)
+        c = CountingAnalyzer("c", return_value=3.0)
+        udf = create_multi_analyzer_udf([a, b, c])
+
+        frame = make_frame()
+        results = udf(frame)
+
+        assert len(results) == 3
+        sources = {r.source for r in results}
+        assert sources == {"a", "b", "c"}
+        for r in results:
+            assert r.observation is not None
+            assert r.elapsed_ms >= 0
+
+    def test_parallel_preserves_deps_chain(self):
+        """3-level chain: upstream -> dependent -> level2 deps are correct."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
+
+        upstream = UpstreamAnalyzer()
+        dependent = DependentAnalyzer()
+
+        class Level2Analyzer(Module):
+            depends = ["dependent"]
+
+            def __init__(self):
+                self.received_deps = []
+
+            @property
+            def name(self):
+                return "level2"
+
+            def process(self, frame, deps=None):
+                self.received_deps.append(deps)
+                has_dep = deps is not None and "dependent" in deps
+                return Observation(
+                    source="level2",
+                    frame_id=frame.frame_id,
+                    t_ns=frame.t_src_ns,
+                    signals={"has_dependent_dep": has_dep},
+                )
+
+            def initialize(self):
+                pass
+
+            def cleanup(self):
+                pass
+
+        level2 = Level2Analyzer()
+        udf = create_multi_analyzer_udf([upstream, dependent, level2])
+
+        frame = make_frame()
+        results = udf(frame)
+
+        assert len(results) == 3
+        # Upstream should have run first
+        assert upstream._process_count == 1
+        # Dependent received upstream's observation
+        assert dependent.received_deps[-1] is not None
+        assert "upstream" in dependent.received_deps[-1]
+        assert dependent.received_deps[-1]["upstream"].signals["upstream_value"] == 42
+        # Level2 received dependent's observation
+        assert level2.received_deps[-1] is not None
+        assert "dependent" in level2.received_deps[-1]
+
+    def test_parallel_error_isolation(self):
+        """An error in one parallel analyzer doesn't affect siblings."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
+
+        class ErrorAnalyzer(Module):
+            @property
+            def name(self):
+                return "error"
+
+            def process(self, frame, deps=None):
+                raise RuntimeError("boom")
+
+            def initialize(self):
+                pass
+
+            def cleanup(self):
+                pass
+
+        good = CountingAnalyzer("good", return_value=1.0)
+        bad = ErrorAnalyzer()
+        udf = create_multi_analyzer_udf([good, bad])
+
+        frame = make_frame()
+        results = udf(frame)
+
+        assert len(results) == 2
+        good_result = next(r for r in results if r.source == "good")
+        bad_result = next(r for r in results if r.source == "error")
+        assert good_result.observation is not None
+        assert bad_result.observation is None
+
+    def test_multiple_frames_reuse_pool(self):
+        """ThreadPoolExecutor is reused across multiple frame invocations."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
+
+        a = CountingAnalyzer("a", return_value=1.0)
+        b = CountingAnalyzer("b", return_value=2.0)
+        udf = create_multi_analyzer_udf([a, b])
+
+        for i in range(5):
+            frame = make_frame(frame_id=i, t_ns=i * 100_000)
+            results = udf(frame)
+            assert len(results) == 2
+
+        assert a._process_count == 5
+        assert b._process_count == 5
+
+
 @pytest.mark.skipif(not PATHWAY_AVAILABLE, reason="Pathway not installed")
 class TestPathwayDepsExecution:
     """Tests for dependency resolution through Pathway engine."""
@@ -1466,85 +1689,563 @@ class TestPathwayObservabilityHub:
 
 
 # =============================================================================
-# FlowGraphConverter._split_by_dependency Tests
+# Per-Analyzer UDF Tests
 # =============================================================================
 
 
-class TestSplitByDependency:
-    """Tests for FlowGraphConverter._split_by_dependency."""
+class TestSingleAnalyzerUDF:
+    """Tests for create_single_analyzer_udf."""
 
-    def test_all_independent(self):
-        """All analyzers are independent -> one group each."""
+    def test_independent_analyzer(self):
+        """Independent analyzer UDF returns correct result."""
+        from visualpath.backends.pathway.operators import create_single_analyzer_udf
+
+        analyzer = CountingAnalyzer("face", return_value=0.8)
+        udf = create_single_analyzer_udf(analyzer)
+
+        frame = make_frame(frame_id=1, t_ns=100_000)
+        results = udf(frame)
+
+        assert len(results) == 1
+        assert results[0].source == "face"
+        assert results[0].observation is not None
+        assert results[0].observation.signals["value"] == 0.8
+        assert results[0].elapsed_ms >= 0
+        assert results[0].frame_id == 1
+        assert results[0].t_ns == 100_000
+
+    def test_error_returns_none_observation(self):
+        """Error in analyzer returns AnalyzerResult with observation=None."""
+        from visualpath.backends.pathway.operators import create_single_analyzer_udf
+
+        class ErrorAnalyzer(Module):
+            @property
+            def name(self):
+                return "error"
+
+            def process(self, frame, deps=None):
+                raise RuntimeError("boom")
+
+            def initialize(self):
+                pass
+
+            def cleanup(self):
+                pass
+
+        udf = create_single_analyzer_udf(ErrorAnalyzer())
+        results = udf(make_frame())
+
+        assert len(results) == 1
+        assert results[0].source == "error"
+        assert results[0].observation is None
+        assert results[0].elapsed_ms >= 0
+
+
+class TestDepAnalyzerUDF:
+    """Tests for create_dep_analyzer_udf."""
+
+    def test_receives_upstream_deps(self):
+        """Dependent UDF extracts deps from upstream results."""
+        from visualpath.backends.pathway.operators import (
+            create_dep_analyzer_udf,
+            AnalyzerResult,
+        )
+
+        dependent = DependentAnalyzer(name="dependent")
+        udf = create_dep_analyzer_udf(dependent)
+
+        upstream_obs = Observation(
+            source="upstream",
+            frame_id=1,
+            t_ns=100_000,
+            signals={"upstream_value": 42},
+        )
+        upstream_results = [AnalyzerResult(
+            frame_id=1, t_ns=100_000, source="upstream",
+            observation=upstream_obs,
+        )]
+
+        frame = make_frame()
+        results = udf(frame, upstream_results)
+
+        assert len(results) == 1
+        assert results[0].source == "dependent"
+        assert results[0].observation is not None
+        assert results[0].observation.signals["received_upstream"] is True
+        assert results[0].observation.signals["upstream_value"] == 42
+
+    def test_missing_dep_passes_none(self):
+        """When upstream result is missing, deps is None."""
+        from visualpath.backends.pathway.operators import create_dep_analyzer_udf
+
+        dependent = DependentAnalyzer(name="dependent")
+        udf = create_dep_analyzer_udf(dependent)
+
+        frame = make_frame()
+        results = udf(frame, [])
+
+        assert len(results) == 1
+        assert results[0].observation is not None
+        assert results[0].observation.signals["received_upstream"] is False
+
+    def test_error_returns_none_observation(self):
+        """Error in dependent analyzer returns observation=None."""
+        from visualpath.backends.pathway.operators import (
+            create_dep_analyzer_udf,
+            AnalyzerResult,
+        )
+
+        class ErrorDepAnalyzer(Module):
+            depends = ["upstream"]
+
+            @property
+            def name(self):
+                return "error_dep"
+
+            def process(self, frame, deps=None):
+                raise RuntimeError("boom")
+
+            def initialize(self):
+                pass
+
+            def cleanup(self):
+                pass
+
+        udf = create_dep_analyzer_udf(ErrorDepAnalyzer())
+        upstream_obs = Observation(
+            source="upstream", frame_id=1, t_ns=100_000, signals={},
+        )
+        results = udf(make_frame(), [AnalyzerResult(
+            frame_id=1, t_ns=100_000, source="upstream",
+            observation=upstream_obs,
+        )])
+
+        assert len(results) == 1
+        assert results[0].observation is None
+
+
+# =============================================================================
+# Per-Analyzer DAG Tests
+# =============================================================================
+
+
+@pytest.mark.skipif(not PATHWAY_AVAILABLE, reason="Pathway not installed")
+class TestPerAnalyzerDAG:
+    """Tests for per-analyzer DAG construction via FlowGraphConverter."""
+
+    def test_independent_analyzers_produce_separate_tables(self):
+        """Independent analyzers are split into separate leaf tables."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
+        from visualpath.backends.pathway.connector import (
+            VideoConnectorSubject, FrameSchema,
+        )
+        from visualpath.flow.graph import FlowGraph
+        from visualpath.flow.nodes.source import SourceNode
+        from visualpath.flow.nodes.path import PathNode
 
-        ext1 = CountingAnalyzer("face")
-        ext2 = CountingAnalyzer("pose")
-        ext3 = CountingAnalyzer("scene")
+        a = CountingAnalyzer("a", return_value=1.0)
+        b = CountingAnalyzer("b", return_value=2.0)
 
-        groups = FlowGraphConverter._split_by_dependency([ext1, ext2, ext3])
+        graph = FlowGraph(entry_node="source")
+        graph.add_node(SourceNode(name="source"))
+        graph.add_node(PathNode(
+            name="pipeline", modules=[a, b], parallel=True,
+        ))
+        graph.add_edge("source", "pipeline")
 
-        assert len(groups) == 3
-        assert [g[0].name for g in groups] == ["face", "pose", "scene"]
+        frames = make_frames(3)
+        subject = VideoConnectorSubject(iter(frames))
+        frames_table = pw.io.python.read(
+            subject, schema=FrameSchema, autocommit_duration_ms=10,
+        )
 
-    def test_all_chained(self):
-        """All analyzers form a chain -> single group."""
+        converter = FlowGraphConverter()
+        output = converter.convert(graph, frames_table)
+
+        # Collect and verify all results
+        collected = []
+        pw.io.subscribe(
+            output,
+            on_change=lambda key, row, time, is_addition: (
+                collected.append(row) if is_addition else None
+            ),
+        )
+        pw.run()
+
+        assert len(collected) == 3
+        # Each row should have results from both analyzers (merged by _auto_join)
+        for row in collected:
+            results_wrapper = row.get("results")
+            results = results_wrapper.value if hasattr(results_wrapper, 'value') else results_wrapper
+            sources = {r.source for r in results}
+            assert sources == {"a", "b"}
+
+    def test_dependent_chain_correctness(self):
+        """face.detect → face.expression chain produces correct deps."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
+        from visualpath.backends.pathway.connector import (
+            VideoConnectorSubject, FrameSchema,
+        )
+        from visualpath.flow.graph import FlowGraph
+        from visualpath.flow.nodes.source import SourceNode
+        from visualpath.flow.nodes.path import PathNode
 
-        ext1 = CountingAnalyzer("face_detect")
-        ext2 = CountingAnalyzer("face_expression")
-        ext2.depends = ["face_detect"]
-        ext3 = CountingAnalyzer("face_emotion")
-        ext3.depends = ["face_expression"]
+        upstream = UpstreamAnalyzer(name="upstream")
+        dependent = DependentAnalyzer(name="dependent")
 
-        groups = FlowGraphConverter._split_by_dependency([ext1, ext2, ext3])
+        graph = FlowGraph(entry_node="source")
+        graph.add_node(SourceNode(name="source"))
+        graph.add_node(PathNode(
+            name="pipeline", modules=[upstream, dependent], parallel=True,
+        ))
+        graph.add_edge("source", "pipeline")
 
-        assert len(groups) == 1
-        assert len(groups[0]) == 3
+        frames = make_frames(3)
+        subject = VideoConnectorSubject(iter(frames))
+        frames_table = pw.io.python.read(
+            subject, schema=FrameSchema, autocommit_duration_ms=10,
+        )
 
-    def test_mixed_deps(self):
-        """Mix of dependent and independent analyzers."""
+        converter = FlowGraphConverter()
+        output = converter.convert(graph, frames_table)
+
+        collected = []
+        pw.io.subscribe(
+            output,
+            on_change=lambda key, row, time, is_addition: (
+                collected.append(row) if is_addition else None
+            ),
+        )
+        pw.run()
+
+        assert len(collected) == 3
+        # Dependent should have received upstream deps
+        for dep in dependent.received_deps:
+            assert dep is not None
+            assert "upstream" in dep
+
+    def test_mixed_independent_and_dependent(self):
+        """Mix of independent + dependent analyzers."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
+        from visualpath.backends.pathway.connector import (
+            VideoConnectorSubject, FrameSchema,
+        )
+        from visualpath.flow.graph import FlowGraph
+        from visualpath.flow.nodes.source import SourceNode
+        from visualpath.flow.nodes.path import PathNode
 
-        face = CountingAnalyzer("face_detect")
-        expression = CountingAnalyzer("face_expression")
-        expression.depends = ["face_detect"]
-        pose = CountingAnalyzer("pose_detect")
+        face_detect = UpstreamAnalyzer(name="face.detect")
+        body_pose = CountingAnalyzer("body.pose", return_value=0.5)
+        face_expression = DependentAnalyzer(name="face.expression")
+        face_expression.depends = ["face.detect"]
 
-        groups = FlowGraphConverter._split_by_dependency([face, expression, pose])
+        graph = FlowGraph(entry_node="source")
+        graph.add_node(SourceNode(name="source"))
+        graph.add_node(PathNode(
+            name="pipeline",
+            modules=[face_detect, body_pose, face_expression],
+            parallel=True,
+        ))
+        graph.add_edge("source", "pipeline")
 
-        assert len(groups) == 2
-        group_names = [sorted([e.name for e in g]) for g in groups]
-        assert ["face_detect", "face_expression"] in group_names
-        assert ["pose_detect"] in group_names
+        frames = make_frames(3)
+        subject = VideoConnectorSubject(iter(frames))
+        frames_table = pw.io.python.read(
+            subject, schema=FrameSchema, autocommit_duration_ms=10,
+        )
 
-    def test_single_analyzer(self):
-        """Single analyzer -> single group."""
+        converter = FlowGraphConverter()
+        output = converter.convert(graph, frames_table)
+
+        collected = []
+        pw.io.subscribe(
+            output,
+            on_change=lambda key, row, time, is_addition: (
+                collected.append(row) if is_addition else None
+            ),
+        )
+        pw.run()
+
+        assert len(collected) == 3
+        for row in collected:
+            results_wrapper = row.get("results")
+            results = results_wrapper.value if hasattr(results_wrapper, 'value') else results_wrapper
+            sources = {r.source for r in results}
+            assert sources == {"face.detect", "body.pose", "face.expression"}
+
+    def test_auto_join_merges_results(self):
+        """interval_join merges results from multiple branch tables."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
+        from visualpath.backends.pathway.connector import (
+            VideoConnectorSubject, FrameSchema,
+        )
+        from visualpath.flow.graph import FlowGraph
+        from visualpath.flow.nodes.source import SourceNode
+        from visualpath.flow.nodes.path import PathNode
 
-        ext = CountingAnalyzer("face")
-        groups = FlowGraphConverter._split_by_dependency([ext])
+        a = CountingAnalyzer("a", return_value=1.0)
+        b = CountingAnalyzer("b", return_value=2.0)
+        c = CountingAnalyzer("c", return_value=3.0)
 
-        assert len(groups) == 1
-        assert len(groups[0]) == 1
+        graph = FlowGraph(entry_node="source")
+        graph.add_node(SourceNode(name="source"))
+        graph.add_node(PathNode(
+            name="pipeline", modules=[a, b, c], parallel=True,
+        ))
+        graph.add_edge("source", "pipeline")
 
-    def test_preserves_order_within_group(self):
-        """Analyzers within a group maintain insertion order."""
-        from visualpath.backends.pathway.converter import FlowGraphConverter
+        frames = make_frames(2)
+        subject = VideoConnectorSubject(iter(frames))
+        frames_table = pw.io.python.read(
+            subject, schema=FrameSchema, autocommit_duration_ms=10,
+        )
 
-        ext1 = CountingAnalyzer("face_detect")
-        ext2 = CountingAnalyzer("face_expression")
-        ext2.depends = ["face_detect"]
+        converter = FlowGraphConverter()
+        output = converter.convert(graph, frames_table)
 
-        groups = FlowGraphConverter._split_by_dependency([ext1, ext2])
+        collected = []
+        pw.io.subscribe(
+            output,
+            on_change=lambda key, row, time, is_addition: (
+                collected.append(row) if is_addition else None
+            ),
+        )
+        pw.run()
 
-        assert len(groups) == 1
-        assert groups[0][0].name == "face_detect"
-        assert groups[0][1].name == "face_expression"
+        assert len(collected) == 2
+        for row in collected:
+            results_wrapper = row.get("results")
+            results = results_wrapper.value if hasattr(results_wrapper, 'value') else results_wrapper
+            sources = {r.source for r in results}
+            assert sources == {"a", "b", "c"}
+            # Verify all results have observations
+            for r in results:
+                assert r.observation is not None
 
 
 # =============================================================================
 # FlowGraphConverter Spec-Based Dispatch Tests
 # =============================================================================
+
+
+class StatefulCooldownFusion(Module):
+    """Stateful fusion with cooldown that requires temporal ordering.
+
+    Triggers when value > threshold AND cooldown_frames have passed since
+    the last trigger.  This requires frames to arrive in temporal order;
+    if frames arrive out of order, cooldown counting breaks.
+    """
+
+    is_trigger = True
+
+    def __init__(self, cooldown_frames: int = 3, depends_on: str = "test"):
+        self._cooldown_frames = cooldown_frames
+        self._frames_since_trigger = cooldown_frames  # Start ready to trigger
+        self._update_count = 0
+        self._trigger_count = 0
+        self.depends = [depends_on] if depends_on else []
+        self.frame_ids_seen: List[int] = []
+
+    @property
+    def name(self) -> str:
+        return "stateful_fusion"
+
+    def process(self, frame, deps=None) -> Optional[Observation]:
+        self._update_count += 1
+        self.frame_ids_seen.append(frame.frame_id)
+
+        value = 0.0
+        if deps:
+            for obs in deps.values():
+                if obs is not None:
+                    value = obs.signals.get("value", 0.0)
+                    break
+
+        self._frames_since_trigger += 1
+        should_trigger = (value > 0.5 and self._frames_since_trigger >= self._cooldown_frames)
+
+        if should_trigger:
+            self._frames_since_trigger = 0
+            self._trigger_count += 1
+            from visualbase import Trigger
+            trigger = Trigger.point(
+                event_time_ns=frame.t_src_ns,
+                pre_sec=2.0, post_sec=2.0,
+                label="stateful_trigger",
+                score=value,
+            )
+            return Observation(
+                source=self.name,
+                frame_id=frame.frame_id,
+                t_ns=frame.t_src_ns,
+                signals={
+                    "should_trigger": True,
+                    "trigger_score": value,
+                    "trigger_reason": "stateful_trigger",
+                },
+                metadata={"trigger": trigger},
+            )
+
+        return Observation(
+            source=self.name,
+            frame_id=frame.frame_id,
+            t_ns=frame.t_src_ns,
+            signals={"should_trigger": False},
+        )
+
+    def initialize(self) -> None:
+        pass
+
+    def cleanup(self) -> None:
+        pass
+
+
+# =============================================================================
+# Deferred Fusion (is_trigger=True) Tests
+# =============================================================================
+
+
+class TestConverterDeferredModules:
+    """Tests for FlowGraphConverter deferred module separation."""
+
+    @pytest.mark.skipif(not PATHWAY_AVAILABLE, reason="Pathway not installed")
+    def test_converter_defers_trigger_modules(self):
+        """Modules with is_trigger=True are excluded from UDF."""
+        from visualpath.backends.pathway.converter import FlowGraphConverter
+        from visualpath.backends.pathway.connector import (
+            VideoConnectorSubject,
+            FrameSchema,
+        )
+        from visualpath.flow.graph import FlowGraph
+
+        analyzer = CountingAnalyzer("test", return_value=0.7)
+        fusion = StatefulCooldownFusion(cooldown_frames=2, depends_on="test")
+        graph = FlowGraph.from_modules([analyzer, fusion])
+
+        frames = make_frames(3)
+        subject = VideoConnectorSubject(iter(frames))
+        frames_table = pw.io.python.read(
+            subject, schema=FrameSchema, autocommit_duration_ms=10,
+        )
+
+        converter = FlowGraphConverter()
+        converter.convert(graph, frames_table)
+
+        deferred = converter.deferred_modules
+        assert len(deferred) == 1
+        assert deferred[0].name == "stateful_fusion"
+
+    def test_non_trigger_modules_not_deferred(self):
+        """Modules without is_trigger stay in UDF (no deferred)."""
+        from visualpath.backends.pathway.operators import create_multi_analyzer_udf
+
+        ext1 = CountingAnalyzer("a", return_value=0.3)
+        ext2 = CountingAnalyzer("b", return_value=0.7)
+        # Neither has is_trigger=True
+        assert not getattr(ext1, 'is_trigger', False)
+        assert not getattr(ext2, 'is_trigger', False)
+
+        udf = create_multi_analyzer_udf([ext1, ext2])
+        results = udf(make_frame())
+        assert len(results) == 2
+
+
+@pytest.mark.skipif(not PATHWAY_AVAILABLE, reason="Pathway not installed")
+class TestDeferredFusionExecution:
+    """Tests for deferred fusion execution in PathwayBackend subscribe callback."""
+
+    def test_deferred_fusion_triggers(self):
+        """Deferred fusion fires triggers from the subscribe callback."""
+        from visualpath.backends.pathway import PathwayBackend
+        from visualpath.flow.graph import FlowGraph
+
+        backend = PathwayBackend(autocommit_ms=10)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
+        fusion = StatefulCooldownFusion(cooldown_frames=2, depends_on="test")
+        graph = FlowGraph.from_modules([analyzer, fusion])
+        frames = make_frames(10)
+
+        result = backend.execute(iter(frames), graph)
+
+        # With cooldown=2, all value>0.5: triggers at frames 0, 3, 6, 9
+        # (frame 0 starts ready, then every 3rd frame)
+        assert fusion._update_count == 10
+        assert len(result.triggers) > 0
+        assert fusion._trigger_count == len(result.triggers)
+
+    def test_deferred_fusion_sees_frames_in_order(self):
+        """Deferred fusion receives frames in temporal order."""
+        from visualpath.backends.pathway import PathwayBackend
+        from visualpath.flow.graph import FlowGraph
+
+        backend = PathwayBackend(autocommit_ms=10)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
+        fusion = StatefulCooldownFusion(cooldown_frames=2, depends_on="test")
+        graph = FlowGraph.from_modules([analyzer, fusion])
+        frames = make_frames(20)
+
+        backend.execute(iter(frames), graph)
+
+        # Subscribe delivers in temporal order, so frame_ids_seen must be sorted
+        assert fusion.frame_ids_seen == sorted(fusion.frame_ids_seen)
+
+    def test_deferred_vs_simple_trigger_parity(self):
+        """Pathway deferred fusion and SimpleBackend produce same trigger count."""
+        from visualpath.backends.pathway import PathwayBackend
+        from visualpath.flow.graph import FlowGraph
+
+        # SimpleBackend
+        simple = SimpleBackend()
+        ext_s = CountingAnalyzer("test", return_value=0.7)
+        fusion_s = StatefulCooldownFusion(cooldown_frames=2, depends_on="test")
+        graph_s = FlowGraph.from_modules([ext_s, fusion_s])
+        simple_result = simple.execute(iter(make_frames(10)), graph_s)
+
+        # PathwayBackend (fusion deferred to subscribe)
+        pathway = PathwayBackend(autocommit_ms=10)
+        ext_p = CountingAnalyzer("test", return_value=0.7)
+        fusion_p = StatefulCooldownFusion(cooldown_frames=2, depends_on="test")
+        graph_p = FlowGraph.from_modules([ext_p, fusion_p])
+        pathway_result = pathway.execute(iter(make_frames(10)), graph_p)
+
+        assert len(simple_result.triggers) == len(pathway_result.triggers)
+
+    def test_deferred_fusion_receives_deps(self):
+        """Deferred fusion receives deps from UDF analyzer results."""
+        from visualpath.backends.pathway import PathwayBackend
+        from visualpath.flow.graph import FlowGraph
+
+        backend = PathwayBackend(autocommit_ms=10)
+        analyzer = CountingAnalyzer("test", return_value=0.3)
+        # cooldown=1, value 0.3 < 0.5 -> no triggers
+        fusion = StatefulCooldownFusion(cooldown_frames=1, depends_on="test")
+        graph = FlowGraph.from_modules([analyzer, fusion])
+        frames = make_frames(5)
+
+        result = backend.execute(iter(frames), graph)
+
+        # Fusion was called for all frames but below threshold
+        assert fusion._update_count == 5
+        assert len(result.triggers) == 0
+
+    def test_deferred_fusion_callback_fires(self):
+        """on_trigger callback fires for deferred fusion triggers."""
+        from visualpath.backends.pathway import PathwayBackend
+        from visualpath.flow.graph import FlowGraph
+
+        backend = PathwayBackend(autocommit_ms=10)
+        analyzer = CountingAnalyzer("test", return_value=0.7)
+        fusion = StatefulCooldownFusion(cooldown_frames=2, depends_on="test")
+        graph = FlowGraph.from_modules([analyzer, fusion])
+        frames = make_frames(10)
+
+        callback_data = []
+        graph.on_trigger(lambda d: callback_data.append(d))
+
+        result = backend.execute(iter(frames), graph)
+
+        assert len(callback_data) == len(result.triggers)
+        assert len(callback_data) > 0
 
 
 class TestConverterSpecDispatch:

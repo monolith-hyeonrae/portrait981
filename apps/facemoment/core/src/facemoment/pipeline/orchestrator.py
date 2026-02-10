@@ -44,10 +44,13 @@ class PipelineStats:
     processing_time_sec: float = 0.0
     avg_frame_time_ms: float = 0.0
     worker_stats: Dict[str, Dict[str, Any]] = None
+    backend_stats: Dict[str, Any] = None
 
     def __post_init__(self):
         if self.worker_stats is None:
             self.worker_stats = {}
+        if self.backend_stats is None:
+            self.backend_stats = {}
 
 
 class PipelineOrchestrator:
@@ -190,10 +193,7 @@ class PipelineOrchestrator:
         graph = build_graph(modules, isolation=isolation_config, on_trigger=on_trigger_internal)
 
         # Select backend
-        engine = _get_backend(
-            self._backend,
-            has_isolation=isolation_config is not None,
-        )
+        engine = _get_backend(self._backend)
 
         # Open video and execute
         self._clip_output_dir.mkdir(parents=True, exist_ok=True)
@@ -204,6 +204,7 @@ class PipelineOrchestrator:
             frames = self._vb.get_stream(fps=fps, resolution=resolution)
             pipeline_result = engine.execute(frames, graph)
             self._stats.frames_processed = pipeline_result.frame_count
+            self._stats.backend_stats = pipeline_result.stats
 
             # Extract clips from triggers
             for trigger in triggers:

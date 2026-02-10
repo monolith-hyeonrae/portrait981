@@ -147,11 +147,13 @@ class TestCreateDefaultConfig:
         """Test default config with no venv paths."""
         config = create_default_config()
 
-        # Should have face, pose, quality (no gesture without venv)
-        assert len(config.analyzers) == 3
+        # Should have face.detect, face.expression, body.pose, hand.gesture, frame.quality
+        assert len(config.analyzers) == 5
         names = [e.name for e in config.analyzers]
         assert "face.detect" in names
+        assert "face.expression" in names
         assert "body.pose" in names
+        assert "hand.gesture" in names
         assert "frame.quality" in names
 
         # All should be inline
@@ -162,33 +164,42 @@ class TestCreateDefaultConfig:
         """Test config with venv paths."""
         config = create_default_config(
             venv_face="/opt/venv-face",
+            venv_expression="/opt/venv-expression",
             venv_pose="/opt/venv-pose",
         )
 
         face_config = next(e for e in config.analyzers if e.name == "face.detect")
+        expr_config = next(e for e in config.analyzers if e.name == "face.expression")
         pose_config = next(e for e in config.analyzers if e.name == "body.pose")
         quality_config = next(e for e in config.analyzers if e.name == "frame.quality")
 
         assert face_config.effective_isolation == IsolationLevel.VENV
         assert face_config.venv_path == "/opt/venv-face"
+        assert expr_config.effective_isolation == IsolationLevel.VENV
+        assert expr_config.venv_path == "/opt/venv-expression"
         assert pose_config.effective_isolation == IsolationLevel.VENV
         assert quality_config.effective_isolation == IsolationLevel.INLINE
 
     def test_with_gesture_venv(self):
-        """Test gesture analyzer is added when venv provided."""
+        """Test gesture analyzer uses venv when provided."""
         config = create_default_config(
             venv_gesture="/opt/venv-gesture",
         )
 
-        names = [e.name for e in config.analyzers]
-        assert "hand.gesture" in names
+        gesture_config = next(e for e in config.analyzers if e.name == "hand.gesture")
+        assert gesture_config.effective_isolation == IsolationLevel.VENV
+        assert gesture_config.venv_path == "/opt/venv-gesture"
 
-    def test_without_gesture_venv(self):
-        """Test gesture analyzer is not added without venv."""
+    def test_all_analyzers_always_included(self):
+        """Test all default analyzers are included even without venv paths."""
         config = create_default_config()
 
         names = [e.name for e in config.analyzers]
-        assert "hand.gesture" not in names
+        assert "face.detect" in names
+        assert "face.expression" in names
+        assert "body.pose" in names
+        assert "hand.gesture" in names
+        assert "frame.quality" in names
 
 
 class TestPipelineStats:
