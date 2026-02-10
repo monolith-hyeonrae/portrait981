@@ -29,7 +29,7 @@ from visualpath.plugin import create_analyzer, load_fusion
 
 from facemoment.pipeline.config import AnalyzerConfig, FusionConfig, PipelineConfig
 from facemoment.moment_detector.fusion.base import BaseFusion
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 
 logger = logging.getLogger(__name__)
 

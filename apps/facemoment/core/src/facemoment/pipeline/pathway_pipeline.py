@@ -18,7 +18,7 @@ import logging
 
 from visualbase import Frame, Trigger
 
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 
 logger = logging.getLogger(__name__)
 

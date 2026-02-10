@@ -9,7 +9,7 @@ from facemoment.moment_detector.analyzers.face_classifier import (
     ClassifiedFace,
     FaceClassifierOutput,
 )
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 

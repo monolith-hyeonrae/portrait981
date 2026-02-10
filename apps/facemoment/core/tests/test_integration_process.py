@@ -16,7 +16,7 @@ import numpy as np
 from visualbase.core.frame import Frame
 from visualbase.ipc.interfaces import VideoReader, MessageSender, MessageReceiver
 
-from visualpath.analyzers.base import (
+from vpx.sdk import (
     BaseAnalyzer,
     Observation,
 )

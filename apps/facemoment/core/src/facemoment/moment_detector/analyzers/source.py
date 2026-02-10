@@ -7,7 +7,7 @@ for visualization and documentation purposes.
 
 from typing import List
 
-from visualpath.analyzers.base import ProcessingStep
+from vpx.sdk import ProcessingStep
 
 
 class SourceProcessor:

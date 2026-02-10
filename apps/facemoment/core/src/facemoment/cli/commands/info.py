@@ -488,7 +488,7 @@ def _print_processing_steps():
             return cls._STEPS
         # Try get_processing_steps (decorator-based)
         try:
-            from visualpath.analyzers.base import get_processing_steps
+            from vpx.sdk import get_processing_steps
             return get_processing_steps(cls)
         except Exception:
             return []

@@ -9,8 +9,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │  범용 레이어 (재사용 가능)                               │
 │  visualbase (미디어 I/O) → visualpath (분석 프레임워크) │
-│  visualpath-analyzers-base (공유 타입/프로토콜)          │
-│  vpx-* (독립 비전 분석 모듈)                            │
+│  vpx-sdk (공유 타입/프로토콜) + vpx-* (비전 분석 모듈) │
 └─────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────┐
@@ -29,7 +28,7 @@
 ```
 visualbase (미디어 I/O)
   → visualpath (분석 프레임워크)
-      → visualpath-analyzers-base (공유 타입: Observation, Module, protocols)
+      → vpx-sdk (공유 타입: Observation, Module, protocols)
           → vpx-face-detect      (InsightFace SCRFD, onnxruntime-gpu)
           → vpx-face-expression  (HSEmotion, onnxruntime CPU)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
@@ -48,9 +47,7 @@ portrait981/                    ← repo root
 │   │   ├── core/               # 분석 프레임워크
 │   │   ├── cli/                # CLI 도구
 │   │   ├── isolation/          # Worker 격리
-│   │   ├── pathway/            # Pathway 백엔드
-│   │   └── analyzers/
-│   │       └── base/           # 공유 타입/프로토콜
+│   │   └── pathway/            # Pathway 백엔드
 │   └── vpx/
 │       ├── sdk/                # vpx-sdk (모듈 SDK)
 │       ├── runner/             # vpx-runner (Analyzer 러너)
@@ -81,7 +78,6 @@ portrait981/                    ← repo root
 | visualpath-isolation | `libs/visualpath/isolation/` | Worker 격리 |
 | visualpath-cli | `libs/visualpath/cli/` | CLI 도구 |
 | visualpath-pathway | `libs/visualpath/pathway/` | Pathway 백엔드 |
-| visualpath-analyzers-base | `libs/visualpath/analyzers/base/` | 공유 타입/프로토콜 |
 | vpx-face-detect | `libs/vpx/plugins/face-detect/` | 얼굴 검출 |
 | vpx-face-expression | `libs/vpx/plugins/face-expression/` | 표정 분석 |
 | vpx-body-pose | `libs/vpx/plugins/body-pose/` | 포즈 추정 |
@@ -97,9 +93,6 @@ portrait981/                    ← repo root
 **`vpx` namespace** (4개 analyzer + sdk + runner + viz 패키지):
 - 각 `libs/vpx/*/src/vpx/__init__.py`에 `pkgutil.extend_path` 사용
 
-**`visualpath.analyzers` namespace** (analyzers-base 패키지):
-- `libs/visualpath/analyzers/base/src/visualpath/analyzers/__init__.py`
-
 **`facemoment` namespace** (core 패키지):
 - `facemoment/__init__.py`
 - `facemoment/moment_detector/__init__.py`
@@ -109,12 +102,13 @@ portrait981/                    ← repo root
 ## Import 경로
 
 ```python
-# 공유 타입 (visualpath-analyzers-base)
-from visualpath.analyzers.base import Module, Observation, FaceObservation
-from visualpath.analyzers.types import KeypointIndex, GestureType
+# 공유 타입 (vpx-sdk)
+from vpx.sdk import Module, Observation
+from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 from vpx.body_pose.output import PoseOutput
-from visualpath.analyzers.backends.base import DetectedFace, FaceDetectionBackend
+from vpx.body_pose.types import KeypointIndex
+from vpx.hand_gesture.types import GestureType
 
 # Analyzer (vpx 패키지)
 from vpx.face_detect import FaceDetectionAnalyzer

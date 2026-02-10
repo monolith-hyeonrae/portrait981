@@ -21,12 +21,12 @@ Usage:
 """
 
 # Base types - always available (no ML dependencies)
-from visualpath.analyzers.base import (
+from vpx.sdk import (
     Module,
     BaseAnalyzer,  # Alias for Module
     Observation,
-    IsolationLevel,
 )
+from visualpath.core import IsolationLevel
 from vpx.face_detect.types import FaceObservation
 from vpx.body_pose.types import KeypointIndex, COCO_KEYPOINT_NAMES
 from vpx.hand_gesture.types import HandLandmarkIndex, GestureType

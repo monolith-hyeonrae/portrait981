@@ -14,7 +14,7 @@ from pathlib import Path
 
 from visualbase import VisualBase, FileSource, Frame, Trigger, ClipResult
 
-from visualpath.analyzers.base import BaseAnalyzer, Observation
+from vpx.sdk import BaseAnalyzer, Observation
 from facemoment.moment_detector.fusion.base import BaseFusion
 
 

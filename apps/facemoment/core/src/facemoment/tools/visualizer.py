@@ -8,7 +8,7 @@ import numpy as np
 
 from visualbase import Frame, FrameViewer
 from facemoment.moment_detector import MomentDetector
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 
 

@@ -9,7 +9,7 @@ import numpy as np
 
 from visualbase import Frame
 
-from visualpath.analyzers.base import (
+from vpx.sdk import (
     Module,
     Observation,
     ProcessingStep,

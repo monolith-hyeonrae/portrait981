@@ -35,7 +35,7 @@ from visualbase.ipc.messages import (
 )
 from visualpath.process.mapper import ObservationMapper, CompositeMapper
 
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 

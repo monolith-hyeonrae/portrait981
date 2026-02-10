@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 from vpx.body_pose.types import KeypointIndex
 from vpx.hand_gesture.types import HandLandmarkIndex

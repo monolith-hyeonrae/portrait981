@@ -16,7 +16,7 @@ from facemoment.pipeline import (
     PipelineStats,
     create_default_config,
 )
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from visualpath.core import IsolationLevel
 
 from helpers import create_test_video

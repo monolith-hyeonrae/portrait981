@@ -5,7 +5,6 @@ members = [
     "libs/visualpath/isolation",
     "libs/visualpath/cli",
     "libs/visualpath/pathway",
-    "libs/visualpath/analyzers/base",
     "libs/vpx/plugins/face-detect",
     "libs/vpx/plugins/face-expression",
     "libs/vpx/plugins/body-pose",

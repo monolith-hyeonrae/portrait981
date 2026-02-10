@@ -7,7 +7,7 @@ import logging
 
 from visualbase import Trigger
 
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 from facemoment.moment_detector.fusion.base import Module
 from facemoment.moment_detector.analyzers.face_classifier import FaceClassifierOutput

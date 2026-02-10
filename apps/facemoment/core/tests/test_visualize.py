@@ -9,7 +9,7 @@ from facemoment.moment_detector.visualize import (
     DebugVisualizer,
     VisualizationConfig,
 )
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 from vpx.body_pose.output import PoseOutput

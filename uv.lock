@@ -19,7 +19,6 @@ members = [
     "facemoment",
     "visualbase",
     "visualpath",
-    "visualpath-analyzers-base",
     "visualpath-cli",
     "visualpath-isolation",
     "visualpath-pathway",
@@ -1073,7 +1072,7 @@ dependencies = [
     { name = "opencv-python" },
     { name = "visualbase" },
     { name = "visualpath", extra = ["isolation"] },
-    { name = "visualpath-analyzers-base" },
+    { name = "vpx-sdk" },
 ]
 
 [package.optional-dependencies]
@@ -1115,11 +1114,11 @@ requires-dist = [
     { name = "supervision", marker = "extra == 'local'", specifier = ">=0.19.0" },
     { name = "visualbase", editable = "libs/visualbase" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
-    { name = "visualpath-analyzers-base", editable = "libs/visualpath/analyzers/base" },
     { name = "vpx-body-pose", marker = "extra == 'body-pose'", editable = "libs/vpx/plugins/body-pose" },
     { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/plugins/face-detect" },
     { name = "vpx-face-expression", marker = "extra == 'face-expression'", editable = "libs/vpx/plugins/face-expression" },
     { name = "vpx-hand-gesture", marker = "extra == 'hand-gesture'", editable = "libs/vpx/plugins/hand-gesture" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 provides-extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "local", "dev"]
 
@@ -5612,17 +5611,6 @@ requires-dist = [
     { name = "visualpath-pathway", marker = "extra == 'pathway'", editable = "libs/visualpath/pathway" },
 ]
 provides-extras = ["all", "cli", "dev", "isolation", "pathway"]
-
-[[package]]
-name = "visualpath-analyzers-base"
-version = "0.1.0"
-source = { editable = "libs/visualpath/analyzers/base" }
-dependencies = [
-    { name = "vpx-sdk" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "vpx-sdk", editable = "libs/vpx/sdk" }]
 
 [[package]]
 name = "visualpath-cli"

@@ -4,7 +4,7 @@ from typing import List
 
 from visualbase import Frame
 
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 
 
 def _get_faces(obs):

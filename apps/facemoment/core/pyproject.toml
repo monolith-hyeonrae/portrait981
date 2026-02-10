@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "visualbase",
     "visualpath[isolation]",
-    "visualpath-analyzers-base",
+    "vpx-sdk",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
 ]
@@ -67,7 +67,7 @@ python_functions = ["test_*"]
 visualbase = { workspace = true }
 visualpath = { workspace = true }
 visualpath-isolation = { workspace = true }
-visualpath-analyzers-base = { workspace = true }
+vpx-sdk = { workspace = true }
 vpx-face-detect = { workspace = true }
 vpx-face-expression = { workspace = true }
 vpx-body-pose = { workspace = true }

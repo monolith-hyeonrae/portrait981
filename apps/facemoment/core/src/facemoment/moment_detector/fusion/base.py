@@ -18,7 +18,7 @@ from visualpath.core.module import Module
 from visualbase import Trigger
 
 # Import Observation from facemoment (preferred return type)
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 
 # Backwards compatibility alias
 BaseFusion = Module

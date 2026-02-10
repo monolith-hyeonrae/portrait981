@@ -14,7 +14,7 @@ from visualbase.ipc.uds import UDSServer, UDSClient
 from visualbase.ipc.messages import parse_obs_message
 from visualbase.ipc.interfaces import VideoReader, MessageSender
 
-from visualpath.analyzers.base import (
+from vpx.sdk import (
     BaseAnalyzer,
     Observation,
 )

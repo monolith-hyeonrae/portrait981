@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 import logging
 
-from visualpath.analyzers.base import Observation
+from vpx.sdk import Observation
 
 logger = logging.getLogger(__name__)
 
