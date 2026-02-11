@@ -11,7 +11,7 @@ before execution starts.
 """
 
 import logging
-from typing import Iterator, List, Optional, TYPE_CHECKING
+from typing import Callable, Iterator, List, Optional, TYPE_CHECKING
 
 from visualpath.backends.base import ExecutionBackend, PipelineResult
 from visualpath.core.isolation import IsolationConfig, IsolationLevel
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from visualbase import Frame
     from visualpath.core.module import Module
     from visualpath.flow.graph import FlowGraph
+    from visualpath.flow.node import FlowData
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,8 @@ class WorkerBackend(ExecutionBackend):
         self,
         frames: Iterator["Frame"],
         graph: "FlowGraph",
+        *,
+        on_frame: Optional[Callable[["Frame", List["FlowData"]], bool]] = None,
     ) -> PipelineResult:
         """Execute a FlowGraph with isolation support.
 
@@ -60,6 +63,7 @@ class WorkerBackend(ExecutionBackend):
         Args:
             frames: Iterator of Frame objects.
             graph: FlowGraph (may contain ModuleSpec.isolation).
+            on_frame: Optional per-frame callback. See ExecutionBackend.execute().
 
         Returns:
             PipelineResult with triggers and frame count.
@@ -67,7 +71,7 @@ class WorkerBackend(ExecutionBackend):
         wrapped_graph = self._wrap_isolated_modules(graph)
 
         from visualpath.backends.simple import SimpleBackend
-        return SimpleBackend().execute(frames, wrapped_graph)
+        return SimpleBackend().execute(frames, wrapped_graph, on_frame=on_frame)
 
     def _wrap_isolated_modules(self, graph: "FlowGraph") -> "FlowGraph":
         """Create a new graph with isolated modules replaced by WorkerModule.

@@ -172,7 +172,8 @@ def cmd_debug(
     Returns:
         Exit code (0 for success).
     """
-    from visualpath.flow import FlowGraphBuilder, GraphExecutor
+    from visualpath.flow import FlowGraphBuilder
+    from visualpath.backends.simple import GraphExecutor
 
     print("=" * 60)
     print("VisualPath Debug Pipeline")
@@ -219,7 +220,7 @@ def cmd_debug(
 
 def _run_simple(graph, frames, ext, fusion_obj, debug: bool) -> int:
     """Run with SimpleBackend via GraphExecutor."""
-    from visualpath.flow import GraphExecutor
+    from visualpath.backends.simple import GraphExecutor
 
     triggers_received = []
 

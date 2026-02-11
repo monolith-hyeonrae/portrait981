@@ -246,6 +246,7 @@ class FaceDetectionAnalyzer(Module):
                 t_ns=frame.t_src_ns,
                 signals={"face_count": 0},
                 data=FaceDetectOutput(faces=[], detected_faces=[], image_size=(w, h)),
+                metadata={"_metrics": {"detection_count": 0}},
                 timing=timing,
             )
 
@@ -261,6 +262,18 @@ class FaceDetectionAnalyzer(Module):
         timing = self._step_timings.copy() if self._step_timings else None
         self._step_timings = None
 
+        # Module-internal metrics
+        avg_conf = (
+            sum(f.confidence for f in face_observations) / len(face_observations)
+            if face_observations
+            else 0.0
+        )
+        _metrics = {
+            "detection_count": len(detected_faces),
+            "avg_confidence": round(avg_conf, 4),
+            "tracking_active": len(self._prev_faces),
+        }
+
         return Observation(
             source=self.name,
             frame_id=frame.frame_id,
@@ -271,8 +284,33 @@ class FaceDetectionAnalyzer(Module):
                 detected_faces=detected_faces,
                 image_size=(w, h),
             ),
+            metadata={"_metrics": _metrics},
             timing=timing,
         )
+
+    def annotate(self, obs):
+        """Return BBoxMark for each detected face."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import BBoxMark
+
+        marks = []
+        for face in obs.data.faces:
+            is_good = (
+                face.confidence >= 0.7
+                and abs(face.yaw) <= 25
+                and abs(face.pitch) <= 20
+                and face.inside_frame
+            )
+            color = (0, 255, 0) if is_good else (0, 0, 255)
+            marks.append(BBoxMark(
+                x=face.bbox[0], y=face.bbox[1],
+                w=face.bbox[2], h=face.bbox[3],
+                label=f"ID:{face.face_id}",
+                color=color,
+                confidence=face.confidence,
+            ))
+        return marks
 
     @staticmethod
     def _compute_iou(

@@ -111,6 +111,7 @@ class DummyAnalyzer:
     """
 
     depends = []  # No dependencies
+    stateful = False
 
     def __init__(self, delay_ms: float = 0.0):
         """Initialize the dummy module.
@@ -145,7 +146,10 @@ class DummyAnalyzer:
                 "dummy": 1.0,
             },
             data={"status": "ok"},
-            metadata={"module": "dummy"},
+            metadata={
+                "module": "dummy",
+                "_metrics": {"process_count": self._process_count},
+            },
         )
 
     def initialize(self) -> None:

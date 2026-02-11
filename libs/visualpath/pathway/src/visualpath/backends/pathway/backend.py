@@ -18,11 +18,12 @@ Example:
 
 import logging
 import os
+import queue
 import signal
 import threading
 import time as _time_mod
 import uuid
-from typing import Iterator, TYPE_CHECKING
+from typing import Callable, Iterator, List, Optional, TYPE_CHECKING
 
 _logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ from visualpath.backends.pathway.stats import PathwayStats
 if TYPE_CHECKING:
     from visualbase import Frame
     from visualpath.flow.graph import FlowGraph
+    from visualpath.flow.node import FlowData
 
 try:
     import pathway as pw
@@ -179,6 +181,8 @@ class PathwayBackend(ExecutionBackend):
         self,
         frames: Iterator["Frame"],
         graph: "FlowGraph",
+        *,
+        on_frame: Optional[Callable[["Frame", List["FlowData"]], bool]] = None,
     ) -> PipelineResult:
         """Execute a FlowGraph-based pipeline using Pathway streaming.
 
@@ -187,10 +191,12 @@ class PathwayBackend(ExecutionBackend):
         2. Converts the FlowGraph to a Pathway dataflow via FlowGraphConverter
         3. Subscribes to output for trigger collection
         4. Runs the Pathway engine until all frames are processed
+        5. If on_frame is provided, drains results via a queue from the main thread
 
         Args:
             frames: Iterator of Frame objects (consumed lazily by Pathway).
             graph: FlowGraph defining the processing pipeline.
+            on_frame: Optional per-frame callback. See ExecutionBackend.execute().
 
         Returns:
             PipelineResult with triggers, frame_count, and stats.
@@ -242,16 +248,24 @@ class PathwayBackend(ExecutionBackend):
             )
             output_table = converter.convert(graph, frames_table)
 
-            # Stateful modules (is_trigger=True) are deferred from the UDF.
+            # Stateful modules (stateful=True) are deferred from the UDF.
             # Pathway UDFs execute rows in arbitrary order within a batch,
             # so stateful modules run after the engine completes, sorted
             # by t_ns for correct temporal ordering.
             deferred = converter.deferred_modules
             deferred_queue: list = []  # (t_ns, frame, analyzer_deps)
 
+            # When on_frame is provided, use a queue to pass results to
+            # the main thread (on_output runs on the Pathway engine thread,
+            # but on_frame may call cv2.imshow which needs the main thread).
+            frame_queue: Optional[queue.Queue] = queue.Queue() if on_frame else None
+            stop_requested = [False]
+
             # 3. Subscribe — collect analyzer results from output
             def on_output(key, row, time, is_addition):
                 if not is_addition:
+                    return
+                if stop_requested[0]:
                     return
                 stats.record_observation_output()
 
@@ -290,16 +304,64 @@ class PathwayBackend(ExecutionBackend):
                                     r.source, 0.0, success=False,
                                 )
 
-                        # Queue frame+deps for deferred fusion (sorted later)
-                        if deferred:
-                            frame_wrapper = row.get("frame")
-                            frame = (
-                                frame_wrapper.value
-                                if hasattr(frame_wrapper, "value")
-                                else frame_wrapper
+                        # Extract frame from row
+                        frame_wrapper = row.get("frame")
+                        row_frame = (
+                            frame_wrapper.value
+                            if hasattr(frame_wrapper, "value")
+                            else frame_wrapper
+                        ) if frame_wrapper is not None else None
+
+                        if frame_queue is not None and row_frame is not None:
+                            # on_frame mode: run deferred modules inline
+                            # and queue the complete result
+                            for dm in deferred:
+                                t0 = _time_mod.perf_counter()
+                                try:
+                                    dm_dep_names = (
+                                        list(getattr(dm, 'depends', None) or [])
+                                        + list(getattr(dm, 'optional_depends', None) or [])
+                                    )
+                                    dm_deps = (
+                                        {n: analyzer_deps[n] for n in dm_dep_names if n in analyzer_deps}
+                                        if dm_dep_names else None
+                                    )
+                                    dm_obs = dm.process(row_frame, dm_deps)
+                                    elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
+                                    stats.record_analysis(dm.name, elapsed_ms, success=True)
+                                    if dm_obs is not None:
+                                        analyzer_deps[dm.name] = dm_obs
+                                        if dm_obs.should_trigger and dm_obs.trigger is not None:
+                                            stats.record_trigger()
+                                            triggers.append(dm_obs.trigger)
+                                            from visualpath.flow.node import FlowData
+                                            trigger_data = FlowData(results=[dm_obs])
+                                            graph.fire_triggers(trigger_data)
+                                except Exception as exc:
+                                    elapsed_ms = (_time_mod.perf_counter() - t0) * 1000
+                                    stats.record_analysis(dm.name, elapsed_ms, success=False)
+                                    _logger.warning(
+                                        "Deferred module '%s' failed: %s",
+                                        dm.name, exc,
+                                    )
+
+                            # Build FlowData with all observations
+                            from visualpath.flow.node import FlowData
+                            all_obs = list(analyzer_deps.values())
+                            result_obs = [
+                                o for o in all_obs
+                                if getattr(o, 'should_trigger', False)
+                            ]
+                            fd = FlowData(
+                                frame=row_frame,
+                                observations=all_obs,
+                                results=result_obs,
                             )
+                            frame_queue.put((row_frame, [fd]))
+                        elif deferred and row_frame is not None:
+                            # Batch mode: queue for later
                             deferred_queue.append(
-                                (frame.t_src_ns, frame, dict(analyzer_deps))
+                                (row_frame.t_src_ns, row_frame, dict(analyzer_deps))
                             )
 
                         # Record one frame analyzed per batch of results
@@ -340,9 +402,30 @@ class PathwayBackend(ExecutionBackend):
             engine_thread.start()
 
             try:
-                # Wait with a poll loop so SIGINT reaches the main thread
-                while engine_thread.is_alive():
-                    engine_thread.join(timeout=0.5)
+                if frame_queue is not None:
+                    # on_frame mode: drain queue from main thread
+                    while engine_thread.is_alive():
+                        engine_thread.join(timeout=0.05)
+                        while not frame_queue.empty():
+                            try:
+                                f, results = frame_queue.get_nowait()
+                                if not on_frame(f, results):
+                                    stop_requested[0] = True
+                            except queue.Empty:
+                                break
+                    # Drain remaining items after engine finishes
+                    while not frame_queue.empty():
+                        try:
+                            f, results = frame_queue.get_nowait()
+                            if not stop_requested[0]:
+                                if not on_frame(f, results):
+                                    stop_requested[0] = True
+                        except queue.Empty:
+                            break
+                else:
+                    # Batch mode: wait with a poll loop
+                    while engine_thread.is_alive():
+                        engine_thread.join(timeout=0.5)
             except KeyboardInterrupt:
                 _logger.info("Interrupted — terminating Pathway engine")
                 # Send SIGINT to self so the Rust engine sees it too
@@ -354,7 +437,8 @@ class PathwayBackend(ExecutionBackend):
                 raise engine_error[0]
 
             # 5. Run deferred stateful modules in temporal order
-            if deferred:
+            #    (only in batch mode — on_frame mode runs deferred inline)
+            if deferred and frame_queue is None:
                 deferred_queue.sort(key=lambda x: x[0])  # sort by t_ns
                 for _t_ns, frame, analyzer_deps in deferred_queue:
                     for dm in deferred:

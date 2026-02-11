@@ -9,7 +9,7 @@ This package provides a Pathway-based execution backend that enables:
 Example:
     >>> import visualpath as vp
     >>>
-    >>> result = vp.process_video("video.mp4", modules=[face_detector], backend="pathway")
+    >>> result = vp.run("video.mp4", modules=[face_detector], backend="pathway")
 
 Requirements:
     Install with: pip install visualpath[pathway]

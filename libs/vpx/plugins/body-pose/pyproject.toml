@@ -8,7 +8,7 @@ dependencies = [
     "ultralytics>=8.0.0",
 ]
 
-[project.entry-points."visualpath.analyzers"]
+[project.entry-points."visualpath.modules"]
 "body.pose" = "vpx.body_pose:PoseAnalyzer"
 
 [build-system]

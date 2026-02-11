@@ -77,10 +77,9 @@ class GestureAnalyzer(Module):
     @property
     def capabilities(self) -> ModuleCapabilities:
         return ModuleCapabilities(
-            flags=Capability.STATEFUL | Capability.GPU,
-            gpu_memory_mb=256,
+            flags=Capability.STATEFUL,
+            gpu_memory_mb=0,
             init_time_sec=1.0,
-            resource_groups=frozenset({"mediapipe"}),
             required_extras=frozenset({"vpx-hand-gesture"}),
         )
 
@@ -209,6 +208,78 @@ class GestureAnalyzer(Module):
             ],
         }
 
+    # MediaPipe 21-point hand connections
+    _HAND_CONNECTIONS = (
+        # Thumb
+        (HandLandmarkIndex.WRIST, HandLandmarkIndex.THUMB_CMC),
+        (HandLandmarkIndex.THUMB_CMC, HandLandmarkIndex.THUMB_MCP),
+        (HandLandmarkIndex.THUMB_MCP, HandLandmarkIndex.THUMB_IP),
+        (HandLandmarkIndex.THUMB_IP, HandLandmarkIndex.THUMB_TIP),
+        # Index finger
+        (HandLandmarkIndex.WRIST, HandLandmarkIndex.INDEX_FINGER_MCP),
+        (HandLandmarkIndex.INDEX_FINGER_MCP, HandLandmarkIndex.INDEX_FINGER_PIP),
+        (HandLandmarkIndex.INDEX_FINGER_PIP, HandLandmarkIndex.INDEX_FINGER_DIP),
+        (HandLandmarkIndex.INDEX_FINGER_DIP, HandLandmarkIndex.INDEX_FINGER_TIP),
+        # Middle finger
+        (HandLandmarkIndex.WRIST, HandLandmarkIndex.MIDDLE_FINGER_MCP),
+        (HandLandmarkIndex.MIDDLE_FINGER_MCP, HandLandmarkIndex.MIDDLE_FINGER_PIP),
+        (HandLandmarkIndex.MIDDLE_FINGER_PIP, HandLandmarkIndex.MIDDLE_FINGER_DIP),
+        (HandLandmarkIndex.MIDDLE_FINGER_DIP, HandLandmarkIndex.MIDDLE_FINGER_TIP),
+        # Ring finger
+        (HandLandmarkIndex.WRIST, HandLandmarkIndex.RING_FINGER_MCP),
+        (HandLandmarkIndex.RING_FINGER_MCP, HandLandmarkIndex.RING_FINGER_PIP),
+        (HandLandmarkIndex.RING_FINGER_PIP, HandLandmarkIndex.RING_FINGER_DIP),
+        (HandLandmarkIndex.RING_FINGER_DIP, HandLandmarkIndex.RING_FINGER_TIP),
+        # Pinky
+        (HandLandmarkIndex.WRIST, HandLandmarkIndex.PINKY_MCP),
+        (HandLandmarkIndex.PINKY_MCP, HandLandmarkIndex.PINKY_PIP),
+        (HandLandmarkIndex.PINKY_PIP, HandLandmarkIndex.PINKY_DIP),
+        (HandLandmarkIndex.PINKY_DIP, HandLandmarkIndex.PINKY_TIP),
+        # Palm connections
+        (HandLandmarkIndex.INDEX_FINGER_MCP, HandLandmarkIndex.MIDDLE_FINGER_MCP),
+        (HandLandmarkIndex.MIDDLE_FINGER_MCP, HandLandmarkIndex.RING_FINGER_MCP),
+        (HandLandmarkIndex.RING_FINGER_MCP, HandLandmarkIndex.PINKY_MCP),
+    )
+
+    def annotate(self, obs):
+        """Return KeypointsMark + LabelMark for each detected hand."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import KeypointsMark, LabelMark
+
+        if hasattr(obs.data, "hand_landmarks"):
+            hand_landmarks = obs.data.hand_landmarks
+        elif isinstance(obs.data, dict) and "hand_landmarks" in obs.data:
+            hand_landmarks = obs.data["hand_landmarks"]
+        else:
+            return []
+
+        marks = []
+        for hand in hand_landmarks:
+            landmarks = hand.get("landmarks", [])
+            if len(landmarks) < 21:
+                continue
+            marks.append(KeypointsMark(
+                points=tuple(tuple(l) for l in landmarks),
+                connections=self._HAND_CONNECTIONS,
+                normalized=True,
+                line_color=(200, 100, 0),
+                point_radius=3,
+            ))
+            gesture = hand.get("gesture", "none")
+            if gesture and gesture != "none":
+                wrist = landmarks[HandLandmarkIndex.WRIST]
+                handedness = hand.get("handedness", "")
+                prefix = handedness[0] if handedness else "?"
+                marks.append(LabelMark(
+                    text=f"{prefix}:{gesture}",
+                    x=wrist[0], y=wrist[1] + 0.03,
+                    normalized=True,
+                    color=(0, 255, 0),
+                    background=(40, 40, 40),
+                ))
+        return marks
+
     # ========== Main process method ==========
 
     def process(self, frame: Frame, deps=None) -> Optional[Observation]:
@@ -252,6 +323,10 @@ class GestureAnalyzer(Module):
                 metadata={
                     "gesture_type": "",
                     "hands_detected": 0,
+                    "_metrics": {
+                        "hands_detected": 0,
+                        "gestures_recognized": 0,
+                    },
                 },
                 timing=timing,
             )
@@ -263,6 +338,10 @@ class GestureAnalyzer(Module):
         # Collect timing data
         timing = self._step_timings.copy() if self._step_timings else None
         self._step_timings = None
+
+        gestures_recognized = sum(
+            1 for g in result["all_gestures"] if g["gesture"] != "none"
+        )
 
         return Observation(
             source=self.name,
@@ -277,6 +356,10 @@ class GestureAnalyzer(Module):
                 "gesture_type": result["best_gesture"].value if result["gesture_detected"] else "",
                 "hands_detected": len(hands),
                 "all_gestures": result["all_gestures"],
+                "_metrics": {
+                    "hands_detected": len(hands),
+                    "gestures_recognized": gestures_recognized,
+                },
             },
             timing=timing,
         )

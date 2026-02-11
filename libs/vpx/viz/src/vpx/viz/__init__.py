@@ -9,5 +9,6 @@ Example:
 from vpx.viz.overlay import Overlay, TextOverlay
 from vpx.viz.display import FrameDisplay
 from vpx.viz.writer import VideoSaver
+from vpx.viz.renderer import render_marks
 
-__all__ = ["Overlay", "TextOverlay", "FrameDisplay", "VideoSaver"]
+__all__ = ["Overlay", "TextOverlay", "FrameDisplay", "VideoSaver", "render_marks"]

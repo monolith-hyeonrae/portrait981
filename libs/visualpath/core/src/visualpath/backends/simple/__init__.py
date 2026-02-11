@@ -13,7 +13,13 @@ Example:
 """
 
 from visualpath.backends.simple.backend import SimpleBackend
+from visualpath.backends.simple.interpreter import (
+    SimpleInterpreter, DebugEvent, DebugHook, NodeProcessingError,
+)
+from visualpath.backends.simple.executor import GraphExecutor
 
 __all__ = [
     "SimpleBackend",
+    "SimpleInterpreter", "DebugEvent", "DebugHook", "NodeProcessingError",
+    "GraphExecutor",
 ]

@@ -235,14 +235,76 @@ class PoseAnalyzer(Module):
             **hands_result["signals"],
         }
 
+        # Compute average keypoint confidence across all poses
+        all_confs = []
+        for pose in poses:
+            kpts = pose.keypoints
+            confs = kpts[:, 2] if hasattr(kpts, '__getitem__') else []
+            all_confs.extend(float(c) for c in confs if c > 0)
+        avg_kpt_conf = round(sum(all_confs) / len(all_confs), 4) if all_confs else 0.0
+
         return {
             "signals": signals,
             "keypoints_data": keypoints_data,
             "metadata": {
                 "wave_detected": wave_result["detected"],
                 "poses_detected": len(poses),
+                "_metrics": {
+                    "poses_detected": len(poses),
+                    "avg_keypoint_conf": avg_kpt_conf,
+                },
             },
         }
+
+    # Upper body connections for skeleton visualization
+    _SKELETON_CONNECTIONS = (
+        (KeypointIndex.NOSE, KeypointIndex.LEFT_EYE),
+        (KeypointIndex.NOSE, KeypointIndex.RIGHT_EYE),
+        (KeypointIndex.LEFT_EYE, KeypointIndex.LEFT_EAR),
+        (KeypointIndex.RIGHT_EYE, KeypointIndex.RIGHT_EAR),
+        (KeypointIndex.LEFT_SHOULDER, KeypointIndex.RIGHT_SHOULDER),
+        (KeypointIndex.LEFT_SHOULDER, KeypointIndex.LEFT_ELBOW),
+        (KeypointIndex.LEFT_ELBOW, KeypointIndex.LEFT_WRIST),
+        (KeypointIndex.RIGHT_SHOULDER, KeypointIndex.RIGHT_ELBOW),
+        (KeypointIndex.RIGHT_ELBOW, KeypointIndex.RIGHT_WRIST),
+    )
+
+    # Per-keypoint colors for rendering
+    _POINT_COLORS = {
+        KeypointIndex.NOSE: (255, 255, 255),
+        KeypointIndex.LEFT_WRIST: (0, 255, 255),
+        KeypointIndex.RIGHT_WRIST: (0, 255, 255),
+        KeypointIndex.LEFT_SHOULDER: (0, 255, 0),
+        KeypointIndex.RIGHT_SHOULDER: (0, 255, 0),
+    }
+
+    def annotate(self, obs):
+        """Return KeypointsMark for each detected person's upper body."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import KeypointsMark
+
+        if hasattr(obs.data, "keypoints"):
+            keypoints = obs.data.keypoints
+        elif isinstance(obs.data, dict) and "keypoints" in obs.data:
+            keypoints = obs.data["keypoints"]
+        else:
+            return []
+
+        marks = []
+        for person in keypoints:
+            kpts = person.get("keypoints", [])
+            if not kpts or len(kpts) < 11:
+                continue
+            marks.append(KeypointsMark(
+                points=tuple(tuple(k) for k in kpts[:11]),
+                connections=self._SKELETON_CONNECTIONS,
+                normalized=False,
+                line_color=(255, 200, 100),
+                point_colors=self._POINT_COLORS,
+                point_radius=3,
+            ))
+        return marks
 
     # ========== Main process method ==========
 
@@ -284,6 +346,7 @@ class PoseAnalyzer(Module):
                     "hand_wave_detected": 0.0,
                 },
                 data=PoseOutput(keypoints=[], person_count=0),
+                metadata={"_metrics": {"poses_detected": 0}},
                 timing=timing,
             )
 

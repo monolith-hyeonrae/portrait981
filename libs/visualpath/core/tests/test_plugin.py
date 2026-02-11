@@ -5,9 +5,11 @@ from typing import Optional
 
 from visualpath.core import Module, Observation
 from visualpath.plugin import (
+    discover_modules,
     discover_analyzers,
     discover_fusions,
     PluginRegistry,
+    MODULES_GROUP,
     ANALYZERS_GROUP,
 )
 
@@ -72,9 +74,16 @@ class TestDiscovery:
         fusions = discover_fusions()
         assert isinstance(fusions, dict)
 
-    def test_extractors_group_name(self):
-        """Test the extractors group name constant."""
-        assert ANALYZERS_GROUP == "visualpath.analyzers"
+    def test_modules_group_name(self):
+        """Test the unified modules group name constant."""
+        assert MODULES_GROUP == "visualpath.modules"
+        # Legacy aliases point to the same group
+        assert ANALYZERS_GROUP == MODULES_GROUP
+
+    def test_discover_modules_returns_dict(self):
+        """Test that discover_modules returns a dict."""
+        modules = discover_modules()
+        assert isinstance(modules, dict)
 
 
 # =============================================================================

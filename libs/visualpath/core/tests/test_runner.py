@@ -175,15 +175,15 @@ class TestResolveModules:
 class TestPublicAPI:
     """Tests that process/run are accessible from visualpath namespace."""
 
-    def test_process_video_importable(self):
+    def test_run_importable(self):
         import visualpath as vp
-        assert hasattr(vp, "process_video")
-        assert callable(vp.process_video)
+        assert hasattr(vp, "run")
+        assert callable(vp.run)
 
-    def test_process_video_importable_as_main_api(self):
+    def test_process_video_alias(self):
         import visualpath as vp
         assert hasattr(vp, "process_video")
-        assert callable(vp.process_video)
+        assert vp.process_video is vp.run
 
     def test_process_result_importable(self):
         import visualpath as vp

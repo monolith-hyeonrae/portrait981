@@ -36,7 +36,7 @@ all = [
     "visualpath-pathway",
 ]
 
-[project.entry-points."visualpath.analyzers"]
+[project.entry-points."visualpath.modules"]
 # Test dummy analyzer for integration tests
 "mock.dummy" = "visualpath.core.observation:DummyAnalyzer"
 

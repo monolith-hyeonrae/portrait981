@@ -308,3 +308,167 @@ class TestPipelineResult:
         assert result.triggers == ["t1"]
         assert result.frame_count == 10
         assert result.stats == {"key": "val"}
+
+
+# =============================================================================
+# Parallel Module Execution Tests
+# =============================================================================
+
+
+class TestParallelModuleExecution:
+    """Tests for parallel module dispatch in SimpleInterpreter."""
+
+    def test_level_sort_independent_modules(self):
+        """Independent modules are grouped into one level."""
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        c = CountingAnalyzer("c")
+
+        interp = SimpleInterpreter()
+        levels = interp._level_sort_modules((a, b, c))
+
+        assert len(levels) == 1
+        assert len(levels[0]) == 3
+
+    def test_level_sort_with_dependencies(self):
+        """Modules with deps are sorted into correct levels."""
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        b.depends = ["a"]
+        c = CountingAnalyzer("c")
+        c.depends = ["b"]
+
+        interp = SimpleInterpreter()
+        levels = interp._level_sort_modules((a, b, c))
+
+        assert len(levels) == 3
+        assert levels[0][0].name == "a"
+        assert levels[1][0].name == "b"
+        assert levels[2][0].name == "c"
+
+    def test_level_sort_diamond_deps(self):
+        """Diamond dependency: A -> B,C -> D. B and C should be in same level."""
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        b.depends = ["a"]
+        c = CountingAnalyzer("c")
+        c.depends = ["a"]
+        d = CountingAnalyzer("d")
+        d.depends = ["b", "c"]
+
+        interp = SimpleInterpreter()
+        levels = interp._level_sort_modules((a, b, c, d))
+
+        assert len(levels) == 3
+        assert levels[0][0].name == "a"
+        assert {m.name for m in levels[1]} == {"b", "c"}
+        assert levels[2][0].name == "d"
+
+    def test_parallel_execution_produces_same_results(self):
+        """Parallel execution produces same observations as sequential."""
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
+        from visualpath.flow.nodes.path import PathNode
+        from visualpath.flow.node import FlowData
+
+        a = CountingAnalyzer("a", value=0.3)
+        b = CountingAnalyzer("b", value=0.7)
+
+        # Sequential
+        node_seq = PathNode(name="seq", modules=[a, b], parallel=False)
+        interp_seq = SimpleInterpreter()
+        frame = make_frame()
+        data = FlowData(frame=frame, timestamp_ns=frame.t_src_ns)
+        out_seq = interp_seq.interpret(node_seq, data)
+
+        # Reset counters
+        a._process_count = 0
+        b._process_count = 0
+
+        # Parallel
+        node_par = PathNode(name="par", modules=[a, b], parallel=True)
+        interp_par = SimpleInterpreter()
+        data2 = FlowData(frame=frame, timestamp_ns=frame.t_src_ns)
+        out_par = interp_par.interpret(node_par, data2)
+
+        assert len(out_seq) == len(out_par) == 1
+        seq_obs = out_seq[0].observations
+        par_obs = out_par[0].observations
+        assert len(seq_obs) == len(par_obs) == 2
+        assert {o.source for o in seq_obs} == {o.source for o in par_obs}
+
+    def test_parallel_with_deps_produces_correct_results(self):
+        """Parallel execution respects dependencies across levels."""
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
+        from visualpath.flow.nodes.path import PathNode
+        from visualpath.flow.node import FlowData
+
+        class DepModule(Module):
+            def __init__(self, name, dep_name=None):
+                self._name = name
+                self.depends = [dep_name] if dep_name else []
+                self.received_deps = None
+
+            @property
+            def name(self):
+                return self._name
+
+            def process(self, frame, deps=None):
+                self.received_deps = deps
+                val = 0.0
+                if deps:
+                    for obs in deps.values():
+                        val += obs.signals.get("value", 0)
+                return Observation(
+                    source=self.name,
+                    frame_id=frame.frame_id,
+                    t_ns=frame.t_src_ns,
+                    signals={"value": val + 1.0},
+                )
+
+        a = DepModule("a")
+        b = DepModule("b", dep_name="a")
+
+        node = PathNode(name="test", modules=[a, b], parallel=True)
+        interp = SimpleInterpreter()
+        frame = make_frame()
+        data = FlowData(frame=frame, timestamp_ns=frame.t_src_ns)
+        out = interp.interpret(node, data)
+
+        obs_map = {o.source: o for o in out[0].observations}
+        # a: value=1.0 (no deps)
+        assert obs_map["a"].signals["value"] == 1.0
+        # b: value=2.0 (a's value + 1.0)
+        assert obs_map["b"].signals["value"] == 2.0
+        # b received deps from a
+        assert b.received_deps is not None
+        assert "a" in b.received_deps
+
+    def test_parallel_execution_all_modules_called(self):
+        """All modules in parallel execution produce observations."""
+        from visualpath.backends.simple import SimpleBackend
+        from visualpath.flow.graph import FlowGraph
+        from visualpath.flow.nodes.source import SourceNode
+        from visualpath.flow.nodes.path import PathNode
+
+        a = CountingAnalyzer("a")
+        b = CountingAnalyzer("b")
+        c = CountingAnalyzer("c")
+
+        graph = FlowGraph(entry_node="source")
+        graph.add_node(SourceNode(name="source"))
+        graph.add_node(PathNode(name="pipe", modules=[a, b, c], parallel=True))
+        graph.add_edge("source", "pipe")
+
+        backend = SimpleBackend()
+        result = backend.execute(iter(make_frames(3)), graph)
+
+        assert a._process_count == 3
+        assert b._process_count == 3
+        assert c._process_count == 3
+        assert result.frame_count == 3

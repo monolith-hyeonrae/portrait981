@@ -115,11 +115,18 @@ class Module(ABC):
         optional_depends: List of module names this module can optionally use.
                           These are also passed via deps if available, but
                           are not validated at graph construction time.
+        stateful: Whether this module is a stateful module (e.g. fusion with
+                  internal state). Stateful modules require temporal ordering —
+                  backends that process frames in arbitrary order (e.g. Pathway
+                  UDF) defer stateful modules to an ordered execution path.
     """
 
     # Class attribute: list of module names this module depends on
     depends: List[str] = []
     optional_depends: List[str] = []
+
+    # Stateful modules require temporal ordering for correct behaviour.
+    stateful: bool = False
 
     # Optional class attributes for interface contracts
     port_schema: Optional["PortSchema"] = None
@@ -217,6 +224,20 @@ class Module(ABC):
         Default: no capabilities (safe for all execution modes).
         """
         return ModuleCapabilities()
+
+    def annotate(self, obs: "Observation") -> list:
+        """Return draw marks for visualization.
+
+        Override to define how this module's output should be drawn.
+        Returns a list of Mark objects (BBoxMark, KeypointsMark, etc.)
+        that a renderer can interpret.
+
+        The default returns an empty list (no visualization).
+
+        Args:
+            obs: Observation from this module's process().
+        """
+        return []
 
     def reset(self) -> None:
         """Reset module state.

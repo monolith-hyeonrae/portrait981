@@ -687,7 +687,7 @@ def select_around_triggers(scored_frames, trigger_times_ns,
 ### 사용 예시
 
 ```python
-from facemoment.moment_detector.scoring import (
+from facemoment.algorithm.scoring import (
     FrameScorer, FrameSelector, ScoredFrame,
     ScoringConfig, SelectionConfig,
 )

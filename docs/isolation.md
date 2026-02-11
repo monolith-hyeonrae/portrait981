@@ -226,27 +226,32 @@ visualpath의 `ProcessWorker`를 사용하여 충돌하는 extractor를 별도 �
 
 #### 자동 감지 메커니즘
 
-`_CUDA_GROUPS`로 충돌 그룹을 정의하고, 2개 이상 그룹이 활성화되면 소수 그룹을 자동 격리합니다:
+각 analyzer의 `capabilities.resource_groups`로 충돌 그룹을 선언하고,
+`build_conflict_isolation()`이 2개 이상 그룹이 활성화되면 소수 그룹을 자동 격리합니다:
 
 ```python
-_CUDA_GROUPS = {
-    "onnxruntime": {"face", "face_detect", "expression"},
-    "torch": {"pose"},
-}
+# 각 analyzer가 capabilities에서 선언:
+# face.detect:     resource_groups=frozenset({"onnxruntime"})
+# face.expression: resource_groups=frozenset({"onnxruntime"})
+# body.pose:       resource_groups=frozenset({"torch"})
+
+from visualpath.core.compat import build_conflict_isolation
+config = build_conflict_isolation(modules)
 ```
 
 ```
-사용자 요청: extractors=["face", "pose"]
+사용자 요청: analyzers=["face.detect", "body.pose"]
 
-_detect_cuda_conflicts()
-  → onnxruntime 그룹: ["face"]  (1개)
-  → torch 그룹: ["pose"]       (1개)
+build_conflict_isolation(modules)
+  → check_compatibility() → resource_conflicts 감지
+  → onnxruntime 그룹: ["face.detect"]  (1개)
+  → torch 그룹: ["body.pose"]         (1개)
   → 2개 그룹 활성 → 충돌!
-  → torch(소수) → {"pose"}를 ProcessWorker로 격리
+  → torch(소수) → {"body.pose"}를 PROCESS 격리
 
 결과:
-  inline:  [face, face_classifier]  (메인 프로세스)
-  workers: {pose: ProcessWorker}    (subprocess)
+  inline:  [face.detect, face.classify]  (메인 프로세스)
+  workers: {body.pose: PROCESS}          (subprocess)
 ```
 
 #### deps 전달
@@ -311,7 +316,7 @@ Phase 15  face → face_detect + expression 분리
 Phase 18  VenvWorker로 onnxruntime GPU/CPU 격리 (사례 1 해결)
           fine-grained extras (face-detect, expression)
 Phase 19  ProcessWorker로 CUDA 런타임 자동 격리 (사례 2 해결)
-          _detect_cuda_conflicts() 자동 감지
+          build_conflict_isolation() 자동 감지
 ```
 
 ---

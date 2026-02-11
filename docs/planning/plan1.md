@@ -205,7 +205,7 @@ monolith/
     ├── src/portrait981/
     │   ├── __init__.py
     │   ├── cli.py               # CLI (visualize, process) ✅
-    │   ├── moment_detector/
+    │   ├── algorithm/
     │   │   ├── detector.py      # MomentDetector ✅
     │   │   ├── extractors/
     │   │   │   ├── base.py      # BaseExtractor, Observation ✅
@@ -216,7 +216,7 @@ monolith/
     │   └── tools/
     │       └── visualizer.py    # DetectorVisualizer ✅
     └── tests/
-        └── test_moment_detector.py  # 12 tests ✅
+        └── test_algorithm.py  # 12 tests ✅
 ```
 
 ### 향후 추가 예정
@@ -225,12 +225,12 @@ visualbase/src/visualbase/sources/
     ├── camera.py            # CameraSource (Phase 5)
     └── rtsp.py              # RTSPSource (Phase 5)
 
-portrait981/src/portrait981/moment_detector/extractors/
+portrait981/src/portrait981/algorithm/extractors/
     ├── face.py              # FaceExtractor (Phase 4)
     ├── quality.py           # QualityExtractor (Phase 4)
     └── gesture.py           # GestureExtractor (Phase 4)
 
-portrait981/src/portrait981/moment_detector/fusion/
+portrait981/src/portrait981/algorithm/fusion/
     └── highlight.py         # HighlightFusion (Phase 4)
 ```
 

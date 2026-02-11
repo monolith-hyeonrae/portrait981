@@ -112,6 +112,25 @@ class TestWarmup:
         assert mod.calls == ["init", "warmup", "process", "cleanup"]
 
 
+class TestAnnotate:
+    """Test Module.annotate() default."""
+
+    def test_module_annotate_default_returns_empty_list(self):
+        """Default annotate() returns an empty list."""
+
+        class SimpleModule(Module):
+            @property
+            def name(self):
+                return "test"
+
+            def process(self, frame, deps=None):
+                return None
+
+        mod = SimpleModule()
+        obs = Observation(source="test", frame_id=0, t_ns=0, signals={})
+        assert mod.annotate(obs) == []
+
+
 class TestPortSchema:
     """Test PortSchema."""
 
@@ -238,7 +257,7 @@ class TestErrorPolicyInInterpreter:
 
     def test_retry_success(self):
         """Module succeeds after retries."""
-        from visualpath.flow.interpreter import SimpleInterpreter
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
         from visualpath.flow.node import FlowData
 
         policy = ErrorPolicy(max_retries=2, on_error="skip")
@@ -257,7 +276,7 @@ class TestErrorPolicyInInterpreter:
 
     def test_all_retries_fail_skip(self):
         """Module fails all retries with skip policy -> None output."""
-        from visualpath.flow.interpreter import SimpleInterpreter
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
         from visualpath.flow.node import FlowData
 
         policy = ErrorPolicy(max_retries=1, on_error="skip")
@@ -276,7 +295,7 @@ class TestErrorPolicyInInterpreter:
 
     def test_all_retries_fail_raise(self):
         """Module fails all retries with raise policy -> exception."""
-        from visualpath.flow.interpreter import SimpleInterpreter
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
         from visualpath.flow.node import FlowData
 
         policy = ErrorPolicy(max_retries=0, on_error="raise")
@@ -294,7 +313,7 @@ class TestErrorPolicyInInterpreter:
 
     def test_fallback_policy(self):
         """Module fails with fallback policy -> returns fallback signals."""
-        from visualpath.flow.interpreter import SimpleInterpreter
+        from visualpath.backends.simple.interpreter import SimpleInterpreter
         from visualpath.flow.node import FlowData
 
         policy = ErrorPolicy(

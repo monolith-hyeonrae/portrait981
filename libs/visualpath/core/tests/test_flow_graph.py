@@ -9,11 +9,11 @@ from visualpath.core import (
     Module,
     Observation,
 )
+from visualpath.backends.simple import GraphExecutor
 from visualpath.flow import (
     FlowData,
     FlowGraph,
     Edge,
-    GraphExecutor,
     FlowGraphBuilder,
     SourceNode,
     PathNode,
@@ -1089,3 +1089,99 @@ class TestUnifiedModulesAPI:
         assert isinstance(spec, ModuleSpec)
         assert spec.parallel is True
         assert spec.join_window_ns == 200_000_000
+
+
+# =============================================================================
+# Capability Compatibility with Isolation
+# =============================================================================
+
+class TestCapabilityCompatibilityWithIsolation:
+    """Test that resource conflict warnings respect isolation config."""
+
+    def test_conflict_warning_without_isolation(self, caplog):
+        """Resource group conflict should warn when no isolation."""
+        from visualpath.core.capabilities import ModuleCapabilities
+
+        class OnnxModule(Module):
+            @property
+            def name(self):
+                return "face"
+
+            @property
+            def capabilities(self):
+                return ModuleCapabilities(resource_groups=frozenset({"onnxruntime"}))
+
+            def process(self, frame, deps=None):
+                return None
+
+        class TorchModule(Module):
+            @property
+            def name(self):
+                return "pose"
+
+            @property
+            def capabilities(self):
+                return ModuleCapabilities(resource_groups=frozenset({"torch"}))
+
+            def process(self, frame, deps=None):
+                return None
+
+        graph = FlowGraph(entry_node="src")
+        graph.add_node(SourceNode(name="src"))
+        graph.add_node(PathNode(name="pipe", modules=[OnnxModule(), TorchModule()]))
+        graph.add_edge("src", "pipe")
+
+        import logging
+        with caplog.at_level(logging.WARNING, logger="visualpath.flow.graph"):
+            graph.validate()
+
+        assert any("Resource group conflict" in r.message for r in caplog.records)
+
+    def test_conflict_warning_suppressed_with_isolation(self, caplog):
+        """Resource group conflict warning should NOT fire when isolation resolves it."""
+        from visualpath.core.capabilities import ModuleCapabilities
+        from visualpath.core.isolation import IsolationConfig, IsolationLevel
+
+        class OnnxModule(Module):
+            @property
+            def name(self):
+                return "face"
+
+            @property
+            def capabilities(self):
+                return ModuleCapabilities(resource_groups=frozenset({"onnxruntime"}))
+
+            def process(self, frame, deps=None):
+                return None
+
+        class TorchModule(Module):
+            @property
+            def name(self):
+                return "pose"
+
+            @property
+            def capabilities(self):
+                return ModuleCapabilities(resource_groups=frozenset({"torch"}))
+
+            def process(self, frame, deps=None):
+                return None
+
+        isolation = IsolationConfig(
+            default_level=IsolationLevel.INLINE,
+            overrides={"pose": IsolationLevel.PROCESS},
+        )
+
+        graph = FlowGraph(entry_node="src")
+        graph.add_node(SourceNode(name="src"))
+        graph.add_node(PathNode(
+            name="pipe",
+            modules=[OnnxModule(), TorchModule()],
+            isolation=isolation,
+        ))
+        graph.add_edge("src", "pipe")
+
+        import logging
+        with caplog.at_level(logging.WARNING, logger="visualpath.flow.graph"):
+            graph.validate()
+
+        assert not any("Resource group conflict" in r.message for r in caplog.records)

@@ -3,7 +3,15 @@
 import pytest
 
 from visualpath.core.capabilities import Capability, ModuleCapabilities
-from visualpath.core.compat import check_compatibility, CompatibilityReport
+from unittest.mock import patch
+
+from visualpath.core.compat import (
+    check_compatibility,
+    CompatibilityReport,
+    build_conflict_isolation,
+    build_distributed_config,
+)
+from visualpath.core.isolation import IsolationConfig, IsolationLevel
 from visualpath.core.module import Module
 
 
@@ -110,6 +118,89 @@ class TestCheckCompatibility:
         assert report.estimated_gpu_mb == 512
         # No conflict (only 1 group active)
         assert report.resource_conflicts == {}
+
+
+class TestBuildConflictIsolation:
+    """Test build_conflict_isolation()."""
+
+    def test_no_conflicts_returns_none(self):
+        mods = [
+            _make_module("a", groups=frozenset({"onnxruntime"})),
+            _make_module("b", groups=frozenset({"onnxruntime"})),
+        ]
+        assert build_conflict_isolation(mods) is None
+
+    def test_no_resource_groups_returns_none(self):
+        mods = [_make_module("a"), _make_module("b")]
+        assert build_conflict_isolation(mods) is None
+
+    def test_conflict_isolates_minority(self):
+        mods = [
+            _make_module("face1", groups=frozenset({"onnxruntime"})),
+            _make_module("face2", groups=frozenset({"onnxruntime"})),
+            _make_module("pose", groups=frozenset({"torch"})),
+        ]
+        config = build_conflict_isolation(mods)
+        assert config is not None
+        # torch group (1 module) is minority
+        assert config.get_level("pose") == IsolationLevel.PROCESS
+        assert config.get_level("face1") == IsolationLevel.INLINE
+
+    def test_returns_none_without_zmq(self):
+        import importlib
+
+        mods = [
+            _make_module("a", groups=frozenset({"onnxruntime"})),
+            _make_module("b", groups=frozenset({"torch"})),
+        ]
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *a, **kw: (
+                (_ for _ in ()).throw(ImportError("no zmq"))
+                if name == "zmq"
+                else importlib.__import__(name, *a, **kw)
+            ),
+        ):
+            assert build_conflict_isolation(mods) is None
+
+    def test_empty_modules(self):
+        assert build_conflict_isolation([]) is None
+
+
+class TestBuildDistributedConfig:
+    """Test build_distributed_config()."""
+
+    def test_gpu_modules_get_process(self):
+        mods = [
+            _make_module("face", flags=Capability.GPU),
+            _make_module("quality"),
+        ]
+        config = build_distributed_config(mods)
+        assert config.get_level("face") == IsolationLevel.PROCESS
+        assert config.get_level("quality") == IsolationLevel.INLINE
+
+    def test_venv_paths_override(self):
+        mods = [
+            _make_module("face", flags=Capability.GPU),
+            _make_module("pose", flags=Capability.GPU),
+        ]
+        config = build_distributed_config(
+            mods, venv_paths={"face": "/opt/venv-face"}
+        )
+        assert config.get_level("face") == IsolationLevel.VENV
+        assert config.get_level("pose") == IsolationLevel.PROCESS
+        assert config.venv_paths["face"] == "/opt/venv-face"
+
+    def test_no_gpu_modules(self):
+        mods = [_make_module("a"), _make_module("b")]
+        config = build_distributed_config(mods)
+        assert config.default_level == IsolationLevel.INLINE
+        assert config.overrides == {}
+
+    def test_empty_modules(self):
+        config = build_distributed_config([])
+        assert config.default_level == IsolationLevel.INLINE
+        assert config.overrides == {}
 
 
 class TestCompatibilityReport:

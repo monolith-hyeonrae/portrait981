@@ -80,12 +80,11 @@ visualpath/
 ├── core/
 │   ├── module.py, observation.py, isolation.py, path.py
 ├── flow/
-│   ├── node.py, specs.py, interpreter.py, graph.py
-│   ├── executor.py, builder.py, viz.py
+│   ├── node.py, specs.py, graph.py, builder.py, viz.py
 │   └── nodes/ (source, path, filter, sampler, branch, join)
 ├── backends/
 │   ├── base.py, protocols.py
-│   └── simple/backend.py
+│   └── simple/backend.py, interpreter.py, executor.py
 └── plugin/discovery.py
 ```
 
@@ -118,7 +117,8 @@ visualpath-cli/src/visualpath/
 
 ```python
 from visualpath.core import Module, Observation
-from visualpath.flow import FlowGraphBuilder, GraphExecutor
+from visualpath.flow import FlowGraphBuilder
+from visualpath.backends.simple import GraphExecutor
 from visualbase import Trigger
 
 # Analyzer 모듈: Observation 반환
@@ -281,9 +281,12 @@ uv pip install -e . -e ../visualpath-isolation -e ../visualpath-pathway -e ../vi
 다음 클래스/파일들이 완전히 제거됨:
 - `core/fusion.py` 파일 전체 (FusionResult, BaseFusion)
 - `BaseAnalyzer` 클래스
-- `Module.is_trigger` 프로퍼티
 - `vp.run()` 함수
 - `vp.process_video()`의 `analyzers`/`fusion` 파라미터
+
+참고: `Module.is_trigger`는 class attribute로 재도입됨 (`bool = False`).
+Pathway UDF처럼 프레임 순서를 보장하지 않는 백엔드에서
+stateful trigger 모듈을 ordered path로 분리하는 데 사용.
 
 #### 마이그레이션
 

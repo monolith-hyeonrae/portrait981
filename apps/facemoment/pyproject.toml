@@ -1,0 +1,70 @@
+[project]
+name = "facemoment"
+version = "0.1.0"
+description = "Face moment detection and highlight clip extraction for 981park"
+requires-python = ">=3.10"
+dependencies = [
+    "visualbase",
+    "visualpath[isolation]",
+    "vpx-sdk",
+    "numpy>=1.24.0",
+    "opencv-python>=4.8.0",
+]
+
+[project.optional-dependencies]
+# === Analyzer packages (each with independent dependencies) ===
+# In production, each VenvWorker installs only its sub-package:
+#   uv pip install vpx-face-detect   → onnxruntime-gpu
+#   uv pip install vpx-face-expression → onnxruntime (CPU) — no conflict!
+face-detect = ["vpx-face-detect"]
+face-expression = ["vpx-face-expression"]
+body-pose = ["vpx-body-pose"]
+hand-gesture = ["vpx-hand-gesture"]
+
+# === Local development ===
+# For running everything in a single environment.
+# The workspace root override-dependencies blocks CPU onnxruntime.
+local = [
+    "facemoment[face-detect,face-expression,body-pose,hand-gesture]",
+    "pyzmq>=25.0.0",
+    "pyqt6>=6.10.2",
+    "supervision>=0.19.0",
+    "pathway>=0.8.0",
+]
+dev = [
+    "pytest>=7.0.0",
+]
+
+[project.scripts]
+facemoment = "facemoment.cli:main"
+
+# Register core modules as plugins for visualpath.
+# ML analyzers are registered by their sub-packages (vpx-face-detect, etc.)
+[project.entry-points."visualpath.modules"]
+"face.classify" = "facemoment.algorithm.analyzers.face_classifier:FaceClassifierAnalyzer"
+"frame.quality" = "facemoment.algorithm.analyzers.quality:QualityAnalyzer"
+highlight = "facemoment.algorithm.analyzers.highlight:HighlightFusion"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/facemoment"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.uv.sources]
+visualbase = { workspace = true }
+visualpath = { workspace = true }
+visualpath-isolation = { workspace = true }
+vpx-sdk = { workspace = true }
+vpx-face-detect = { workspace = true }
+vpx-face-expression = { workspace = true }
+vpx-body-pose = { workspace = true }
+vpx-hand-gesture = { workspace = true }

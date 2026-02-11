@@ -5,8 +5,8 @@ visualpath provides a plugin-based platform for building video analysis pipeline
 Quick Start:
     >>> import visualpath as vp
     >>>
-    >>> # Process a video with modules (preferred)
-    >>> result = vp.process_video("video.mp4", modules=[face_detector, smile_trigger])
+    >>> # Run a video analysis pipeline (preferred)
+    >>> result = vp.run("video.mp4", modules=[face_detector, smile_trigger])
     >>>
     >>> # Create a custom analyzer (decorator)
     >>> @vp.analyzer("brightness")
@@ -48,7 +48,10 @@ from visualpath.api import (
     analyzer,
     fusion,
     trigger,
-    # Registry
+    # Registry (unified)
+    get_module,
+    list_modules,
+    # Registry (aliases)
     get_analyzer,
     get_fusion,
     list_analyzers,
@@ -59,11 +62,15 @@ from visualpath.api import (
 
 # Pipeline runner (from runner.py)
 from visualpath.runner import (
-    process_video,
+    run,
+    process_video,  # alias for backward compatibility
     ProcessResult,
     get_backend,
     resolve_modules,
 )
+
+# App (convention layer)
+from visualpath.app import App
 
 # =============================================================================
 # Core exports (for advanced use)
@@ -86,15 +93,20 @@ __all__ = [
     "analyzer",
     "fusion",
     "trigger",
+    "run",
     "process_video",
     "get_backend",
     "resolve_modules",
+    "get_module",
+    "list_modules",
     "get_analyzer",
     "get_fusion",
     "list_analyzers",
     "list_fusions",
     "ProcessResult",
     "TriggerSpec",
+    # App
+    "App",
     # Core (unified API)
     "Module",
     "Observation",

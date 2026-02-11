@@ -9,7 +9,7 @@ dependencies = [
     "hsemotion-onnx>=0.3",
 ]
 
-[project.entry-points."visualpath.analyzers"]
+[project.entry-points."visualpath.modules"]
 "face.expression" = "vpx.face_expression:ExpressionAnalyzer"
 
 [build-system]

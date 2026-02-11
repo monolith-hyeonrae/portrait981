@@ -20,7 +20,7 @@ Quick Start:
     ...         return vp.trigger("smile", score=face["happy"])
     >>>
     >>> # Run with modules
-    >>> result = vp.process_video("video.mp4", modules=[check_brightness, smile_detector])
+    >>> result = vp.run("video.mp4", modules=[check_brightness, smile_detector])
 """
 
 from dataclasses import dataclass, field
@@ -50,11 +50,14 @@ DEFAULT_POST_SEC = 2.0
 
 
 # =============================================================================
-# Registry
+# Registry (unified)
 # =============================================================================
 
-_analyzer_registry: Dict[str, "FunctionAnalyzer"] = {}
-_fusion_registry: Dict[str, "FunctionFusion"] = {}
+_module_registry: Dict[str, Module] = {}
+
+# Legacy aliases pointing to the same registry
+_analyzer_registry = _module_registry
+_fusion_registry = _module_registry
 
 
 def _get_registered(
@@ -91,24 +94,35 @@ def _list_registered(
     return sorted(set(names))
 
 
+def get_module(name: str) -> Optional[Module]:
+    """Get a registered module by name."""
+    return _get_registered(name, _module_registry, "discover_modules")
+
+
+def list_modules() -> List[str]:
+    """List all available module names."""
+    return _list_registered(_module_registry, "discover_modules")
+
+
+# Aliases (backward compatibility)
 def get_analyzer(name: str) -> Optional[Module]:
-    """Get a registered analyzer by name."""
-    return _get_registered(name, _analyzer_registry, "discover_analyzers")
+    """Get a registered module by name. Alias for get_module()."""
+    return get_module(name)
 
 
 def get_fusion(name: str) -> Optional[Module]:
-    """Get a registered fusion by name."""
-    return _get_registered(name, _fusion_registry, "discover_fusions")
+    """Get a registered module by name. Alias for get_module()."""
+    return get_module(name)
 
 
 def list_analyzers() -> List[str]:
-    """List all available analyzer names."""
-    return _list_registered(_analyzer_registry, "discover_analyzers")
+    """List all available module names. Alias for list_modules()."""
+    return list_modules()
 
 
 def list_fusions() -> List[str]:
-    """List all available fusion names."""
-    return _list_registered(_fusion_registry, "discover_fusions")
+    """List all available module names. Alias for list_modules()."""
+    return list_modules()
 
 
 # =============================================================================
@@ -213,7 +227,7 @@ def analyzer(
 
     def decorator(fn: AnalyzeFn) -> FunctionAnalyzer:
         ext = FunctionAnalyzer(name, fn, init_fn=init, cleanup_fn=cleanup)
-        _analyzer_registry[name] = ext
+        _module_registry[name] = ext
         return ext
 
     return decorator
@@ -425,7 +439,7 @@ def fusion(
             cooldown=cooldown,
             gate_sources=gate_sources,
         )
-        _fusion_registry[fusion_name] = fus
+        _module_registry[fusion_name] = fus
         return fus
 
     return decorator
@@ -449,7 +463,10 @@ __all__ = [
     "FunctionAnalyzer",
     "FunctionFusion",
     "TriggerSpec",
-    # Registry
+    # Registry (unified)
+    "get_module",
+    "list_modules",
+    # Registry (aliases)
     "get_analyzer",
     "get_fusion",
     "list_analyzers",

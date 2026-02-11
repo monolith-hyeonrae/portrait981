@@ -17,7 +17,12 @@ from visualpath.core.observation import Observation, DummyAnalyzer
 from visualpath.core.isolation import IsolationLevel, IsolationConfig
 from visualpath.core.path import Path, PathConfig, PathOrchestrator
 from visualpath.core.capabilities import Capability, ModuleCapabilities, PortSchema
-from visualpath.core.compat import CompatibilityReport, check_compatibility
+from visualpath.core.compat import (
+    CompatibilityReport,
+    check_compatibility,
+    build_conflict_isolation,
+    build_distributed_config,
+)
 from visualpath.core.error_policy import ErrorPolicy
 from visualpath.core.profile import ProfileName, ExecutionProfile, resolve_profile
 from visualpath.core.graph import toposort_modules
@@ -43,6 +48,8 @@ __all__ = [
     "PortSchema",
     "CompatibilityReport",
     "check_compatibility",
+    "build_conflict_isolation",
+    "build_distributed_config",
     # Error policy
     "ErrorPolicy",
     # Profiles

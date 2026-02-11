@@ -39,4 +39,4 @@
 |--------|-----------|
 | portrait981 (root) | [CLAUDE.md](../CLAUDE.md) |
 | visualpath core | [libs/visualpath/core/CLAUDE.md](../libs/visualpath/core/CLAUDE.md) |
-| facemoment | [apps/facemoment/core/CLAUDE.md](../apps/facemoment/core/CLAUDE.md) |
+| facemoment | [apps/facemoment/CLAUDE.md](../apps/facemoment/CLAUDE.md) |

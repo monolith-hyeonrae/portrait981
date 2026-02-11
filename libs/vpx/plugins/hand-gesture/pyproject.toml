@@ -8,7 +8,7 @@ dependencies = [
     "mediapipe>=0.10.32",
 ]
 
-[project.entry-points."visualpath.analyzers"]
+[project.entry-points."visualpath.modules"]
 "hand.gesture" = "vpx.hand_gesture:GestureAnalyzer"
 
 [build-system]

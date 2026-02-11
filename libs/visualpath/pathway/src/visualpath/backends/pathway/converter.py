@@ -106,7 +106,7 @@ class FlowGraphConverter:
         """Stateful modules deferred from UDF to ordered subscribe callback.
 
         Pathway UDFs execute in arbitrary order across rows. Stateful
-        modules (``is_trigger=True``) require temporal ordering, so they
+        modules (``stateful=True``) require temporal ordering, so they
         are excluded from the UDF and returned here for the backend to
         run in the subscribe callback, which Pathway delivers in order.
         """
@@ -228,12 +228,12 @@ class FlowGraphConverter:
             self._tables[node_name] = input_table
             return
 
-        # Defer stateful trigger modules — Pathway UDFs execute in
-        # arbitrary row order, but subscribe delivers rows in temporal
-        # order.  Stateful modules (is_trigger=True) need ordering, so
-        # they are excluded from the UDF and run in the subscribe callback.
-        analyzers = [m for m in modules if not getattr(m, 'is_trigger', False)]
-        deferred = [m for m in modules if getattr(m, 'is_trigger', False)]
+        # Defer stateful modules — Pathway UDFs execute in arbitrary row
+        # order, but subscribe delivers rows in temporal order.  Stateful
+        # modules (stateful=True) need ordering, so they are excluded from
+        # the UDF and run in the subscribe callback.
+        analyzers = [m for m in modules if not m.stateful]
+        deferred = [m for m in modules if m.stateful]
         if deferred:
             self._deferred_modules.extend(deferred)
             logger.info(

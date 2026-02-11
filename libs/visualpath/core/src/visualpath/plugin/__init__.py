@@ -1,10 +1,16 @@
 """Plugin discovery and loading system.
 
 This module provides infrastructure for discovering and loading
-analyzer plugins via Python entry points.
+module plugins via Python entry points.
 """
 
 from visualpath.plugin.discovery import (
+    # Unified API
+    discover_modules,
+    load_module,
+    create_module,
+    MODULES_GROUP,
+    # Aliases (backward compatibility)
     discover_analyzers,
     discover_fusions,
     load_analyzer,
@@ -16,6 +22,12 @@ from visualpath.plugin.discovery import (
 )
 
 __all__ = [
+    # Unified API
+    "discover_modules",
+    "load_module",
+    "create_module",
+    "MODULES_GROUP",
+    # Aliases (backward compatibility)
     "discover_analyzers",
     "discover_fusions",
     "load_analyzer",

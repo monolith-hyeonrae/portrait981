@@ -16,10 +16,10 @@ from visualpath.core import (
     Module,
     Observation,
 )
+from visualpath.backends.simple import SimpleInterpreter
 from visualpath.flow import (
     FlowData,
     FlowNode,
-    SimpleInterpreter,
     SourceNode,
     PathNode,
     FilterNode,

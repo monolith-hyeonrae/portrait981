@@ -19,6 +19,16 @@ from visualpath.core.error_policy import ErrorPolicy
 from visualpath.core.compat import check_compatibility, CompatibilityReport
 from visualpath.core.graph import toposort_modules
 
+# Declarative visualization marks
+from vpx.sdk.marks import (
+    DrawStyle,
+    Mark,
+    BBoxMark,
+    KeypointsMark,
+    BarMark,
+    LabelMark,
+)
+
 __all__ = [
     # Analyzer base
     "Module",
@@ -38,4 +48,11 @@ __all__ = [
     "CompatibilityReport",
     # Graph utilities
     "toposort_modules",
+    # Visualization marks
+    "DrawStyle",
+    "Mark",
+    "BBoxMark",
+    "KeypointsMark",
+    "BarMark",
+    "LabelMark",
 ]

@@ -1,28 +1,28 @@
 """Plugin discovery system for visualpath.
 
 This module provides infrastructure for discovering and loading
-analyzer plugins via Python entry points.
+module plugins via Python entry points.
 
-Plugins register themselves using the `visualpath.analyzers` entry point
+Plugins register themselves using the `visualpath.modules` entry point
 group in their pyproject.toml:
 
 ```toml
-[project.entry-points."visualpath.analyzers"]
-face = "myplugin.analyzers:FaceAnalyzer"
-pose = "myplugin.analyzers:PoseAnalyzer"
+[project.entry-points."visualpath.modules"]
+"face.detect" = "myplugin.analyzers:FaceDetectionAnalyzer"
+"highlight" = "myplugin.fusion:HighlightFusion"
 ```
 
 Example:
-    >>> from visualpath.plugin import discover_analyzers, load_analyzer
+    >>> from visualpath.plugin import discover_modules, load_module
     >>>
-    >>> # Discover all available analyzer plugins
-    >>> analyzers = discover_analyzers()
-    >>> for name, entry_point in analyzers.items():
-    ...     print(f"Found analyzer: {name}")
+    >>> # Discover all available module plugins
+    >>> modules = discover_modules()
+    >>> for name, entry_point in modules.items():
+    ...     print(f"Found module: {name}")
     >>>
-    >>> # Load a specific analyzer
-    >>> FaceAnalyzer = load_analyzer("face")
-    >>> analyzer = FaceAnalyzer()
+    >>> # Load a specific module
+    >>> FaceDetector = load_module("face.detect")
+    >>> detector = FaceDetector()
 """
 
 import sys
@@ -30,9 +30,12 @@ from typing import Dict, Optional, Type, Any
 
 from visualpath.core.module import Module
 
-# Entry point group names
-ANALYZERS_GROUP = "visualpath.analyzers"
-FUSIONS_GROUP = "visualpath.fusions"
+# Entry point group name (unified)
+MODULES_GROUP = "visualpath.modules"
+
+# Legacy group names (kept for backward compatibility during transition)
+ANALYZERS_GROUP = MODULES_GROUP
+FUSIONS_GROUP = MODULES_GROUP
 
 
 def _get_entry_points(group: str) -> Dict[str, Any]:
@@ -61,102 +64,94 @@ def _get_entry_points(group: str) -> Dict[str, Any]:
         return {ep.name: ep for ep in eps}
 
 
-def discover_analyzers() -> Dict[str, Any]:
-    """Discover all available analyzer plugins.
+def discover_modules() -> Dict[str, Any]:
+    """Discover all available module plugins (analyzers + fusions).
 
-    Scans the `visualpath.analyzers` entry point group for registered
-    analyzers.
+    Scans the `visualpath.modules` entry point group for registered modules.
 
     Returns:
-        Dict mapping analyzer names to their entry points.
+        Dict mapping module names to their entry points.
 
     Example:
-        >>> analyzers = discover_analyzers()
-        >>> print(list(analyzers.keys()))
-        ['face', 'pose', 'gesture', 'quality']
+        >>> modules = discover_modules()
+        >>> print(list(modules.keys()))
+        ['face.detect', 'face.expression', 'highlight']
     """
-    return _get_entry_points(ANALYZERS_GROUP)
+    return _get_entry_points(MODULES_GROUP)
+
+
+def load_module(name: str) -> Type[Module]:
+    """Load a module class by name.
+
+    Args:
+        name: The registered name of the module.
+
+    Returns:
+        The module class.
+
+    Raises:
+        KeyError: If no module with the given name is registered.
+        ImportError: If the module cannot be loaded.
+
+    Example:
+        >>> FaceDetector = load_module("face.detect")
+        >>> detector = FaceDetector()
+    """
+    modules = discover_modules()
+    if name not in modules:
+        raise KeyError(
+            f"Unknown module: '{name}'. "
+            f"Available: {list(modules.keys())}"
+        )
+    return modules[name].load()
+
+
+def create_module(name: str, **kwargs) -> Module:
+    """Create a module instance by name.
+
+    Convenience function that loads and instantiates a module.
+
+    Args:
+        name: The registered name of the module.
+        **kwargs: Arguments passed to the module constructor.
+
+    Returns:
+        An initialized module instance.
+
+    Example:
+        >>> detector = create_module("face.detect", device="cuda:0")
+    """
+    ModuleClass = load_module(name)
+    return ModuleClass(**kwargs)
+
+
+# =============================================================================
+# Aliases (backward compatibility)
+# =============================================================================
+
+def discover_analyzers() -> Dict[str, Any]:
+    """Discover all available modules. Alias for discover_modules()."""
+    return discover_modules()
 
 
 def discover_fusions() -> Dict[str, Any]:
-    """Discover all available fusion plugins.
-
-    Scans the `visualpath.fusions` entry point group for registered
-    fusion modules.
-
-    Returns:
-        Dict mapping fusion names to their entry points.
-    """
-    return _get_entry_points(FUSIONS_GROUP)
+    """Discover all available modules. Alias for discover_modules()."""
+    return discover_modules()
 
 
 def load_analyzer(name: str) -> Type[Module]:
-    """Load an analyzer class by name.
-
-    Args:
-        name: The registered name of the analyzer.
-
-    Returns:
-        The analyzer class.
-
-    Raises:
-        KeyError: If no analyzer with the given name is registered.
-        ImportError: If the analyzer cannot be loaded.
-
-    Example:
-        >>> FaceAnalyzer = load_analyzer("face")
-        >>> analyzer = FaceAnalyzer()
-    """
-    analyzers = discover_analyzers()
-    if name not in analyzers:
-        raise KeyError(
-            f"No analyzer registered with name '{name}'. "
-            f"Available: {list(analyzers.keys())}"
-        )
-    entry_point = analyzers[name]
-    return entry_point.load()
+    """Load a module class by name. Alias for load_module()."""
+    return load_module(name)
 
 
 def load_fusion(name: str) -> Type:
-    """Load a fusion class by name.
-
-    Args:
-        name: The registered name of the fusion module.
-
-    Returns:
-        The fusion class.
-
-    Raises:
-        KeyError: If no fusion with the given name is registered.
-        ImportError: If the fusion cannot be loaded.
-    """
-    fusions = discover_fusions()
-    if name not in fusions:
-        raise KeyError(
-            f"No fusion registered with name '{name}'. "
-            f"Available: {list(fusions.keys())}"
-        )
-    entry_point = fusions[name]
-    return entry_point.load()
+    """Load a module class by name. Alias for load_module()."""
+    return load_module(name)
 
 
 def create_analyzer(name: str, **kwargs) -> Module:
-    """Create an analyzer instance by name.
-
-    Convenience function that loads and instantiates an analyzer.
-
-    Args:
-        name: The registered name of the analyzer.
-        **kwargs: Arguments passed to the analyzer constructor.
-
-    Returns:
-        An initialized analyzer instance.
-
-    Example:
-        >>> analyzer = create_analyzer("face", device="cuda:0")
-    """
-    AnalyzerClass = load_analyzer(name)
-    return AnalyzerClass(**kwargs)
+    """Create a module instance by name. Alias for create_module()."""
+    return create_module(name, **kwargs)
 
 
 class PluginRegistry:
@@ -166,101 +161,110 @@ class PluginRegistry:
 
     Example:
         >>> registry = PluginRegistry()
-        >>> registry.register_analyzer("face", FaceAnalyzer)
-        >>> analyzer = registry.create_analyzer("face")
+        >>> registry.register("face.detect", FaceDetectionAnalyzer)
+        >>> module = registry.create("face.detect")
     """
 
     def __init__(self):
         """Initialize the plugin registry."""
-        self._analyzers: Dict[str, Type[Module]] = {}
-        self._fusions: Dict[str, Type] = {}
+        self._modules: Dict[str, Type[Module]] = {}
         self._instances: Dict[str, Module] = {}
 
-    def register_analyzer(
-        self,
-        name: str,
-        analyzer_class: Type[Module],
-    ) -> None:
-        """Register an analyzer class.
+    def register(self, name: str, module_class: Type[Module]) -> None:
+        """Register a module class.
 
         Args:
             name: Name to register under.
-            analyzer_class: The analyzer class.
+            module_class: The module class.
         """
-        self._analyzers[name] = analyzer_class
+        self._modules[name] = module_class
+
+    # Aliases for backward compatibility
+    def register_analyzer(self, name: str, analyzer_class: Type[Module]) -> None:
+        """Register a module class. Alias for register()."""
+        self.register(name, analyzer_class)
 
     def register_fusion(self, name: str, fusion_class: Type) -> None:
-        """Register a fusion class.
+        """Register a module class. Alias for register()."""
+        self._modules[name] = fusion_class
+
+    def get_class(self, name: str) -> Type[Module]:
+        """Get a registered module class.
 
         Args:
-            name: Name to register under.
-            fusion_class: The fusion class.
-        """
-        self._fusions[name] = fusion_class
-
-    def get_analyzer_class(self, name: str) -> Type[Module]:
-        """Get a registered analyzer class.
-
-        Args:
-            name: The analyzer name.
+            name: The module name.
 
         Returns:
-            The analyzer class.
+            The module class.
 
         Raises:
             KeyError: If not registered.
         """
-        if name in self._analyzers:
-            return self._analyzers[name]
+        if name in self._modules:
+            return self._modules[name]
         # Fall back to entry point discovery
-        return load_analyzer(name)
+        return load_module(name)
 
-    def create_analyzer(
+    # Alias
+    def get_analyzer_class(self, name: str) -> Type[Module]:
+        """Get a registered module class. Alias for get_class()."""
+        return self.get_class(name)
+
+    def create(
         self,
         name: str,
         singleton: bool = False,
         **kwargs,
     ) -> Module:
-        """Create an analyzer instance.
+        """Create a module instance.
 
         Args:
-            name: The analyzer name.
+            name: The module name.
             singleton: If True, return cached instance.
             **kwargs: Constructor arguments.
 
         Returns:
-            Analyzer instance.
+            Module instance.
         """
         if singleton and name in self._instances:
             return self._instances[name]
 
-        AnalyzerClass = self.get_analyzer_class(name)
-        instance = AnalyzerClass(**kwargs)
+        ModuleClass = self.get_class(name)
+        instance = ModuleClass(**kwargs)
 
         if singleton:
             self._instances[name] = instance
 
         return instance
 
-    def list_analyzers(self) -> list[str]:
-        """List all available analyzer names.
+    # Alias
+    def create_analyzer(
+        self,
+        name: str,
+        singleton: bool = False,
+        **kwargs,
+    ) -> Module:
+        """Create a module instance. Alias for create()."""
+        return self.create(name, singleton=singleton, **kwargs)
+
+    def list_modules(self) -> list[str]:
+        """List all available module names.
 
         Returns:
-            List of analyzer names (registered + discovered).
+            List of module names (registered + discovered).
         """
-        discovered = set(discover_analyzers().keys())
-        registered = set(self._analyzers.keys())
+        discovered = set(discover_modules().keys())
+        registered = set(self._modules.keys())
         return sorted(discovered | registered)
+
+    # Aliases
+    def list_analyzers(self) -> list[str]:
+        """List all available module names. Alias for list_modules()."""
+        return self.list_modules()
 
     def list_fusions(self) -> list[str]:
-        """List all available fusion names.
-
-        Returns:
-            List of fusion names (registered + discovered).
-        """
-        discovered = set(discover_fusions().keys())
-        registered = set(self._fusions.keys())
-        return sorted(discovered | registered)
+        """List all available module names. Alias for list_modules()."""
+        return self.list_modules()
 
     def cleanup(self) -> None:
         """Clean up all cached instances."""

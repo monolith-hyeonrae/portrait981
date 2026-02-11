@@ -7,11 +7,14 @@ Key Components:
 - FlowData: Data container that flows between nodes
 - FlowNode: Abstract base class for processing nodes
 - FlowGraph: Directed acyclic graph of nodes
-- GraphExecutor: Executes the flow graph on frames
 - FlowGraphBuilder: Fluent API for graph construction
 
+Execution components (SimpleInterpreter, GraphExecutor) live in
+``visualpath.backends.simple`` since they are SimpleBackend-specific.
+
 Example:
-    >>> from visualpath.flow import FlowGraphBuilder, GraphExecutor
+    >>> from visualpath.flow import FlowGraphBuilder
+    >>> from visualpath.backends.simple import GraphExecutor
     >>>
     >>> graph = (FlowGraphBuilder()
     ...     .source("frames")
@@ -35,8 +38,6 @@ Example:
 
 from visualpath.flow.node import FlowNode, FlowData, Condition
 from visualpath.flow.graph import FlowGraph, Edge
-from visualpath.flow.interpreter import SimpleInterpreter, DebugEvent, DebugHook
-from visualpath.flow.executor import GraphExecutor
 from visualpath.flow.builder import FlowGraphBuilder
 
 # Import all node types
@@ -86,10 +87,6 @@ __all__ = [
     "Condition",
     "FlowGraph",
     "Edge",
-    "SimpleInterpreter",
-    "DebugEvent",
-    "DebugHook",
-    "GraphExecutor",
     "FlowGraphBuilder",
     # Nodes
     "SourceNode",

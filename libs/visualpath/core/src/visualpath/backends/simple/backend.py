@@ -4,13 +4,14 @@ SimpleBackend executes FlowGraph pipelines using the GraphExecutor,
 processing frames sequentially through the DAG.
 """
 
-from typing import Iterator, TYPE_CHECKING
+from typing import Callable, Iterator, List, Optional, TYPE_CHECKING
 
 from visualpath.backends.base import ExecutionBackend, PipelineResult
 
 if TYPE_CHECKING:
     from visualbase import Frame
     from visualpath.flow.graph import FlowGraph
+    from visualpath.flow.node import FlowData
 
 
 class SimpleBackend(ExecutionBackend):
@@ -44,43 +45,47 @@ class SimpleBackend(ExecutionBackend):
         self,
         frames: Iterator["Frame"],
         graph: "FlowGraph",
+        *,
+        on_frame: Optional[Callable[["Frame", List["FlowData"]], bool]] = None,
     ) -> PipelineResult:
         """Execute a FlowGraph-based pipeline.
 
         Processing flow:
         1. Initialize all graph nodes
         2. Process each frame through GraphExecutor
-        3. Collect triggers from FlowData results
-        4. Clean up all graph nodes
+        3. Call on_frame callback if provided (stop on False)
+        4. Collect triggers from FlowData results
+        5. Clean up all graph nodes
 
         Args:
             frames: Iterator of Frame objects (not materialized to list).
             graph: FlowGraph defining the pipeline.
+            on_frame: Optional per-frame callback. See ExecutionBackend.execute().
 
         Returns:
             PipelineResult with triggers and frame count.
         """
-        from visualpath.flow.executor import GraphExecutor
+        from visualpath.backends.simple.executor import GraphExecutor
 
         triggers = []
         frame_count = 0
-
-        # Register trigger collector on graph
-        def collect_trigger(data):
-            for result in data.results:
-                # result is now an Observation with trigger info
-                # Use the should_trigger property and trigger from metadata
-                if result.should_trigger and result.trigger:
-                    triggers.append(result.trigger)
-
-        graph.on_trigger(collect_trigger)
 
         executor = GraphExecutor(graph)
 
         with executor:
             for frame in frames:
                 frame_count += 1
-                executor.process(frame)
+                terminal_results = executor.process(frame)
+
+                # Collect triggers directly from terminal results
+                for data in terminal_results:
+                    for result in data.results:
+                        if result.should_trigger and result.trigger:
+                            triggers.append(result.trigger)
+
+                if on_frame is not None:
+                    if not on_frame(frame, terminal_results):
+                        break
 
         return PipelineResult(
             triggers=triggers,

@@ -1,8 +1,9 @@
 """Pipeline runner for visualpath.
 
-This module provides the ``process_video()`` entry point for running video
+This module provides the ``run()`` entry point for running video
 analysis pipelines. It handles:
 - Module resolution from registry
+- Isolation resolution (profile, explicit, or auto-detect)
 - Video source opening (visualbase or OpenCV fallback)
 - Backend selection and FlowGraph construction
 - Pipeline execution via ``backend.execute(frames, graph)``
@@ -10,14 +11,17 @@ analysis pipelines. It handles:
 Example:
     >>> import visualpath as vp
     >>>
-    >>> result = vp.process_video("video.mp4", modules=[face_detector, smile_trigger])
+    >>> result = vp.run("video.mp4", modules=[face_detector, smile_trigger])
     >>> print(f"Found {len(result.triggers)} triggers")
 """
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import (
+    Any,
     Callable,
+    Dict,
     Iterator,
     List,
     Literal,
@@ -31,8 +35,10 @@ from visualbase import Frame, Trigger
 from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 
+logger = logging.getLogger(__name__)
+
 # Backend type alias
-BackendType = Literal["simple", "pathway"]
+BackendType = Literal["simple", "pathway", "worker"]
 
 
 @dataclass
@@ -41,6 +47,8 @@ class ProcessResult:
     triggers: List[Trigger] = field(default_factory=list)
     frame_count: int = 0
     duration_sec: float = 0.0
+    actual_backend: str = ""
+    stats: Dict[str, Any] = field(default_factory=dict)
 
 
 def get_backend(backend: BackendType) -> "ExecutionBackend":
@@ -88,7 +96,7 @@ def resolve_modules(
 ) -> List[Module]:
     """Resolve module names or instances to instances.
 
-    Modules can be either analyzer names (from registry) or Module instances.
+    Modules can be either module names (from registry) or Module instances.
 
     Args:
         modules: List of module names or instances.
@@ -99,15 +107,12 @@ def resolve_modules(
     Raises:
         ValueError: If a module name is not found.
     """
-    from visualpath.api import get_analyzer, get_fusion
+    from visualpath.api import get_module
 
     instances: List[Module] = []
     for mod in modules:
         if isinstance(mod, str):
-            # Try analyzer registry first, then fusion registry
-            instance = get_analyzer(mod)
-            if instance is None:
-                instance = get_fusion(mod)
+            instance = get_module(mod)
             if instance is None:
                 raise ValueError(f"Unknown module: {mod}")
             instances.append(instance)
@@ -185,76 +190,61 @@ def _opencv_frames(video_path: str, fps: int) -> Iterator[Frame]:
 from visualpath.api import DEFAULT_FPS
 
 
-def process_video(
+def run(
     video: Union[str, Path],
     modules: Sequence[Union[str, Module]],
     *,
     fps: int = DEFAULT_FPS,
     backend: BackendType = "simple",
+    isolation: Optional[Any] = None,
+    profile: Optional[str] = None,
     on_trigger: Optional[Callable[[Trigger], None]] = None,
+    on_frame: Optional[Callable] = None,
 ) -> ProcessResult:
-    """Process a video with the specified modules.
-
-    This is the main entry point for video processing. It constructs
-    a FlowGraph from the modules, opens the video source, and runs
-    the pipeline through the selected backend.
+    """Level 1: One-liner pipeline execution. Thin wrapper around App.
 
     Args:
         video: Path to video file.
         modules: List of module names or instances.
         fps: Frames per second to process.
-        backend: Execution backend ("simple" or "pathway").
+        backend: Execution backend ("simple", "pathway", or "worker").
+        isolation: Optional IsolationConfig for module execution.
+            When provided, backend is auto-switched to "worker".
+        profile: Execution profile name (e.g. "lite", "platform").
+            Overrides backend/isolation defaults.
         on_trigger: Callback when a trigger fires.
+        on_frame: Optional per-frame callback ``(frame, terminal_results) -> bool``.
+            Return True to continue, False to stop.
 
     Returns:
-        ProcessResult with triggers and statistics.
+        ProcessResult with triggers, frame_count, duration_sec, actual_backend, stats.
 
     Example:
-        >>> result = vp.process_video("video.mp4", modules=[face_detector, smile_trigger])
+        >>> result = vp.run("video.mp4", modules=[face_detector, smile_trigger])
+        >>> result = vp.run("video.mp4", modules=["face.detect"], profile="lite")
     """
-    from visualpath.flow.graph import FlowGraph
+    from visualpath.app import App
 
-    module_instances = resolve_modules(modules)
-    graph = FlowGraph.from_modules(module_instances)
-
-    # Build trigger callback
-    def _trigger_callback(data) -> None:
-        for result in data.results:
-            # result is now an Observation with trigger info
-            # Use the should_trigger property and trigger from metadata
-            if result.should_trigger and result.trigger:
-                if on_trigger:
-                    on_trigger(result.trigger)
-
-    if on_trigger:
-        graph.on_trigger(_trigger_callback)
-
-    # Open video source
-    frames, cleanup_fn = _open_video_source(video, fps)
-
-    # Execute pipeline
-    execution_backend = get_backend(backend)
-
-    try:
-        pipeline_result = execution_backend.execute(frames, graph)
-    finally:
-        if cleanup_fn:
-            try:
-                cleanup_fn()
-            except Exception:
-                pass
-
-    return ProcessResult(
-        triggers=pipeline_result.triggers,
-        frame_count=pipeline_result.frame_count,
-        duration_sec=pipeline_result.frame_count / fps if pipeline_result.frame_count > 0 else 0.0,
+    app = App()
+    return app.run(
+        video,
+        modules=modules,
+        fps=fps,
+        backend=backend,
+        isolation=isolation,
+        profile=profile,
+        on_trigger=on_trigger,
+        on_frame=on_frame,
     )
 
 
+# Alias for backward compatibility
+process_video = run
 
 __all__ = [
     "ProcessResult",
     "BackendType",
+    "run",
     "process_video",
     "get_backend",
     "resolve_modules",

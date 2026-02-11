@@ -410,24 +410,49 @@ class FlowGraph:
         """Check capability compatibility across all modules (warnings only).
 
         Collects all modules from ModuleSpec nodes and runs
-        check_compatibility(). Results are logged as warnings,
-        never raising exceptions.
+        check_compatibility(). Skips resource-conflict warnings when
+        isolation is already configured (the conflicts will be resolved
+        by WorkerBackend wrapping modules into separate processes).
         """
         from visualpath.flow.specs import ModuleSpec
         from visualpath.core.compat import check_compatibility
+        from visualpath.core.isolation import IsolationLevel
 
         all_modules = []
+        isolated_modules: set = set()
+
         for node in self._nodes.values():
             spec = node.spec
             if isinstance(spec, ModuleSpec):
                 all_modules.extend(spec.modules)
+                # Track which modules are already configured for isolation
+                if spec.isolation is not None:
+                    for mod in spec.modules:
+                        level = spec.isolation.get_level(mod.name)
+                        if level >= IsolationLevel.PROCESS:
+                            isolated_modules.add(mod.name)
 
         if not all_modules:
             return
 
         report = check_compatibility(list(all_modules))
+
         for warning in report.warnings:
+            # Skip resource-conflict warning when all conflicting modules
+            # are already isolated (will run in separate processes)
+            if report.resource_conflicts and "Resource group conflict" in warning:
+                # Keep only non-isolated modules — if at most 1 group
+                # remains in-process, the conflict is resolved
+                in_process_groups = set()
+                for group, members in report.resource_conflicts.items():
+                    if any(m not in isolated_modules for m in members):
+                        in_process_groups.add(group)
+                if len(in_process_groups) <= 1:
+                    continue  # Conflict resolved by isolation
             logger.warning("FlowGraph compatibility: %s", warning)
+
+        for info_msg in report.info:
+            logger.debug("FlowGraph compatibility: %s", info_msg)
 
     def topological_order(self) -> List[str]:
         """Get nodes in topological order.

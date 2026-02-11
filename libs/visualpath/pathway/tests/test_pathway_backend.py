@@ -2036,7 +2036,7 @@ class StatefulCooldownFusion(Module):
     if frames arrive out of order, cooldown counting breaks.
     """
 
-    is_trigger = True
+    stateful = True
 
     def __init__(self, cooldown_frames: int = 3, depends_on: str = "test"):
         self._cooldown_frames = cooldown_frames
@@ -2101,7 +2101,7 @@ class StatefulCooldownFusion(Module):
 
 
 # =============================================================================
-# Deferred Fusion (is_trigger=True) Tests
+# Deferred Fusion (stateful=True) Tests
 # =============================================================================
 
 
@@ -2110,7 +2110,7 @@ class TestConverterDeferredModules:
 
     @pytest.mark.skipif(not PATHWAY_AVAILABLE, reason="Pathway not installed")
     def test_converter_defers_trigger_modules(self):
-        """Modules with is_trigger=True are excluded from UDF."""
+        """Modules with stateful=True are excluded from UDF."""
         from visualpath.backends.pathway.converter import FlowGraphConverter
         from visualpath.backends.pathway.connector import (
             VideoConnectorSubject,
@@ -2135,15 +2135,15 @@ class TestConverterDeferredModules:
         assert len(deferred) == 1
         assert deferred[0].name == "stateful_fusion"
 
-    def test_non_trigger_modules_not_deferred(self):
-        """Modules without is_trigger stay in UDF (no deferred)."""
+    def test_non_stateful_modules_not_deferred(self):
+        """Modules without stateful stay in UDF (no deferred)."""
         from visualpath.backends.pathway.operators import create_multi_analyzer_udf
 
         ext1 = CountingAnalyzer("a", return_value=0.3)
         ext2 = CountingAnalyzer("b", return_value=0.7)
-        # Neither has is_trigger=True
-        assert not getattr(ext1, 'is_trigger', False)
-        assert not getattr(ext2, 'is_trigger', False)
+        # Neither has stateful=True
+        assert not ext1.stateful
+        assert not ext2.stateful
 
         udf = create_multi_analyzer_udf([ext1, ext2])
         results = udf(make_frame())

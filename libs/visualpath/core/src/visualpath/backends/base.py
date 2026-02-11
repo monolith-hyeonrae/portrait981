@@ -10,11 +10,12 @@ Each backend provides its own interpretation of NodeSpecs:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterator, List, TYPE_CHECKING
+from typing import Callable, Iterator, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from visualbase import Frame, Trigger
     from visualpath.flow.graph import FlowGraph
+    from visualpath.flow.node import FlowData
 
 
 @dataclass
@@ -52,12 +53,18 @@ class ExecutionBackend(ABC):
         self,
         frames: Iterator["Frame"],
         graph: "FlowGraph",
+        *,
+        on_frame: Optional[Callable[["Frame", List["FlowData"]], bool]] = None,
     ) -> PipelineResult:
         """Execute a FlowGraph-based pipeline.
 
         Args:
             frames: Iterator of Frame objects from video source.
             graph: FlowGraph defining the processing pipeline.
+            on_frame: Optional per-frame callback ``(frame, terminal_results) -> bool``.
+                Called after each frame is processed. Return True to continue,
+                False to stop early. ``terminal_results`` is a list of FlowData
+                from terminal nodes.
 
         Returns:
             PipelineResult with triggers, frame_count, and optional stats.

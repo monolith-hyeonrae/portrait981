@@ -12,7 +12,7 @@ members = [
     "libs/vpx/sdk",
     "libs/vpx/runner",
     "libs/vpx/viz",
-    "apps/facemoment/core",
+    "apps/facemoment",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.

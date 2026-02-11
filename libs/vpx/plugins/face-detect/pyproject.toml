@@ -10,7 +10,7 @@ dependencies = [
     "ml-dtypes>=0.5.0",
 ]
 
-[project.entry-points."visualpath.analyzers"]
+[project.entry-points."visualpath.modules"]
 "face.detect" = "vpx.face_detect:FaceDetectionAnalyzer"
 
 [build-system]

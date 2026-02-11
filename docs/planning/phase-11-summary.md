@@ -75,7 +75,7 @@ all = [
 ### Lazy Import 패턴
 
 ```python
-# src/facemoment/moment_detector/extractors/__init__.py
+# src/facemoment/algorithm/extractors/__init__.py
 
 from .base import BaseExtractor, Observation
 
@@ -160,7 +160,7 @@ uv sync --extra all --extra dev
 ### 항상 가능 (base 의존성)
 
 ```python
-from facemoment.moment_detector.extractors import BaseExtractor, Observation
+from facemoment.algorithm.extractors import BaseExtractor, Observation
 from facemoment.observability import ObservabilityHub, TraceLevel
 from facemoment.process import ExtractorProcess, FusionProcess
 ```
@@ -170,19 +170,19 @@ from facemoment.process import ExtractorProcess, FusionProcess
 ```python
 # Face worker에서만 가능
 try:
-    from facemoment.moment_detector.extractors.face import FaceExtractor
+    from facemoment.algorithm.extractors.face import FaceExtractor
 except ImportError:
     FaceExtractor = None
 
 # Pose worker에서만 가능
 try:
-    from facemoment.moment_detector.extractors.pose import PoseExtractor
+    from facemoment.algorithm.extractors.pose import PoseExtractor
 except ImportError:
     PoseExtractor = None
 
 # Gesture worker에서만 가능
 try:
-    from facemoment.moment_detector.extractors.gesture import GestureExtractor
+    from facemoment.algorithm.extractors.gesture import GestureExtractor
 except ImportError:
     GestureExtractor = None
 ```
@@ -198,14 +198,14 @@ def load_extractors(extractor_types: list[str]) -> list[BaseExtractor]:
     for ext_type in extractor_types:
         if ext_type == "face":
             try:
-                from facemoment.moment_detector.extractors.face import FaceExtractor
+                from facemoment.algorithm.extractors.face import FaceExtractor
                 extractors.append(FaceExtractor())
             except ImportError:
                 print("Warning: FaceExtractor requires [face] extra")
 
         elif ext_type == "pose":
             try:
-                from facemoment.moment_detector.extractors.pose import PoseExtractor
+                from facemoment.algorithm.extractors.pose import PoseExtractor
                 extractors.append(PoseExtractor())
             except ImportError:
                 print("Warning: PoseExtractor requires [pose] extra")
@@ -229,8 +229,8 @@ def load_extractors(extractor_types: list[str]) -> list[BaseExtractor]:
 | `src/facemoment/cli/commands/debug.py` | 통합 디버그 명령어 |
 | `src/facemoment/cli/commands/process.py` | 클립 추출 명령어 |
 | `src/facemoment/cli/commands/benchmark.py` | 벤치마크 명령어 |
-| `src/facemoment/moment_detector/extractors/gesture.py` | GestureExtractor |
-| `src/facemoment/moment_detector/extractors/backends/hand_backends.py` | MediaPipe 백엔드 |
+| `src/facemoment/algorithm/extractors/gesture.py` | GestureExtractor |
+| `src/facemoment/algorithm/extractors/backends/hand_backends.py` | MediaPipe 백엔드 |
 | `src/facemoment/observability/__init__.py` | ObservabilityHub |
 | `src/facemoment/observability/records.py` | TraceRecord 타입들 |
 | `src/facemoment/observability/sinks.py` | 로깅 싱크들 |
@@ -241,15 +241,15 @@ def load_extractors(extractor_types: list[str]) -> list[BaseExtractor]:
 | 파일 | 변경 내용 |
 |------|-----------|
 | `pyproject.toml` | optional dependencies 추가 |
-| `src/facemoment/moment_detector/extractors/__init__.py` | lazy import 패턴 적용 |
-| `src/facemoment/moment_detector/extractors/base.py` | 인터페이스 정리 |
-| `src/facemoment/moment_detector/extractors/face.py` | 컴포넌트별 타이밍 추가 |
-| `src/facemoment/moment_detector/extractors/pose.py` | lazy import 대응 |
-| `src/facemoment/moment_detector/extractors/backends/__init__.py` | 백엔드 export 정리 |
-| `src/facemoment/moment_detector/extractors/backends/base.py` | 프로토콜 정의 |
-| `src/facemoment/moment_detector/extractors/backends/face_backends.py` | 백엔드 구현 |
-| `src/facemoment/moment_detector/fusion/highlight.py` | Observability 연동 |
-| `src/facemoment/moment_detector/visualize.py` | 타이밍 오버레이 추가 |
+| `src/facemoment/algorithm/extractors/__init__.py` | lazy import 패턴 적용 |
+| `src/facemoment/algorithm/extractors/base.py` | 인터페이스 정리 |
+| `src/facemoment/algorithm/extractors/face.py` | 컴포넌트별 타이밍 추가 |
+| `src/facemoment/algorithm/extractors/pose.py` | lazy import 대응 |
+| `src/facemoment/algorithm/extractors/backends/__init__.py` | 백엔드 export 정리 |
+| `src/facemoment/algorithm/extractors/backends/base.py` | 프로토콜 정의 |
+| `src/facemoment/algorithm/extractors/backends/face_backends.py` | 백엔드 구현 |
+| `src/facemoment/algorithm/fusion/highlight.py` | Observability 연동 |
+| `src/facemoment/algorithm/visualize.py` | 타이밍 오버레이 추가 |
 | `src/facemoment/process/__init__.py` | export 정리 |
 | `src/facemoment/process/extractor.py` | orchestrator 연동 |
 | `src/facemoment/process/fusion.py` | Observability 연동 |
