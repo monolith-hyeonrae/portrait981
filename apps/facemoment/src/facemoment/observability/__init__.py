@@ -43,8 +43,8 @@ from facemoment.observability.sinks import (
     NullSink,
 )
 
-# Re-export PathwayMonitor
-from facemoment.observability.pathway_monitor import PathwayMonitor
+# Re-export PipelineMonitor
+from facemoment.observability.pipeline_monitor import PipelineMonitor
 
 __all__ = [
     # Core (from visualpath)
@@ -59,5 +59,5 @@ __all__ = [
     "MemorySink",
     "NullSink",
     # Monitoring
-    "PathwayMonitor",
+    "PipelineMonitor",
 ]

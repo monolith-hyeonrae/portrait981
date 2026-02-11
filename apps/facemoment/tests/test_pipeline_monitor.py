@@ -1,4 +1,4 @@
-"""Tests for PathwayMonitor and Pathway monitoring records."""
+"""Tests for PipelineMonitor and Pathway monitoring records."""
 
 import time
 from dataclasses import dataclass
@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch, PropertyMock
 import pytest
 
 from facemoment.observability import ObservabilityHub, TraceLevel
-from facemoment.observability.pathway_monitor import PathwayMonitor
+from facemoment.observability.pipeline_monitor import PipelineMonitor
 from facemoment.observability.records import (
     BackpressureRecord,
     AnalyzerTimingRecord,
@@ -170,16 +170,16 @@ class TestTraceRecords:
 
 
 # ---------------------------------------------------------------------------
-# PathwayMonitor Core Tests
+# PipelineMonitor Core Tests
 # ---------------------------------------------------------------------------
 
 
-class TestPathwayMonitorLifecycle:
-    """Tests for PathwayMonitor frame lifecycle."""
+class TestPipelineMonitorLifecycle:
+    """Tests for PipelineMonitor frame lifecycle."""
 
     def test_basic_frame_lifecycle(self):
         hub, sink = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         frame = FakeFrame(frame_id=1, t_src_ns=100_000_000)
         monitor.begin_frame(frame)
@@ -198,7 +198,7 @@ class TestPathwayMonitorLifecycle:
 
     def test_multiple_extractors(self):
         hub, sink = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         frame = FakeFrame(frame_id=1, t_src_ns=100_000_000)
         monitor.begin_frame(frame)
@@ -220,7 +220,7 @@ class TestPathwayMonitorLifecycle:
 
     def test_failed_extractor(self):
         hub, sink = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -233,7 +233,7 @@ class TestPathwayMonitorLifecycle:
 
     def test_trigger_counting(self):
         hub, sink = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         # Frame 1: trigger
         frame = FakeFrame(frame_id=1, t_src_ns=0)
@@ -255,7 +255,7 @@ class TestPathwayMonitorLifecycle:
 
     def test_gate_open_tracking(self):
         hub, sink = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         for i in range(5):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
@@ -266,7 +266,7 @@ class TestPathwayMonitorLifecycle:
         assert summary["gate_open_pct"] == pytest.approx(60.0)
 
 
-class TestPathwayMonitorStats:
+class TestPipelineMonitorStats:
     """Tests for stats accessors."""
 
     def _run_n_frames(self, monitor, n=10):
@@ -285,13 +285,13 @@ class TestPathwayMonitorStats:
 
     def test_get_frame_stats_empty(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
         stats = monitor.get_frame_stats()
         assert stats == {}
 
     def test_get_frame_stats_has_expected_keys(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
         self._run_n_frames(monitor, 3)
 
         stats = monitor.get_frame_stats()
@@ -306,7 +306,7 @@ class TestPathwayMonitorStats:
 
     def test_get_rolling_stats(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
         self._run_n_frames(monitor, 10)
 
         rolling = monitor.get_rolling_stats()
@@ -318,7 +318,7 @@ class TestPathwayMonitorStats:
 
     def test_get_rolling_stats_insufficient_frames(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=0, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -329,7 +329,7 @@ class TestPathwayMonitorStats:
 
     def test_get_summary(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
         self._run_n_frames(monitor, 5)
 
         summary = monitor.get_summary()
@@ -343,7 +343,7 @@ class TestPathwayMonitorStats:
 
     def test_main_face_tracking(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -364,12 +364,12 @@ class TestPathwayMonitorStats:
 # ---------------------------------------------------------------------------
 
 
-class TestPathwayMonitorEmission:
+class TestPipelineMonitorEmission:
     """Tests for TraceRecord emission gating."""
 
     def test_emits_pathway_frame_record(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -382,7 +382,7 @@ class TestPathwayMonitorEmission:
 
     def test_emits_analyzer_timing_record(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -398,7 +398,7 @@ class TestPathwayMonitorEmission:
 
     def test_emits_merge_record_at_verbose(self):
         hub, sink = _make_hub(TraceLevel.VERBOSE)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -417,7 +417,7 @@ class TestPathwayMonitorEmission:
 
     def test_merge_record_not_emitted_at_normal(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -433,7 +433,7 @@ class TestPathwayMonitorEmission:
 
     def test_emits_pipeline_stats_record(self):
         hub, sink = _make_hub(TraceLevel.MINIMAL)
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -449,7 +449,7 @@ class TestPathwayMonitorEmission:
     def test_no_emission_when_hub_disabled(self):
         hub, sink = _make_hub(TraceLevel.OFF)
         hub._enabled = False
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -462,7 +462,7 @@ class TestPathwayMonitorEmission:
 
     def test_backpressure_emitted_at_interval(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0, report_interval=5)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0, report_interval=5)
 
         for i in range(10):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
@@ -481,13 +481,13 @@ class TestPathwayMonitorEmission:
 # ---------------------------------------------------------------------------
 
 
-class TestPathwayMonitorStatsAlwaysWork:
+class TestPipelineMonitorStatsAlwaysWork:
     """Verify stats work even when tracing is OFF."""
 
     def test_frame_stats_with_tracing_off(self):
         hub, _ = _make_hub(TraceLevel.OFF)
         hub._enabled = False
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -504,7 +504,7 @@ class TestPathwayMonitorStatsAlwaysWork:
     def test_rolling_stats_with_tracing_off(self):
         hub, _ = _make_hub(TraceLevel.OFF)
         hub._enabled = False
-        monitor = PathwayMonitor(hub=hub, target_fps=10.0)
+        monitor = PipelineMonitor(hub=hub, target_fps=10.0)
 
         for i in range(5):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
@@ -521,7 +521,7 @@ class TestPathwayMonitorStatsAlwaysWork:
     def test_summary_with_tracing_off(self):
         hub, _ = _make_hub(TraceLevel.OFF)
         hub._enabled = False
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         for i in range(3):
             frame = FakeFrame(frame_id=i, t_src_ns=i * 100_000_000)
@@ -610,7 +610,7 @@ class TestFusionDecisionMapping:
 
     def test_triggered_decision(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
         monitor.begin_fusion()
@@ -622,7 +622,7 @@ class TestFusionDecisionMapping:
 
     def test_cooldown_decision(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
         monitor.begin_fusion()
@@ -637,7 +637,7 @@ class TestFusionDecisionMapping:
 
     def test_gate_closed_decision(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
         monitor.begin_fusion()
@@ -652,7 +652,7 @@ class TestFusionDecisionMapping:
 
     def test_no_trigger_decision(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
         monitor.begin_fusion()
@@ -667,7 +667,7 @@ class TestFusionDecisionMapping:
 
     def test_no_result_decision(self):
         hub, _ = _make_hub()
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
         monitor.begin_fusion()
@@ -688,7 +688,7 @@ class TestSubTimings:
 
     def test_sub_timings_passed_to_record(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -703,7 +703,7 @@ class TestSubTimings:
 
     def test_sub_timings_none(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -740,7 +740,7 @@ class TestModuleMetrics:
 
     def test_metrics_extracted_to_record(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -760,7 +760,7 @@ class TestModuleMetrics:
 
     def test_no_metrics_yields_empty_dict(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)
@@ -775,7 +775,7 @@ class TestModuleMetrics:
 
     def test_metrics_not_extracted_from_failed_obs(self):
         hub, sink = _make_hub(TraceLevel.NORMAL)
-        monitor = PathwayMonitor(hub=hub)
+        monitor = PipelineMonitor(hub=hub)
 
         frame = FakeFrame(frame_id=1, t_src_ns=0)
         monitor.begin_frame(frame)

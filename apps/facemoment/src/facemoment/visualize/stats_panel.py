@@ -90,7 +90,7 @@ class StatsPanel:
             is_gate_open: Gate state.
             in_cooldown: Cooldown state.
             profile_timing: Per-component timing dict.
-            monitor_stats: PathwayMonitor frame stats.
+            monitor_stats: PipelineMonitor frame stats.
             backend_label: Label like "PATHWAY", "SIMPLE", "DISTRIBUTED".
             source_image: Source image for trigger thumbnail capture.
             layers: Layer visibility state. None means all layers enabled.
@@ -150,7 +150,7 @@ class StatsPanel:
     def _draw_monitor_stats(
         self, canvas: np.ndarray, x: int, y: int, panel_w: int, stats: Dict
     ) -> int:
-        """Draw PathwayMonitor stats: FPS, frame time, analyzer timing bars."""
+        """Draw PipelineMonitor stats: FPS, frame time, analyzer timing bars."""
         line_h = 16
 
         # FPS

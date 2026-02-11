@@ -36,7 +36,7 @@ src/facemoment/
 ├── visualize/                 # DebugVisualizer, 타이밍 오버레이, stats_panel
 ├── observability/
 │   ├── __init__.py            # ObservabilityHub
-│   ├── pathway_monitor.py     # Pathway 모니터링
+│   ├── pipeline_monitor.py     # 파이프라인 성능 모니터링
 │   ├── records.py             # TriggerFireRecord 등
 │   └── sinks.py               # MemorySink, ConsoleSink
 ```

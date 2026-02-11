@@ -21,7 +21,7 @@ def generate_report(data: Dict[str, Any], output_path: str) -> None:
     Args:
         data: Dict with keys:
             - "backend": str (e.g. "PATHWAY")
-            - "summary": dict from PathwayMonitor.get_summary()
+            - "summary": dict from PipelineMonitor.get_summary()
             - "trigger_thumbs": list of (frame_idx, np.ndarray, reason)
         output_path: Path to write the HTML file.
     """

@@ -1,7 +1,7 @@
-"""Pathway pipeline real-time monitoring.
+"""Pipeline real-time monitoring.
 
 Collects per-frame timing data, rolling statistics, and emits
-TraceRecords for the Pathway backend debug loop.
+TraceRecords for the debug loop.
 
 Key design:
 - get_frame_stats() and get_rolling_stats() always work (trace level independent)
@@ -24,7 +24,7 @@ from facemoment.observability.records import (
 )
 
 
-class PathwayMonitor:
+class PipelineMonitor:
     """Real-time monitoring for Pathway pipeline.
 
     Responsibilities:
@@ -543,4 +543,4 @@ class PathwayMonitor:
         self._report_start_frame = self._frame_id
 
 
-__all__ = ["PathwayMonitor"]
+__all__ = ["PipelineMonitor"]
