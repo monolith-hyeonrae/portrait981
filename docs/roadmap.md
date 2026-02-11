@@ -1,7 +1,7 @@
 # Portrait981 개발 로드맵
 
-> 최종 수정: 2026-02-10
-> 현재 상태: **Phase 16 완료** (vpx infra 패키지)
+> 최종 수정: 2026-02-11
+> 현재 상태: **Phase 17 완료** (vpx new 스캐폴딩)
 
 ---
 
@@ -44,7 +44,7 @@
 | `visualpath-pathway` | 범용 프레임워크 | - | Pathway 스트리밍 백엔드 | ✅ 완료 (80 tests) |
 | `visualpath-cli` | 범용 프레임워크 | `visualpath` | YAML 기반 파이프라인 CLI | ✅ 완료 (45 tests) |
 | `vpx-sdk` | 범용 라이브러리 | - | 모듈 SDK, PluginTestHarness | ✅ 완료 (43 tests) |
-| `vpx-runner` | 범용 도구 | `vpx` | Analyzer 러너 CLI | ✅ 완료 (24 tests) |
+| `vpx-runner` | 범용 도구 | `vpx` | Analyzer 러너 CLI + 스캐폴딩 | ✅ 완료 (55 tests) |
 | `vpx-viz` | 범용 도구 | - | 시각화 오버레이 | ✅ 완료 |
 | `vpx-face-detect` | 범용 플러그인 | - | InsightFace SCRFD | ✅ 완료 |
 | `vpx-face-expression` | 범용 플러그인 | - | HSEmotion | ✅ 완료 |
@@ -76,8 +76,7 @@ portrait981/                        ← repo root (uv workspace)
 │           ├── body-pose/          # YOLO-Pose
 │           └── hand-gesture/       # MediaPipe Hands
 ├── apps/
-│   └── facemoment/
-│       └── core/                   # 얼굴/장면 분석 앱
+│   └── facemoment/                 # 얼굴/장면 분석 앱
 ├── docs/
 │   ├── index.md                    # 문서 인덱스
 │   ├── architecture.md             # 아키텍처
@@ -165,6 +164,16 @@ Module boundary 설계 및 vpx 인프라 패키지 추가.
 | 16.1 | Capability, PortSchema, ErrorPolicy, ExecutionProfile | `a2bc565` |
 | 16.2 | vpx-sdk, vpx-runner, vpx-viz 패키지 | `4a471dc` |
 
+### Phase 17: vpx new 스캐폴딩 ✅ 완료 (2026-02-11)
+
+새 vpx 모듈 생성 자동화. `vpx new` CLI 서브커맨드 추가.
+
+| 단계 | 내용 |
+|------|------|
+| 17.1 | `scaffold.py` — 이름 파생, 템플릿 생성, workspace 등록 |
+| 17.2 | `cli.py` — `new` 서브커맨드 파서 및 핸들러 |
+| 17.3 | `test_scaffold.py` — 31 tests (dry-run, 파일 생성, workspace 등록, harness 검증) |
+
 ### Phase 9a-9c: 981파크 완성 ⬜ 예정
 
 | 단계 | 패키지 | 내용 | 상태 |
@@ -200,11 +209,11 @@ visualpath → vpx-sdk → vpx-* → facemoment (app)
 |----------|--------|--------|
 | `face.detect` | vpx-face-detect | `vpx.face_detect` |
 | `face.expression` | vpx-face-expression | `vpx.face_expression` |
-| `face.classify` | facemoment core | `facemoment.moment_detector.analyzers.face_classifier` |
+| `face.classify` | facemoment core | `facemoment.algorithm.analyzers.face_classifier` |
 | `body.pose` | vpx-body-pose | `vpx.body_pose` |
 | `hand.gesture` | vpx-hand-gesture | `vpx.hand_gesture` |
-| `frame.quality` | facemoment core | `facemoment.moment_detector.analyzers.quality` |
-| `mock.dummy` | facemoment core | `facemoment.moment_detector.analyzers.dummy` |
+| `frame.quality` | facemoment core | `facemoment.algorithm.analyzers.quality` |
+| `mock.dummy` | facemoment core | `facemoment.algorithm.analyzers.dummy` |
 
 ### IPC 방식
 - FIFO/UDS 기본 지원
@@ -232,9 +241,9 @@ visualpath → vpx-sdk → vpx-* → facemoment (app)
 | visualpath-pathway | `libs/visualpath/pathway/tests/` | 80 |
 | visualpath-cli | `libs/visualpath/cli/tests/` | 45 |
 | vpx-sdk | `libs/vpx/sdk/tests/` | 43 |
-| vpx-runner | `libs/vpx/runner/tests/` | 24 |
-| facemoment | `apps/facemoment/core/tests/` | 326 |
-| **합계** | | **1,119** |
+| vpx-runner | `libs/vpx/runner/tests/` | 55 |
+| facemoment | `apps/facemoment/tests/` | 326 |
+| **합계** | | **1,150** |
 
 ---
 
@@ -254,7 +263,7 @@ uv run pytest libs/visualpath/pathway/tests/ -v
 uv run pytest libs/visualpath/cli/tests/ -v
 uv run pytest libs/vpx/sdk/tests/ -v
 uv run pytest libs/vpx/runner/tests/ -v
-uv run pytest apps/facemoment/core/tests/ -v
+uv run pytest apps/facemoment/tests/ -v
 
 # E2E 테스트
 uv run facemoment process video.mp4 -o ./clips --fps 10

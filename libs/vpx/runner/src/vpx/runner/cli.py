@@ -62,6 +62,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show entry point details",
     )
 
+    # vpx new
+    new_p = sub.add_parser("new", help="Scaffold a new vpx module")
+    new_p.add_argument("name", help="Module name in dot notation (e.g. face.landmark)")
+    new_p.add_argument(
+        "--internal",
+        action="store_true",
+        help="Create as facemoment-internal module instead of vpx plugin",
+    )
+    new_p.add_argument(
+        "--depends",
+        default="",
+        help="Comma-separated dependency module names (e.g. face.detect)",
+    )
+    new_p.add_argument(
+        "--no-backend",
+        action="store_true",
+        help="Skip backends/ directory generation",
+    )
+    new_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print file list without creating anything",
+    )
+
     return parser
 
 
@@ -192,6 +216,38 @@ class _StopIteration(Exception):
     pass
 
 
+def _cmd_new(args: argparse.Namespace) -> None:
+    """Handle ``vpx new``."""
+    from vpx.runner.scaffold import scaffold_plugin, scaffold_internal
+
+    depends = [d.strip() for d in args.depends.split(",") if d.strip()]
+
+    try:
+        if args.internal:
+            paths = scaffold_internal(
+                args.name,
+                depends=depends,
+                dry_run=args.dry_run,
+            )
+        else:
+            paths = scaffold_plugin(
+                args.name,
+                depends=depends,
+                no_backend=args.no_backend,
+                dry_run=args.dry_run,
+            )
+    except (ValueError, FileExistsError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if args.dry_run:
+        print("Files that would be created:")
+    else:
+        print("Created files:")
+    for p in paths:
+        print(f"  {p}")
+
+
 def main():
     """Entry point for ``vpx`` CLI."""
     parser = _build_parser()
@@ -208,6 +264,8 @@ def main():
         _cmd_list(args)
     elif args.command == "run":
         _cmd_run(args)
+    elif args.command == "new":
+        _cmd_new(args)
 
 
 if __name__ == "__main__":
