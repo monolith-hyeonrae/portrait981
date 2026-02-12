@@ -4,10 +4,12 @@ import pytest
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 
-from facemoment.algorithm.scoring import (
+from facemoment.algorithm.analyzers.frame_scoring import (
     FrameScorer,
     ScoringConfig,
     ScoreResult,
+)
+from facemoment.algorithm.frame_selector import (
     FrameSelector,
     SelectionConfig,
     ScoredFrame,

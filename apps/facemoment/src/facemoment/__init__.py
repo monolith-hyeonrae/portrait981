@@ -15,7 +15,7 @@ With options:
     >>> result = fm.run("video.mp4", output_dir="./clips")
 
 Frame Scoring:
-    >>> from facemoment.algorithm.scoring import FrameScorer
+    >>> from facemoment.algorithm.analyzers.frame_scoring import FrameScorer
     >>> scorer = FrameScorer()
     >>> result = scorer.score(face_obs=face_obs, quality_obs=quality_obs)
     >>> print(f"Score: {result.total_score:.2f}")

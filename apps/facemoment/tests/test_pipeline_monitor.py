@@ -6,16 +6,16 @@ from unittest.mock import Mock, patch, PropertyMock
 
 import pytest
 
-from facemoment.observability import ObservabilityHub, TraceLevel
-from facemoment.observability.pipeline_monitor import PipelineMonitor
-from facemoment.observability.records import (
+from visualpath.observability import ObservabilityHub, TraceLevel
+from facemoment.algorithm.monitoring import PipelineMonitor
+from facemoment.algorithm.monitoring.records import (
     BackpressureRecord,
     AnalyzerTimingRecord,
     ObservationMergeRecord,
     PathwayFrameRecord,
     PipelineStatsRecord,
 )
-from facemoment.observability.sinks import ConsoleSink, MemorySink
+from facemoment.cli.sinks import ConsoleSink, MemorySink
 
 
 # ---------------------------------------------------------------------------

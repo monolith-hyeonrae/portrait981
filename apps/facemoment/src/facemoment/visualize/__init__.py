@@ -22,7 +22,7 @@ from visualbase import Frame
 
 from vpx.sdk import Observation
 from vpx.viz.renderer import render_marks
-from facemoment.algorithm.scoring.frame_scorer import ScoreResult
+from facemoment.algorithm.analyzers.frame_scoring.output import ScoreResult
 from facemoment.visualize.layout import LayoutManager
 from facemoment.visualize.video_panel import VideoPanel
 from facemoment.visualize.stats_panel import StatsPanel

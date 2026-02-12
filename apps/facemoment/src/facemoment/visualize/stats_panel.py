@@ -11,7 +11,7 @@ import numpy as np
 
 from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
-from facemoment.algorithm.scoring.frame_scorer import ScoreResult
+from facemoment.algorithm.analyzers.frame_scoring.output import ScoreResult
 from facemoment.visualize.components import (
     COLOR_DARK_BGR,
     COLOR_WHITE_BGR,

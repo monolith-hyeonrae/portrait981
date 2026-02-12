@@ -11,12 +11,16 @@ from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
 from visualpath.core.module import Module
 from facemoment.algorithm.analyzers.face_classifier import FaceClassifierOutput
-from facemoment.observability import ObservabilityHub, TraceLevel
-from facemoment.observability.records import (
+from visualpath.observability import ObservabilityHub, TraceLevel
+from facemoment.algorithm.analyzers.highlight.records import (
     GateChangeRecord,
     GateConditionRecord,
     TriggerDecisionRecord,
     TriggerFireRecord,
+)
+from facemoment.algorithm.analyzers.highlight.types import (
+    ExpressionState,
+    AdaptiveEmotionState,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,47 +35,6 @@ def _get_faces(obs):
 
 # Get the global observability hub
 _hub = ObservabilityHub.get_instance()
-
-
-@dataclass
-class ExpressionState:
-    """State for expression spike detection using EWMA."""
-
-    ewma: float = 0.0
-    ewma_var: float = 0.01  # Variance for z-score
-    count: int = 0
-
-
-@dataclass
-class AdaptiveEmotionState:
-    """Adaptive per-face happy tracking with baseline and recent values.
-
-    Tracks happy emotion with:
-    - baseline: Slow-moving average representing the person's "normal" happy level
-    - recent: Fast-moving average representing current happy level
-    - spike: recent - baseline, representing relative change from normal
-    - spike_start_ns: When spike first exceeded threshold (for sustained detection)
-
-    This allows detecting happy spikes relative to each person's baseline,
-    not absolute thresholds.
-    """
-
-    # Baseline (slow EWMA, α≈0.02) - person's typical happy level
-    baseline: float = 0.3
-
-    # Recent (fast EWMA, α≈0.08) - current happy level (smoothed over ~1sec)
-    recent: float = 0.3
-
-    # Frame count for warmup
-    count: int = 0
-
-    # Spike sustain tracking
-    spike_start_ns: Optional[int] = None  # When spike first exceeded threshold
-
-    @property
-    def spike(self) -> float:
-        """Happy spike (recent - baseline)."""
-        return self.recent - self.baseline
 
 
 class HighlightFusion(Module):
@@ -498,23 +461,14 @@ class HighlightFusion(Module):
         )
 
     def _check_gate_conditions(self, observation: Observation) -> bool:
-        """Check if gate conditions are met.
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            True if all gate conditions are satisfied.
-        """
+        """Check if gate conditions are met."""
         faces = _get_faces(observation)
         face_count = int(observation.signals.get("face_count", len(faces)))
 
-        # Track individual conditions for observability
         face_count_ok = 1 <= face_count <= 2
         quality_gate = observation.signals.get("quality_gate", 1.0)
         quality_ok = quality_gate >= 0.5
 
-        # Initialize per-face checks
         confidence_ok = True
         inside_frame_ok = True
         yaw_ok = True
@@ -526,7 +480,6 @@ class HighlightFusion(Module):
         max_yaw = 0.0
         max_pitch = 0.0
 
-        # Check each face
         for face in faces:
             max_confidence = max(max_confidence, face.confidence)
             max_yaw = max(max_yaw, abs(face.yaw))
@@ -550,7 +503,6 @@ class HighlightFusion(Module):
             inside_frame_ok and yaw_ok and pitch_ok and area_ok and center_ok
         )
 
-        # Emit VERBOSE condition record
         if _hub.enabled and _hub.is_level_enabled(TraceLevel.VERBOSE):
             _hub.emit(GateConditionRecord(
                 frame_id=observation.frame_id,
@@ -574,32 +526,22 @@ class HighlightFusion(Module):
     def _update_gate_hysteresis(
         self, t_ns: int, conditions_met: bool, frame_id: int = 0
     ) -> None:
-        """Update gate state with hysteresis.
-
-        Args:
-            t_ns: Current timestamp.
-            conditions_met: Whether gate conditions are currently met.
-            frame_id: Current frame ID for observability.
-        """
+        """Update gate state with hysteresis."""
         old_gate_open = self._gate_open
 
         if conditions_met:
             self._gate_condition_first_failed_ns = None
 
             if self._gate_open:
-                # Already open, stay open
                 pass
             else:
-                # Track when conditions first met
                 if self._gate_condition_first_met_ns is None:
                     self._gate_condition_first_met_ns = t_ns
                 elif t_ns - self._gate_condition_first_met_ns >= self._gate_open_duration_ns:
-                    # Conditions met long enough, open gate
                     self._gate_open = True
                     duration_ns = t_ns - self._gate_condition_first_met_ns
                     logger.debug(f"Gate opened at t={t_ns / 1e9:.3f}s")
 
-                    # Emit gate change record
                     if _hub.enabled:
                         _hub.emit(GateChangeRecord(
                             frame_id=frame_id,
@@ -612,16 +554,13 @@ class HighlightFusion(Module):
             self._gate_condition_first_met_ns = None
 
             if self._gate_open:
-                # Track when conditions first failed
                 if self._gate_condition_first_failed_ns is None:
                     self._gate_condition_first_failed_ns = t_ns
                 elif t_ns - self._gate_condition_first_failed_ns >= self._gate_close_duration_ns:
-                    # Conditions failed long enough, close gate
                     self._gate_open = False
                     duration_ns = t_ns - self._gate_condition_first_failed_ns
                     logger.debug(f"Gate closed at t={t_ns / 1e9:.3f}s")
 
-                    # Emit gate change record
                     if _hub.enabled:
                         _hub.emit(GateChangeRecord(
                             frame_id=frame_id,
@@ -632,38 +571,17 @@ class HighlightFusion(Module):
                         ))
 
     def _detect_expression_spike(self, observation: Observation) -> Optional[float]:
-        """Detect sustained happy spikes using adaptive baseline tracking.
-
-        Uses per-face adaptive tracking:
-        - baseline (slow EWMA): Person's typical happy level
-        - recent (smoothed EWMA): Current happy level averaged over ~1sec
-        - spike = recent - baseline: Relative change from normal
-        - Spike must sustain above threshold for spike_sustain_sec
-
-        This detects when someone's happy rises above THEIR normal level
-        and STAYS elevated, filtering out brief fluctuations.
-
-        Note: In main-only mode, only analyzes the main face.
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            Spike score if sustained spike detected, None otherwise.
-        """
+        """Detect sustained happy spikes using adaptive baseline tracking."""
         t_ns = observation.t_ns
         max_spike_score = None
 
-        # Get target faces (main only in main-only mode)
         target_faces = self._get_target_faces(observation)
 
         for face in target_faces:
             face_id = face.face_id
 
-            # Get happy value from face signals
             happy = face.signals.get("em_happy", 0.0)
 
-            # Get or create adaptive state
             if face_id not in self._adaptive_states:
                 self._adaptive_states[face_id] = AdaptiveEmotionState(
                     baseline=happy,
@@ -672,54 +590,34 @@ class HighlightFusion(Module):
 
             state = self._adaptive_states[face_id]
 
-            # Update baseline (slow EWMA) - person's typical happy level
             state.baseline += self._baseline_alpha * (happy - state.baseline)
-
-            # Update recent (smoothed EWMA) - current happy level
             state.recent += self._recent_alpha * (happy - state.recent)
-
             state.count += 1
 
-            # Skip warmup period (need baseline to stabilize)
             if state.count < 10:
                 continue
 
-            # Check for spike (relative to baseline)
             spike = state.spike
 
             if spike > self._spike_threshold:
-                # Track when spike started
                 if state.spike_start_ns is None:
                     state.spike_start_ns = t_ns
 
-                # Check if spike has sustained long enough
                 spike_duration_ns = t_ns - state.spike_start_ns
                 if spike_duration_ns >= self._spike_sustain_ns:
-                    # Sustained spike! Calculate score
                     spike_score = min(1.0, spike / (self._spike_threshold * 2))
                     if max_spike_score is None or spike_score > max_spike_score:
                         max_spike_score = spike_score
             else:
-                # Spike dropped below threshold, reset timer
                 state.spike_start_ns = None
 
         return max_spike_score
 
     def _detect_head_turn(self, observation: Observation) -> Optional[float]:
-        """Detect head turn events.
-
-        Note: In main-only mode, only analyzes the main face.
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            Turn score if detected, None otherwise.
-        """
+        """Detect head turn events."""
         t_ns = observation.t_ns
         max_turn = None
 
-        # Get target faces (main only in main-only mode)
         target_faces = self._get_target_faces(observation)
 
         for face in target_faces:
@@ -730,12 +628,10 @@ class HighlightFusion(Module):
                 prev_t_ns, prev_yaw = self._prev_yaw[face_id]
                 dt_sec = (t_ns - prev_t_ns) / 1e9
 
-                if dt_sec > 0 and dt_sec < 0.5:  # Reasonable time gap
-                    # Compute angular velocity
+                if dt_sec > 0 and dt_sec < 0.5:
                     angular_velocity = abs(yaw - prev_yaw) / dt_sec
 
                     if angular_velocity > self._head_turn_vel_threshold:
-                        # Score based on velocity magnitude
                         turn_score = min(
                             1.0,
                             angular_velocity / (self._head_turn_vel_threshold * 2)
@@ -743,26 +639,12 @@ class HighlightFusion(Module):
                         if max_turn is None or turn_score > max_turn:
                             max_turn = turn_score
 
-            # Update previous yaw
             self._prev_yaw[face_id] = (t_ns, yaw)
 
         return max_turn
 
     def _detect_camera_gaze(self, observation: Observation) -> tuple[bool, float]:
-        """Detect when subject is looking directly at camera.
-
-        For gokart scenario, camera is mounted in front facing the driver.
-        Looking at camera means yaw and pitch are close to 0.
-
-        Note: In main-only mode, only analyzes the main face.
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            Tuple of (detected, score).
-        """
-        # Get target faces (main only in main-only mode)
+        """Detect when subject is looking directly at camera."""
         target_faces = self._get_target_faces(observation)
 
         if not target_faces:
@@ -772,17 +654,12 @@ class HighlightFusion(Module):
         detected = False
 
         for face in target_faces:
-            # Calculate gaze score based on how centered the head pose is
-            # yaw close to 0 = looking straight ahead at camera
-            # pitch close to 0 = not looking up or down
             yaw_deviation = abs(face.yaw)
             pitch_deviation = abs(face.pitch)
 
-            # Score decreases linearly as deviation increases
             yaw_score = max(0.0, 1.0 - yaw_deviation / self._gaze_yaw_threshold)
             pitch_score = max(0.0, 1.0 - pitch_deviation / self._gaze_pitch_threshold)
 
-            # Combined score
             gaze_score = yaw_score * pitch_score
 
             if gaze_score > self._gaze_score_threshold:
@@ -794,38 +671,22 @@ class HighlightFusion(Module):
     def _detect_passenger_interaction(
         self, observation: Observation
     ) -> tuple[bool, float]:
-        """Detect when two passengers are looking at each other.
-
-        For gokart scenario with 2 passengers, detect when they turn
-        to look at each other.
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            Tuple of (detected, score).
-        """
+        """Detect when two passengers are looking at each other."""
         faces = _get_faces(observation)
         if len(faces) != 2:
             return False, 0.0
 
         f1, f2 = faces[0], faces[1]
 
-        # Determine which face is on the left vs right
-        # bbox[0] is normalized x coordinate (0=left, 1=right)
         if f1.bbox[0] < f2.bbox[0]:
             left_face, right_face = f1, f2
         else:
             left_face, right_face = f2, f1
 
-        # Check if they're looking at each other:
-        # - Left person should have positive yaw (looking right)
-        # - Right person should have negative yaw (looking left)
         left_looking_right = left_face.yaw > self._interaction_yaw_threshold
         right_looking_left = right_face.yaw < -self._interaction_yaw_threshold
 
         if left_looking_right and right_looking_left:
-            # Calculate interaction score based on yaw angles
             left_score = min(abs(left_face.yaw) / 45.0, 1.0)
             right_score = min(abs(right_face.yaw) / 45.0, 1.0)
             score = (left_score + right_score) / 2.0
@@ -835,17 +696,7 @@ class HighlightFusion(Module):
         return False, 0.0
 
     def _detect_gestures(self, observation: Observation) -> tuple[Optional[str], float]:
-        """Detect hand gestures from gesture analyzer signals.
-
-        Looks for gesture signals in the observation (from GestureAnalyzer).
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            Tuple of (trigger_reason, score) or (None, 0.0).
-        """
-        # Check for gesture signals from GestureAnalyzer
+        """Detect hand gestures from gesture analyzer signals."""
         gesture_detected = observation.signals.get("gesture_detected", 0.0)
         if gesture_detected < 0.5:
             return None, 0.0
@@ -853,7 +704,6 @@ class HighlightFusion(Module):
         gesture_type = observation.metadata.get("gesture_type", "")
         gesture_confidence = observation.signals.get("gesture_confidence", 0.0)
 
-        # Map gesture types to trigger reasons
         gesture_triggers = {
             "v_sign": "gesture_vsign",
             "thumbs_up": "gesture_thumbsup",
@@ -867,16 +717,7 @@ class HighlightFusion(Module):
         return None, 0.0
 
     def _find_event_start(self, reason: str, current_t_ns: int) -> int:
-        """Find the start time of the trigger event.
-
-        Args:
-            reason: Trigger reason.
-            current_t_ns: Current timestamp.
-
-        Returns:
-            Event start timestamp in nanoseconds.
-        """
-        # Look back through recent observations to find event start
+        """Find the start time of the trigger event."""
         observations = list(self._recent_observations)
 
         if not observations:
@@ -888,40 +729,28 @@ class HighlightFusion(Module):
                 if max_expr < 0.5:
                     return obs.t_ns
             elif reason == "head_turn":
-                # Find where angular velocity was low
                 break
             elif reason == "hand_wave":
                 wave = obs.signals.get("hand_wave_detected", 0)
                 if wave < 0.5:
                     return obs.t_ns
             elif reason == "camera_gaze":
-                # Find where gaze started
                 detected, _ = self._detect_camera_gaze(obs)
                 if not detected:
                     return obs.t_ns
             elif reason == "passenger_interaction":
-                # Find where interaction started
                 detected, _ = self._detect_passenger_interaction(obs)
                 if not detected:
                     return obs.t_ns
             elif reason.startswith("gesture_"):
-                # Find where gesture started
                 gesture = obs.signals.get("gesture_detected", 0)
                 if gesture < 0.5:
                     return obs.t_ns
 
-        # Default to a bit before current time
         return observations[-min(3, len(observations))].t_ns
 
     def _in_cooldown(self, t_ns: int) -> bool:
-        """Check if currently in cooldown.
-
-        Args:
-            t_ns: Current timestamp.
-
-        Returns:
-            True if in cooldown period.
-        """
+        """Check if currently in cooldown."""
         if self._last_trigger_ns is None:
             return False
         return (t_ns - self._last_trigger_ns) < self._cooldown_ns
@@ -931,47 +760,27 @@ class HighlightFusion(Module):
         classifier_obs: Optional[Observation],
         observation: Optional[Observation] = None,
     ) -> None:
-        """Update main face ID from classifier observation or merged signals.
-
-        Supports two modes:
-        1. Explicit classifier_obs parameter (Phase 16)
-        2. Merged observation with main_face_id in signals (Phase 17 Pathway)
-
-        Args:
-            classifier_obs: Face classifier observation.
-            observation: Main observation (may contain main_face_id in signals).
-        """
-        # First, try explicit classifier observation
+        """Update main face ID from classifier observation or merged signals."""
         if classifier_obs is not None and classifier_obs.data is not None:
             data = classifier_obs.data
             if hasattr(data, 'main_face') and data.main_face is not None:
                 self._main_face_id = data.main_face.face.face_id
                 return
 
-        # Second, try merged observation signals (Pathway mode)
         if observation is not None and self._main_only:
             main_face_id = observation.signals.get("main_face_id")
             if main_face_id is not None:
                 self._main_face_id = main_face_id
 
     def _get_target_faces(self, observation: Observation) -> List[FaceObservation]:
-        """Get faces to analyze based on main-only mode.
-
-        Args:
-            observation: Current observation.
-
-        Returns:
-            List of faces to analyze (main only if main_only mode).
-        """
+        """Get faces to analyze based on main-only mode."""
         faces = _get_faces(observation)
 
         if not self._main_only or self._main_face_id is None:
-            # Not in main-only mode or no main face identified yet
             return faces
 
-        # Filter to only the main face
         main_faces = [f for f in faces if f.face_id == self._main_face_id]
-        return main_faces if main_faces else faces  # Fallback to all if main not found
+        return main_faces if main_faces else faces
 
     def reset(self) -> None:
         """Reset fusion state."""
@@ -985,19 +794,7 @@ class HighlightFusion(Module):
     stateful = True
 
     def process(self, frame, deps=None) -> Observation:
-        """Process observations and decide on trigger (Module API).
-
-        This is the unified Module interface. It extracts observations
-        from deps and delegates to update().
-
-        Args:
-            frame: Current frame (used for timing if no observations).
-            deps: Dict of observations from dependency modules.
-                  Expected keys: "face.detect", "face.expression", "face.classify"
-
-        Returns:
-            Observation with trigger info in signals/metadata.
-        """
+        """Process observations and decide on trigger (Module API)."""
         if not deps:
             return Observation(
                 source=self.name,
@@ -1006,11 +803,8 @@ class HighlightFusion(Module):
                 signals={"should_trigger": False, "trigger_score": 0.0, "trigger_reason": ""},
             )
 
-        # Prefer face.expression (superset: detection data + expression signals).
-        # Fall back to face.detect (detection data only, no expression signals).
         observation = deps.get("face.expression") or deps.get("face.detect")
         if observation is None:
-            # Try any observation with faces
             for obs in deps.values():
                 if hasattr(obs, 'signals'):
                     observation = obs
@@ -1024,8 +818,7 @@ class HighlightFusion(Module):
                 signals={"should_trigger": False, "trigger_score": 0.0, "trigger_reason": ""},
             )
 
-        # Get classifier observation if available
-        classifier_obs = deps.get("face.classify")  # will be renamed in Phase 3
+        classifier_obs = deps.get("face.classify")
 
         return self.update(observation, classifier_obs)
 
@@ -1043,15 +836,7 @@ class HighlightFusion(Module):
         return self._adaptive_states
 
     def get_adaptive_summary(self) -> Dict[str, any]:
-        """Get summary of adaptive happy tracking for visualization.
-
-        Returns:
-            Dictionary with:
-            - states: Per-face adaptive states (baseline, recent, spike, sustain_pct)
-            - max_spike: Current maximum spike across all faces
-            - threshold: Spike threshold for triggering
-            - sustain_sec: Required sustain duration
-        """
+        """Get summary of adaptive happy tracking for visualization."""
         if not self._adaptive_states:
             return {
                 "states": {},
@@ -1060,7 +845,6 @@ class HighlightFusion(Module):
                 "sustain_sec": self._spike_sustain_ns / 1e9,
             }
 
-        # Find face with maximum spike
         max_spike = 0.0
         max_sustain_pct = 0.0
 
@@ -1077,7 +861,7 @@ class HighlightFusion(Module):
                     "baseline": s.baseline,
                     "recent": s.recent,
                     "spike": s.spike,
-                    "sustain_pct": 0.0 if s.spike_start_ns is None else 1.0,  # Simplified
+                    "sustain_pct": 0.0 if s.spike_start_ns is None else 1.0,
                 }
                 for fid, s in self._adaptive_states.items()
             },

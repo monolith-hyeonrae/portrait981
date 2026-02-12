@@ -101,6 +101,15 @@ class TestScaffoldInternalDryRun:
         )
         assert not pkg_dir.exists()
 
+    def test_dry_run_custom_app(self, repo):
+        paths = scaffold_internal(
+            "scene.transition", dry_run=True, repo_root=repo, app_name="reportrait"
+        )
+        # Paths should point to the custom app
+        path_strs = [str(p) for p in paths]
+        assert any("apps/reportrait" in s for s in path_strs)
+        assert not any("apps/facemoment" in s for s in path_strs)
+
 
 class TestScaffoldPluginCreatesFiles:
     def test_creates_all_files(self, repo):
@@ -231,11 +240,88 @@ class TestScaffoldInternalCreatesFiles:
         assert "SceneTransitionOutput" in content
         assert "facemoment.algorithm.analyzers.scene_transition" in content
 
+    def test_internal_analyzer_uses_app_import_path(self, repo):
+        """Internal module analyzer.py should use app import path, not vpx.*."""
+        scaffold_internal("scene.transition", repo_root=repo)
+
+        content = (
+            repo / "apps" / "facemoment" / "src"
+            / "facemoment" / "algorithm" / "analyzers" / "scene_transition"
+            / "analyzer.py"
+        ).read_text()
+
+        # Should import from app path, NOT vpx path
+        assert "facemoment.algorithm.analyzers.scene_transition.output" in content
+        assert "vpx.scene_transition" not in content
+
     def test_internal_does_not_modify_workspace(self, repo):
         """Internal modules are sub-packages, not workspace members."""
         original = (repo / "pyproject.toml").read_text()
         scaffold_internal("scene.transition", repo_root=repo)
         assert (repo / "pyproject.toml").read_text() == original
+
+
+class TestScaffoldInternalCustomApp:
+    """Tests for --app flag with scaffold_internal."""
+
+    def test_custom_app_creates_files(self, repo):
+        paths = scaffold_internal(
+            "scene.transition", repo_root=repo, app_name="reportrait"
+        )
+        for p in paths:
+            assert p.exists(), f"Missing: {p}"
+
+    def test_custom_app_file_structure(self, repo):
+        scaffold_internal(
+            "scene.transition", repo_root=repo, app_name="reportrait"
+        )
+        base = (
+            repo / "apps" / "reportrait" / "src"
+            / "reportrait" / "algorithm" / "analyzers" / "scene_transition"
+        )
+        assert (base / "__init__.py").exists()
+        assert (base / "analyzer.py").exists()
+        assert (base / "output.py").exists()
+
+    def test_custom_app_init_content(self, repo):
+        scaffold_internal(
+            "scene.transition", repo_root=repo, app_name="reportrait"
+        )
+        content = (
+            repo / "apps" / "reportrait" / "src"
+            / "reportrait" / "algorithm" / "analyzers" / "scene_transition"
+            / "__init__.py"
+        ).read_text()
+
+        assert "reportrait.algorithm.analyzers.scene_transition" in content
+        assert "facemoment" not in content
+
+    def test_custom_app_analyzer_import_path(self, repo):
+        """Analyzer should import from app path, not vpx.*."""
+        scaffold_internal(
+            "scene.transition", repo_root=repo, app_name="reportrait"
+        )
+        content = (
+            repo / "apps" / "reportrait" / "src"
+            / "reportrait" / "algorithm" / "analyzers" / "scene_transition"
+            / "analyzer.py"
+        ).read_text()
+
+        assert "reportrait.algorithm.analyzers.scene_transition.output" in content
+        assert "vpx.scene_transition" not in content
+        assert "facemoment" not in content
+
+    def test_hyphenated_app_name(self, repo):
+        scaffold_internal(
+            "scene.transition", repo_root=repo, app_name="traffic-monitor"
+        )
+        content = (
+            repo / "apps" / "traffic-monitor" / "src"
+            / "traffic_monitor" / "algorithm" / "analyzers" / "scene_transition"
+            / "__init__.py"
+        ).read_text()
+
+        assert "traffic_monitor.algorithm.analyzers.scene_transition" in content
 
 
 class TestRefuseExistingDirectory:
@@ -362,6 +448,24 @@ class TestCLINewParser:
         args = parser.parse_args(["new", "face.landmark", "--dry-run"])
         assert args.dry_run is True
 
+    def test_parse_app_flag(self):
+        from vpx.runner.cli import _build_parser
+
+        parser = _build_parser()
+        args = parser.parse_args([
+            "new", "scene.transition",
+            "--internal", "--app", "reportrait",
+        ])
+        assert args.internal is True
+        assert args.app == "reportrait"
+
+    def test_parse_app_default(self):
+        from vpx.runner.cli import _build_parser
+
+        parser = _build_parser()
+        args = parser.parse_args(["new", "scene.transition", "--internal"])
+        assert args.app == "facemoment"
+
     def test_parse_all_flags(self):
         from vpx.runner.cli import _build_parser
 
@@ -369,8 +473,10 @@ class TestCLINewParser:
         args = parser.parse_args([
             "new", "face.landmark",
             "--internal", "--depends", "face.detect,body.pose",
+            "--app", "reportrait",
             "--dry-run",
         ])
         assert args.internal is True
         assert args.depends == "face.detect,body.pose"
+        assert args.app == "reportrait"
         assert args.dry_run is True

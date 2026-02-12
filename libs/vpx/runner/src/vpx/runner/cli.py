@@ -68,7 +68,12 @@ def _build_parser() -> argparse.ArgumentParser:
     new_p.add_argument(
         "--internal",
         action="store_true",
-        help="Create as facemoment-internal module instead of vpx plugin",
+        help="Create as app-internal module instead of vpx plugin",
+    )
+    new_p.add_argument(
+        "--app",
+        default="facemoment",
+        help="Target app for --internal modules (default: facemoment)",
     )
     new_p.add_argument(
         "--depends",
@@ -228,6 +233,7 @@ def _cmd_new(args: argparse.Namespace) -> None:
                 args.name,
                 depends=depends,
                 dry_run=args.dry_run,
+                app_name=args.app,
             )
         else:
             paths = scaffold_plugin(

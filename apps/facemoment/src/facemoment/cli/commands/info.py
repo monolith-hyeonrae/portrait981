@@ -448,7 +448,7 @@ def _print_processing_steps():
     print("[SourceProcessor] (Input Pipeline)")
     print("-" * 70)
     try:
-        from facemoment.algorithm.analyzers.source import SourceProcessor
+        from facemoment.algorithm.source import SourceProcessor
         for i, step in enumerate(SourceProcessor._STEPS, 1):
             opt_marker = " (optional)" if step.optional else ""
             backend_str = f" [{step.backend}]" if step.backend else ""
@@ -465,7 +465,7 @@ def _print_processing_steps():
     print("[BackendPreprocessor] (ML Backend Internal - for reference)")
     print("-" * 70)
     try:
-        from facemoment.algorithm.analyzers.source import BackendPreprocessor
+        from facemoment.algorithm.source import BackendPreprocessor
         for i, step in enumerate(BackendPreprocessor._STEPS, 1):
             opt_marker = " (optional)" if step.optional else ""
             backend_str = f" [{step.backend}]" if step.backend else ""

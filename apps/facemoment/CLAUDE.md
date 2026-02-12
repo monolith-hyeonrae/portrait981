@@ -30,15 +30,29 @@ src/facemoment/
 │   │   │   ├── __init__.py    # re-export: QualityAnalyzer, QualityOutput
 │   │   │   ├── analyzer.py    # QualityAnalyzer
 │   │   │   └── output.py      # QualityOutput
-│   │   ├── highlight.py       # HighlightFusion
+│   │   ├── highlight/         # HighlightFusion + trigger/gate records
+│   │   │   ├── __init__.py    # re-export: HighlightFusion, records
+│   │   │   ├── analyzer.py    # HighlightFusion
+│   │   │   ├── records.py     # TriggerFireRecord, GateChangeRecord 등
+│   │   │   └── types.py       # ExpressionState, AdaptiveEmotionState
+│   │   ├── frame_scoring/     # FrameScoringAnalyzer, FrameScorer
 │   │   └── source.py          # SourceProcessor, BackendPreprocessor
-│   └── scoring/               # FrameScorer, FrameSelector
+│   ├── monitoring/            # 파이프라인 성능 모니터링
+│   │   ├── __init__.py        # re-export: PipelineMonitor, records
+│   │   ├── monitor.py         # PipelineMonitor
+│   │   └── records.py         # PathwayFrameRecord, BackpressureRecord 등
+│   ├── frame_selector.py      # FrameSelector
+│   └── source.py              # SourceProcessor
+├── cli/
+│   ├── __init__.py            # main(), argparse
+│   ├── sinks.py               # ConsoleSink, MemorySink (확장)
+│   ├── debug_handler.py       # debug 프레임 핸들러
+│   ├── utils.py               # visualbase 호환성, 노이즈 억제
+│   └── commands/
+│       ├── info.py            # facemoment info
+│       ├── debug.py           # facemoment debug
+│       └── process.py         # facemoment process
 ├── visualize/                 # DebugVisualizer, 타이밍 오버레이, stats_panel
-├── observability/
-│   ├── __init__.py            # ObservabilityHub
-│   ├── pipeline_monitor.py     # 파이프라인 성능 모니터링
-│   ├── records.py             # TriggerFireRecord 등
-│   └── sinks.py               # MemorySink, ConsoleSink
 ```
 
 ML 의존성이 필요한 analyzer는 별도 패키지로 분리됨 (vpx-face-detect, vpx-face-expression, vpx-body-pose, vpx-hand-gesture).
@@ -141,6 +155,25 @@ HighlightFusion `main_only=True` (기본): 주탑승자만 트리거. 동승자 
 포즈: 상반신 스켈레톤 (COCO 0-10) — 코, 눈, 귀, 어깨, 팔꿈치, 손목. 하늘색 연결선.
 
 ## Observability
+
+`visualpath.observability`가 코어 (Hub, TraceLevel, base sinks/records).
+facemoment는 records와 sinks만 확장:
+
+```python
+# Core (visualpath)
+from visualpath.observability import ObservabilityHub, TraceLevel
+from visualpath.observability.sinks import FileSink
+
+# Trigger/Gate records (emitter: highlight/analyzer.py)
+from facemoment.algorithm.analyzers.highlight.records import TriggerFireRecord, GateChangeRecord
+
+# Pipeline monitoring records + PipelineMonitor
+from facemoment.algorithm.monitoring import PipelineMonitor
+from facemoment.algorithm.monitoring.records import BackpressureRecord, PipelineStatsRecord
+
+# Extended sinks (CLI 프레젠테이션)
+from facemoment.cli.sinks import ConsoleSink, MemorySink
+```
 
 | Trace Level | 용도 | 오버헤드 |
 |-------------|------|----------|

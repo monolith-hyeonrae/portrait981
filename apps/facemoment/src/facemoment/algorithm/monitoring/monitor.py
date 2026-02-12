@@ -14,8 +14,8 @@ import collections
 import time
 from typing import Any, Dict, List, Optional
 
-from facemoment.observability import ObservabilityHub, TraceLevel
-from facemoment.observability.records import (
+from visualpath.observability import ObservabilityHub, TraceLevel
+from facemoment.algorithm.monitoring.records import (
     BackpressureRecord,
     AnalyzerTimingRecord,
     ObservationMergeRecord,

@@ -38,6 +38,7 @@ from vpx.body_pose.output import PoseOutput
 from vpx.hand_gesture.output import GestureOutput
 from facemoment.algorithm.analyzers.quality import QualityOutput
 from facemoment.algorithm.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
+from facemoment.algorithm.analyzers.frame_scoring import FrameScoringAnalyzer, ScoreResult
 
 __all__ = [
     # Base types (always available)
@@ -61,6 +62,8 @@ __all__ = [
     # Analyzers (always available)
     "QualityAnalyzer",
     "HighlightFusion",
+    "FrameScoringAnalyzer",
+    "ScoreResult",
     # Lazy imports (import directly from submodule)
     # "FaceDetectionAnalyzer",  # from vpx.face_detect import FaceDetectionAnalyzer
     # "ExpressionAnalyzer",     # from vpx.face_expression import ExpressionAnalyzer

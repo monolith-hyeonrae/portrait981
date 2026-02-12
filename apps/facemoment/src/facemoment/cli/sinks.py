@@ -23,9 +23,11 @@ from visualpath.observability import Sink, TraceLevel
 from visualpath.observability.records import TraceRecord, TimingRecord, FrameDropRecord, SyncDelayRecord
 
 # Import facemoment-specific records
-from facemoment.observability.records import (
+from facemoment.algorithm.analyzers.highlight.records import (
     TriggerFireRecord,
     GateChangeRecord,
+)
+from facemoment.algorithm.monitoring.records import (
     BackpressureRecord,
     PathwayFrameRecord,
     PipelineStatsRecord,

@@ -4,6 +4,7 @@ Provides command-line interface for:
 - Running pipelines from YAML config
 - Validating configuration files
 - Listing available plugins
+- Scaffolding new analysis apps
 - Displaying version information
 
 Usage:
@@ -11,6 +12,7 @@ Usage:
     visualpath run -c config.yaml --dry-run
     visualpath validate -c config.yaml
     visualpath plugins list
+    visualpath new-app reportrait
     visualpath version
 """
 
@@ -87,6 +89,26 @@ def create_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "version",
         help="Show version information",
+    )
+
+    # new-app command
+    new_app_parser = subparsers.add_parser(
+        "new-app",
+        help="Scaffold a new analysis app",
+    )
+    new_app_parser.add_argument(
+        "name",
+        help="App name (e.g. reportrait, traffic-monitor)",
+    )
+    new_app_parser.add_argument(
+        "--description",
+        default="",
+        help="App description",
+    )
+    new_app_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print file list without creating anything",
     )
 
     # debug command
@@ -181,6 +203,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     elif args.command == "version":
         from visualpath.cli.commands.version import cmd_version
         return cmd_version()
+
+    elif args.command == "new-app":
+        from visualpath.cli.commands.new_app import cmd_new_app
+        return cmd_new_app(
+            name=args.name,
+            description=args.description,
+            dry_run=args.dry_run,
+        )
 
     elif args.command == "debug":
         from visualpath.cli.commands.debug import cmd_debug

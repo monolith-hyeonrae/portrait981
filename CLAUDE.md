@@ -34,7 +34,7 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-face-expression  (HSEmotion, onnxruntime CPU)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
-      → facemoment (core: CLI, analyzers, scoring, observability)
+      → facemoment (core: CLI, analyzers, monitoring)
       → portrait981 (통합 오케스트레이터, 미구현)
 ```
 
@@ -97,7 +97,6 @@ portrait981/                    ← repo root
 - `facemoment/__init__.py`
 - `facemoment/algorithm/__init__.py`
 - `facemoment/algorithm/analyzers/__init__.py` (vpx에서 re-import)
-- `facemoment/algorithm/analyzers/backends/__init__.py` (vpx에서 re-import)
 
 ## Import 경로
 

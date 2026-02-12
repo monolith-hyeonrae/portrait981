@@ -314,7 +314,9 @@ def setup_observability(trace_level: str, trace_output: str = None):
     Returns:
         Tuple of (hub, file_sink) for cleanup. file_sink may be None.
     """
-    from facemoment.observability import ObservabilityHub, TraceLevel, FileSink, ConsoleSink
+    from visualpath.observability import ObservabilityHub, TraceLevel
+    from visualpath.observability.sinks import FileSink
+    from facemoment.cli.sinks import ConsoleSink
 
     level_map = {
         "off": TraceLevel.OFF,

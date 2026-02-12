@@ -315,7 +315,7 @@ class TestScoreVisualization:
 
     def test_create_debug_view_with_score_result(self, visualizer, sample_frame):
         """Test creating debug view with score result."""
-        from facemoment.algorithm.scoring import ScoreResult
+        from facemoment.algorithm.analyzers.frame_scoring import ScoreResult
 
         score_result = ScoreResult(
             total_score=0.75,
@@ -335,7 +335,7 @@ class TestScoreVisualization:
 
     def test_create_debug_view_with_filtered_score(self, visualizer, sample_frame):
         """Test creating debug view with filtered score result."""
-        from facemoment.algorithm.scoring import ScoreResult
+        from facemoment.algorithm.analyzers.frame_scoring import ScoreResult
 
         score_result = ScoreResult(
             total_score=0.0,

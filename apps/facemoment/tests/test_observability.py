@@ -7,29 +7,34 @@ from pathlib import Path
 
 import pytest
 
-from facemoment.observability import (
-    ObservabilityHub,
-    TraceLevel,
-    Sink,
-    FileSink,
-    ConsoleSink,
-    MemorySink,
-    NullSink,
-)
-from facemoment.observability.records import (
+# Core observability from visualpath
+from visualpath.observability import ObservabilityHub, TraceLevel, Sink
+from visualpath.observability.sinks import FileSink, NullSink
+from visualpath.observability.records import (
     TraceRecord,
-    FrameAnalyzeRecord,
-    FaceAnalyzeDetail,
-    GateChangeRecord,
-    GateConditionRecord,
-    TriggerDecisionRecord,
-    TriggerFireRecord,
     TimingRecord,
     FrameDropRecord,
     SyncDelayRecord,
     FPSRecord,
     SessionStartRecord,
     SessionEndRecord,
+)
+
+# FaceMoment sinks
+from facemoment.cli.sinks import ConsoleSink, MemorySink
+
+# FaceMoment records — highlight
+from facemoment.algorithm.analyzers.highlight.records import (
+    GateChangeRecord,
+    GateConditionRecord,
+    TriggerDecisionRecord,
+    TriggerFireRecord,
+)
+
+# FaceMoment records — monitoring
+from facemoment.algorithm.monitoring.records import (
+    FrameAnalyzeRecord,
+    FaceAnalyzeDetail,
 )
 
 

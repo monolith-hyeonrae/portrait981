@@ -46,7 +46,7 @@ class DebugFrameHandler:
         backend_label: str = "",
     ):
         from facemoment.visualize import DebugVisualizer
-        from facemoment.algorithm.scoring import FrameScorer
+        from facemoment.algorithm.analyzers.frame_scoring import FrameScorer
 
         self.show_window = show_window
         self.output_path = output_path

@@ -136,8 +136,8 @@ __all__ = [{all_str}]
 '''
 
 
-def _tpl_init_internal(names: dict) -> str:
-    pkg = f'facemoment.algorithm.analyzers.{names["python_module"]}'
+def _tpl_init_internal(names: dict, app_python: str = "facemoment") -> str:
+    pkg = f'{app_python}.algorithm.analyzers.{names["python_module"]}'
     return f'''\
 from {pkg}.analyzer import {names["class_name"]}
 from {pkg}.output import {names["output_class"]}
@@ -163,6 +163,70 @@ from typing import Optional
 
 from vpx.sdk import Module, Observation, ModuleCapabilities
 from vpx.{names["python_module"]}.output import {names["output_class"]}
+
+
+class {names["class_name"]}(Module):
+    """{names["class_name"].replace("Analyzer", "")} analyzer.
+
+    Analyzes frames and produces {names["output_class"]}.
+    """{depends_attr}
+
+    @property
+    def name(self) -> str:
+        return "{names["module_name"]}"
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities()
+
+    def initialize(self) -> None:
+        """Load models and resources."""
+        pass
+
+    def cleanup(self) -> None:
+        """Release resources."""
+        pass
+
+    def process(self, frame, deps=None) -> Optional[Observation]:
+        """Process a single frame.
+
+        Args:
+            frame: Input frame with .data (BGR ndarray), .frame_id, .t_src_ns.{deps_docstring}
+
+        Returns:
+            Observation with {names["output_class"]} in .data.
+        """
+        output = {names["output_class"]}()
+
+        return Observation(
+            source=self.name,
+            frame_id=frame.frame_id,
+            t_ns=frame.t_src_ns,
+            signals={{}},
+            data=output,
+        )
+'''
+
+
+def _tpl_analyzer_internal(names: dict, depends: List[str], app_python: str = "facemoment") -> str:
+    depends_attr = ""
+    if depends:
+        deps_str = ", ".join(f'"{d}"' for d in depends)
+        depends_attr = f"\n    depends = [{deps_str}]"
+
+    deps_docstring = ""
+    if depends:
+        deps_docstring = f"\n            deps: Dependency observations ({', '.join(depends)})."
+
+    pkg = f'{app_python}.algorithm.analyzers.{names["python_module"]}'
+
+    return f'''\
+"""Analyzer module for {names["module_name"]}."""
+
+from typing import Optional
+
+from vpx.sdk import Module, Observation, ModuleCapabilities
+from {pkg}.output import {names["output_class"]}
 
 
 class {names["class_name"]}(Module):
@@ -392,8 +456,16 @@ def scaffold_internal(
     depends: Optional[List[str]] = None,
     dry_run: bool = False,
     repo_root: Optional[Path] = None,
+    app_name: str = "facemoment",
 ) -> List[Path]:
-    """Scaffold a facemoment-internal analyzer sub-package.
+    """Scaffold an app-internal analyzer sub-package.
+
+    Args:
+        module_name: Module name in dot notation (e.g. 'scene.transition').
+        depends: Dependency module names.
+        dry_run: Print file list without creating anything.
+        repo_root: Repository root override.
+        app_name: Target app name (default: 'facemoment').
 
     Returns list of created (or would-be-created) file paths.
     """
@@ -401,14 +473,16 @@ def scaffold_internal(
     names = derive_names(module_name)
     root = repo_root or _find_repo_root()
 
+    app_python = app_name.replace("-", "_")
+
     pkg_dir = (
-        root / "apps" / "facemoment" / "src"
-        / "facemoment" / "algorithm" / "analyzers" / names["python_module"]
+        root / "apps" / app_name / "src"
+        / app_python / "algorithm" / "analyzers" / names["python_module"]
     )
 
     files: List[tuple[Path, str]] = [
-        (pkg_dir / "__init__.py", _tpl_init_internal(names)),
-        (pkg_dir / "analyzer.py", _tpl_analyzer(names, depends)),
+        (pkg_dir / "__init__.py", _tpl_init_internal(names, app_python)),
+        (pkg_dir / "analyzer.py", _tpl_analyzer_internal(names, depends, app_python)),
         (pkg_dir / "output.py", _tpl_output(names)),
     ]
 

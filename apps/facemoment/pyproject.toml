@@ -44,6 +44,7 @@ facemoment = "facemoment.cli:main"
 "face.classify" = "facemoment.algorithm.analyzers.face_classifier:FaceClassifierAnalyzer"
 "frame.quality" = "facemoment.algorithm.analyzers.quality:QualityAnalyzer"
 highlight = "facemoment.algorithm.analyzers.highlight:HighlightFusion"
+"frame.scoring" = "facemoment.algorithm.analyzers.frame_scoring:FrameScoringAnalyzer"
 
 [build-system]
 requires = ["hatchling"]
