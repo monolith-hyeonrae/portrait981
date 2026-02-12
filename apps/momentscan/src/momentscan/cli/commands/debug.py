@@ -64,7 +64,7 @@ def run_debug(args):
     isolation_config = None
 
     # Resolve modules via MomentscanApp
-    app = MomentscanApp(cooldown=2.0)
+    app = MomentscanApp()
     resolved = app.configure_modules(analyzer_names)
 
     if distributed:
@@ -153,8 +153,6 @@ def run_debug(args):
         origin = origins.get('face.classify', 'core')
         cls_pid = module_pids.get('face.classify', main_pid)
         all_rows.append(('face.classify', origin, f'{ITALIC}auto-injected{RESET}{DIM}', str(cls_pid)))
-    # Fusion
-    all_rows.append(('highlight', 'core', f'{ITALIC}HighlightFusion{RESET}{DIM}', 'main'))
 
     for name, origin, iso, pid_str in all_rows:
         print(f"  {name:<18}{DIM}{ITALIC}{origin:<6}{RESET}{DIM}{iso:<18}pid={pid_str}{RESET}")
@@ -175,18 +173,9 @@ def run_debug(args):
     )
 
     # --- Frame loop ---
-    from visualbase import Trigger
     from momentscan.main import Result
 
-    triggers: list = []
     frame_count = 0
-
-    def collect_trigger(data):
-        for result in data.results:
-            if result.should_trigger and result.trigger:
-                triggers.append(result.trigger)
-
-    graph.on_trigger(collect_trigger)
 
     try:
         vb, source, stream = create_video_stream(args.path, fps=int(args.fps))
@@ -227,7 +216,6 @@ def run_debug(args):
 
         fps = int(args.fps)
         result = Result(
-            triggers=triggers,
             frame_count=frame_count,
             duration_sec=frame_count / fps if frame_count > 0 else 0.0,
         )

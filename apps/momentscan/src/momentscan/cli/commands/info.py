@@ -38,15 +38,10 @@ def run_info(args):
     _check_gesture_analyzer(verbose=args.verbose)
     _check_quality_analyzer()
 
-    # Fusion info
-    print("\n[Fusion]")
+    # Batch highlight info
+    print("\n[Batch Highlight]")
     print("-" * 60)
-    _print_fusion_info()
-
-    # Trigger types
-    print("\n[Trigger Types]")
-    print("-" * 60)
-    _print_trigger_types()
+    _print_batch_highlight_info()
 
     # Pipeline structure
     print("\n[Pipeline Structure]")
@@ -138,28 +133,14 @@ def _check_quality_analyzer():
     print(f"        Backend: OpenCV (blur/brightness/contrast)")
 
 
-def _print_fusion_info():
-    """Print fusion module information."""
-    print("  HighlightFusion")
-    print("    - Gate: quality + face conditions (hysteresis)")
-    print("    - EWMA smoothing for stable signals")
-    print("    - Configurable cooldown between triggers")
-
-
-def _print_trigger_types():
-    """Print available trigger types."""
-    triggers = [
-        ("expression_spike", "FaceAnalyzer", "Sudden expression change"),
-        ("head_turn", "FaceAnalyzer", "Fast head rotation"),
-        ("hand_wave", "PoseAnalyzer", "Hand waving motion"),
-        ("camera_gaze", "FaceAnalyzer", "Looking at camera"),
-        ("passenger_interaction", "FaceAnalyzer", "Passengers facing each other"),
-        ("gesture_vsign", "GestureAnalyzer", "V-sign gesture"),
-        ("gesture_thumbsup", "GestureAnalyzer", "Thumbs up gesture"),
-    ]
-
-    for trigger, source, desc in triggers:
-        print(f"  {trigger:24s} [{source:16s}] {desc}")
+def _print_batch_highlight_info():
+    """Print batch highlight engine information."""
+    print("  BatchHighlightEngine (Phase 1)")
+    print("    - Per-video normalization (MAD z-score)")
+    print("    - Temporal delta (EMA baseline)")
+    print("    - Quality gate × Impact scoring")
+    print("    - Peak detection (scipy.signal.find_peaks)")
+    print("    - Window generation + best frame selection")
 
 
 def _print_pipeline_structure():
@@ -169,28 +150,30 @@ def _print_pipeline_structure():
        │
        ▼
   ┌─────────────────────────────────────────┐
-  │              Analyzers                  │
+  │              Analyzers (per-frame)      │
   │  ┌─────────┐ ┌─────────┐ ┌───────────┐  │
   │  │  Face   │ │  Pose   │ │  Quality  │  │
   │  │(detect+ │ │ (YOLO)  │ │(blur/bright)│ │
   │  │ expr)  │ │         │ │           │  │
   │  └────┬────┘ └────┬────┘ └─────┬─────┘  │
-  │       │           │            │        │
   │       └───────────┴────────────┘        │
-  │                   │                     │
-  │                   ▼                     │
-  │  ┌─────────────────────────────────┐    │
-  │  │       HighlightFusion           │    │
-  │  │  Gate Check → Signal Analysis   │    │
-  │  │  → Trigger Decision             │    │
-  │  └─────────────┬───────────────────┘    │
-  └────────────────┼────────────────────────┘
+  └────────────────┬────────────────────────┘
+                   │ on_frame → FrameRecord
+                   ▼
+          ┌─────────────────┐
+          │ Accumulate      │
+          │ _frame_records  │
+          └────────┬────────┘
+                   │ after_run (batch)
+                   ▼
+  ┌─────────────────────────────────────────┐
+  │        BatchHighlightEngine             │
+  │  Delta → Normalize → Gate × Impact     │
+  │  → Smooth → Peak Detect → Windows      │
+  └────────────────┬────────────────────────┘
                    │
                    ▼
-             Trigger Event
-                   │
-                   ▼
-            Clip Extraction
+          HighlightResult (windows.json)
 """)
 
 
@@ -257,7 +240,7 @@ def _print_dependency_graph():
     print("[Recommended Execution Order]")
     print("-" * 60)
     print("  For face analysis pipeline:")
-    print("    1. face.detect     → 2. face_classifier → 3. face.expression → 4. fusion")
+    print("    1. face.detect     → 2. face_classifier → 3. face.expression")
     print()
     print("  For full analysis pipeline:")
     print("    1. quality         (gate check)")
@@ -266,38 +249,8 @@ def _print_dependency_graph():
     print("    4. face.expression (depends on face.detect)")
     print("    5. body.pose       (independent)")
     print("    6. hand.gesture    (independent)")
-    print("    7. fusion          (combines all)")
+    print("    → BatchHighlightEngine (after_run, per-video batch)")
     print()
-
-    # Visualize as ASCII graph
-    print("[ASCII Graph]")
-    print("-" * 60)
-    print("""
-  ┌─────────────┐
-  │   quality   │ (no deps)
-  └──────┬──────┘
-         │
-  ┌──────┴──────┐
-  │ face_detect │ (no deps)
-  └──────┬──────┘
-         │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
-  ┌──────────────┐  ┌─────────────┐
-  │  classifier  │  │  face.expr  │  depends: [face.detect]
-  │ (main/pass)  │  │ (emotions)  │
-  └──────┬───────┘  └──────┬──────┘
-         │                 │
-         └────────┬────────┘
-                  │
-  ┌───────────────┼───────────────┐
-  │               │               │
-  ▼               ▼               ▼
-┌──────┐     ┌─────────┐     ┌─────────┐
-│ pose │     │ gesture │     │ fusion  │
-└──────┘     └─────────┘     └─────────┘
-""")
 
 
 def _build_momentscan_flow_graph():
@@ -362,16 +315,6 @@ def _build_momentscan_flow_graph():
         def process(self, data: FlowData) -> list:
             return [data]
 
-    class FusionNode(FlowNode):
-        """Stub node for visualization only."""
-        def __init__(self, node_name="fusion"):
-            self._name = node_name
-        @property
-        def name(self):
-            return self._name
-        def process(self, data: FlowData) -> list:
-            return [data]
-
     graph = FlowGraph(entry_node="source")
     graph.add_node(SourceNode(name="source"))
 
@@ -385,10 +328,7 @@ def _build_momentscan_flow_graph():
         graph.add_node(AnalyzerNode(name))
         available_names.append(name)
 
-    # Add fusion node
-    graph.add_node(FusionNode("fusion"))
-
-    # Add edges: source → root analyzers, deps → dependents, all → fusion
+    # Add edges: source → root analyzers, deps → dependents
     for name, deps, _cls_name in analyzer_defs:
         if name not in available_names:
             continue
@@ -398,13 +338,6 @@ def _build_momentscan_flow_graph():
             for dep in deps:
                 if dep in available_names:
                     graph.add_edge(dep, name)
-
-    # All leaf analyzers → fusion
-    for name in available_names:
-        outgoing = graph.get_outgoing_edges(name)
-        # Only connect to fusion if no other analyzer depends on this one
-        if not outgoing:
-            graph.add_edge(name, "fusion")
 
     return graph, available_names
 
@@ -598,15 +531,15 @@ def _print_processing_steps():
              │                 │                           │
              └─────────────────┴───────────────────────────┘
                                         │
-                                        ▼
-                               ┌─────────────────┐
-                               │HighlightFusion  │
-                               │  (Trigger)      │
-                               └─────────────────┘
+                               on_frame → FrameRecord
                                         │
                                         ▼
-                               ┌─────────────────┐
-                               │  Clip Output    │
-                               │  [visualbase]   │
-                               └─────────────────┘
+                               ┌─────────────────────────────┐
+                               │  BatchHighlightEngine       │
+                               │  (after_run, per-video)     │
+                               │  Normalize → Peak → Windows │
+                               └─────────────────────────────┘
+                                        │
+                                        ▼
+                               HighlightResult (windows.json)
 """)

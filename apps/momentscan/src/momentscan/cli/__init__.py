@@ -126,12 +126,10 @@ Examples:
     proc_parser.add_argument("--fps", type=int, default=10, help="Analysis FPS (default: 10)")
     proc_parser.add_argument("--output-dir", "-o", type=str, default="./clips", help="Output directory")
     proc_parser.add_argument("--report", type=str, help="Save processing report to JSON file")
-    proc_parser.add_argument("--cooldown", type=float, default=2.0, help="Trigger cooldown (default: 2.0s)")
-    proc_parser.add_argument("--head-turn-threshold", type=float, default=30.0)
     _add_trace_args(proc_parser)
     proc_parser.add_argument(
-        "--backend", choices=["pathway", "simple"], default="pathway",
-        help="Execution backend: 'pathway' (streaming, default) or 'simple' (sequential)"
+        "--backend", choices=["pathway", "simple"], default="simple",
+        help="Execution backend: 'simple' (sequential, default) or 'pathway' (streaming)"
     )
     proc_parser.add_argument(
         "--profile", choices=["lite", "platform"], default=None,

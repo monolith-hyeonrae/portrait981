@@ -31,7 +31,6 @@ from vpx.face_detect.types import FaceObservation
 from vpx.body_pose.types import KeypointIndex, COCO_KEYPOINT_NAMES
 from vpx.hand_gesture.types import HandLandmarkIndex, GestureType
 from momentscan.algorithm.analyzers.quality import QualityAnalyzer
-from momentscan.algorithm.analyzers.highlight import HighlightFusion
 from vpx.face_detect.output import FaceDetectOutput
 from vpx.face_expression.output import ExpressionOutput
 from vpx.body_pose.output import PoseOutput
@@ -61,7 +60,6 @@ __all__ = [
     "FaceClassifierOutput",
     # Analyzers (always available)
     "QualityAnalyzer",
-    "HighlightFusion",
     "FrameScoringAnalyzer",
     "ScoreResult",
     # Lazy imports (import directly from submodule)

@@ -45,48 +45,25 @@ class TestRunFunction:
             result = ms.run("fake_video.mp4", analyzers=["mock.dummy"])
 
             assert isinstance(result, ms.Result)
-            assert hasattr(result, "triggers")
+            assert hasattr(result, "highlights")
             assert hasattr(result, "frame_count")
             assert hasattr(result, "duration_sec")
-            assert hasattr(result, "clips_extracted")
-
-    def test_run_with_callback(self):
-        """Test run with on_trigger callback."""
-        import momentscan as ms
-
-        engine = _mock_engine()
-
-        with patch("visualpath.runner.get_backend", return_value=engine), \
-             patch("visualpath.runner._open_video_source", return_value=_mock_video_source()):
-            cb = lambda t: None
-            result = ms.run(
-                "fake_video.mp4",
-                analyzers=["mock.dummy"],
-                on_trigger=cb,
-            )
-            assert isinstance(result, ms.Result)
 
     def test_run_with_output_dir(self):
-        """Test run with output directory for clips."""
+        """Test run with output directory for highlight export."""
         import momentscan as ms
 
         with tempfile.TemporaryDirectory() as tmpdir:
             engine = _mock_engine()
-            mock_vb = MagicMock()
 
             with patch("visualpath.runner.get_backend", return_value=engine), \
-                 patch("visualpath.runner._open_video_source", return_value=_mock_video_source()), \
-                 patch("visualbase.VisualBase", return_value=mock_vb), \
-                 patch("visualbase.FileSource"):
-
+                 patch("visualpath.runner._open_video_source", return_value=_mock_video_source()):
                 result = ms.run(
                     "fake_video.mp4",
                     output_dir=tmpdir,
                     analyzers=["mock.dummy"],
                 )
-                assert result.clips_extracted == 0
-                mock_vb.connect.assert_called_once()
-                mock_vb.disconnect.assert_called_once()
+                assert isinstance(result, ms.Result)
 
     def test_run_with_specific_analyzers(self):
         """Test run with specific analyzer list."""
@@ -106,16 +83,14 @@ class TestConfigureModules:
     def test_default_analyzers(self):
         """Test default analyzer list."""
         from momentscan.main import MomentscanApp
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
 
         app = MomentscanApp()
         modules = app.configure_modules([])
-        names = [m.name for m in modules if not isinstance(m, HighlightFusion)]
+        names = [m.name for m in modules]
         assert "face.detect" in names
         assert "body.pose" in names
         assert "hand.gesture" in names
         assert "face.classify" in names  # auto-injected
-        assert any(isinstance(m, HighlightFusion) for m in modules)
 
     def test_face_classifier_auto_inject(self):
         """Test FaceClassifier is auto-injected when face is used."""
@@ -153,16 +128,6 @@ class TestConfigureModules:
         names = [m.name for m in modules]
         assert names.count("face.classify") == 1
 
-    def test_custom_cooldown(self):
-        """Test custom cooldown parameter."""
-        from momentscan.main import MomentscanApp
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
-
-        app = MomentscanApp(cooldown=5.0)
-        modules = app.configure_modules(["mock.dummy"])
-        fusion = next(m for m in modules if isinstance(m, HighlightFusion))
-        assert fusion._cooldown_ns == int(5.0 * 1e9)
-
 
 class TestMomentscanApp:
     """Tests for MomentscanApp class."""
@@ -176,18 +141,16 @@ class TestMomentscanApp:
         """MomentscanApp has correct class defaults."""
         from momentscan.main import MomentscanApp
         assert MomentscanApp.fps == 10
-        assert MomentscanApp.backend == "pathway"
+        assert MomentscanApp.backend == "simple"
 
     def test_configure_modules_auto_inject(self):
         """MomentscanApp auto-injects face.classify."""
         from momentscan.main import MomentscanApp
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
 
         app = MomentscanApp()
         resolved = app.configure_modules(["face.detect"])
         names = [m.name for m in resolved]
         assert "face.classify" in names
-        assert any(isinstance(m, HighlightFusion) for m in resolved)
 
     def test_configure_modules_no_inject_without_face(self):
         """No face.classify injection when face.detect is absent."""
@@ -199,13 +162,12 @@ class TestMomentscanApp:
         assert "face.classify" not in names
 
     def test_configure_modules_default_analyzers(self):
-        """Empty modules list falls back to default 4 analyzers."""
+        """Empty modules list falls back to default analyzers."""
         from momentscan.main import MomentscanApp
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
 
         app = MomentscanApp()
         resolved = app.configure_modules([])
-        names = [m.name for m in resolved if not isinstance(m, HighlightFusion)]
+        names = [m.name for m in resolved]
         assert "face.detect" in names
         assert "face.expression" in names
         assert "body.pose" in names
@@ -213,11 +175,11 @@ class TestMomentscanApp:
         assert "face.classify" in names
 
     def test_after_run_returns_ms_result(self):
-        """after_run wraps ProcessResult into ms.Result."""
+        """after_run wraps ProcessResult into ms.Result with batch highlights."""
         from momentscan.main import MomentscanApp, Result
 
         app = MomentscanApp()
-        app.video = "test.mp4"
+        app._frame_records = []  # simulate empty video
         vp_result = VPProcessResult(
             triggers=[], frame_count=10, duration_sec=1.0,
             actual_backend="SimpleBackend", stats={},
@@ -225,31 +187,22 @@ class TestMomentscanApp:
         result = app.after_run(vp_result)
         assert isinstance(result, Result)
         assert result.frame_count == 10
-        assert result.clips_extracted == 0
+        assert result.highlights == []
 
-    def test_after_run_with_output_dir(self):
-        """after_run uses _clips_extracted count."""
+    def test_after_run_with_output_dir(self, tmp_path):
+        """after_run exports highlight results when output_dir is set."""
         from momentscan.main import MomentscanApp, Result
 
-        app = MomentscanApp(output_dir="/tmp/clips")
-        app.video = "test.mp4"
-        app._clips_extracted = 3
+        app = MomentscanApp(output_dir=str(tmp_path))
+        app._frame_records = []  # simulate empty video
         vp_result = VPProcessResult(
             triggers=[], frame_count=5, duration_sec=0.5,
             actual_backend="SimpleBackend", stats={},
         )
         result = app.after_run(vp_result)
-        assert result.clips_extracted == 3
-
-    def test_custom_cooldown(self):
-        """Custom cooldown is passed to HighlightFusion."""
-        from momentscan.main import MomentscanApp
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
-
-        app = MomentscanApp(cooldown=5.0)
-        resolved = app.configure_modules(["mock.dummy"])
-        fusion = next(m for m in resolved if isinstance(m, HighlightFusion))
-        assert fusion._cooldown_ns == int(5.0 * 1e9)
+        assert isinstance(result, Result)
+        # highlight dir created even if empty
+        assert (tmp_path / "highlight" / "windows.json").exists()
 
     def test_run_end_to_end(self):
         """MomentscanApp.run() returns ms.Result."""
@@ -264,6 +217,76 @@ class TestMomentscanApp:
             assert isinstance(result, Result)
             assert result.frame_count == 3
 
+    def test_setup_resets_frame_records(self):
+        """setup() resets accumulated frame records."""
+        from momentscan.main import MomentscanApp
+
+        app = MomentscanApp()
+        app._frame_records = ["dummy"]
+        app.setup()
+        assert app._frame_records == []
+
+    def test_teardown_clears_frame_records(self):
+        """teardown() clears frame records."""
+        from momentscan.main import MomentscanApp
+
+        app = MomentscanApp()
+        app._frame_records = ["dummy"]
+        app.teardown()
+        assert app._frame_records == []
+
+    def test_on_frame_accumulates_records(self):
+        """on_frame() converts results to FrameRecord and accumulates."""
+        from momentscan.main import MomentscanApp
+
+        app = MomentscanApp()
+        app.setup()
+
+        # Mock frame and results
+        frame = Mock()
+        frame.frame_id = 1
+        frame.t_src_ns = 1_000_000_000
+
+        mock_obs = Mock()
+        mock_obs.source = "face.detect"
+        mock_obs.signals = {"face_count": 1, "face_confidence": 0.9}
+
+        mock_flow_data = Mock()
+        mock_flow_data.results = [mock_obs]
+
+        result = app.on_frame(frame, [mock_flow_data])
+        assert result is True
+        assert len(app._frame_records) == 1
+        assert app._frame_records[0].frame_idx == 1
+        app.teardown()
+
+    def test_on_frame_returns_false_when_interrupted(self):
+        """on_frame() returns False after SIGINT for graceful shutdown."""
+        from momentscan.main import MomentscanApp
+
+        app = MomentscanApp()
+        app.setup()
+
+        # Simulate SIGINT
+        app._interrupted = True
+        result = app.on_frame(Mock(), [])
+        assert result is False
+        app.teardown()
+
+    def test_teardown_restores_sigint_handler(self):
+        """teardown() restores original SIGINT handler."""
+        import signal
+        from momentscan.main import MomentscanApp
+
+        original = signal.getsignal(signal.SIGINT)
+        app = MomentscanApp()
+        app.setup()
+        # After setup, handler should be changed
+        assert signal.getsignal(signal.SIGINT) != original
+        app.teardown()
+        # After teardown, handler should be restored
+        assert signal.getsignal(signal.SIGINT) == original
+
 
 class TestConfiguration:
     """Tests for configuration constants."""
@@ -273,65 +296,6 @@ class TestConfiguration:
         import momentscan as ms
 
         assert ms.DEFAULT_FPS == 10
-        assert ms.DEFAULT_COOLDOWN == 2.0
-
-
-class TestMomentscanAppLifecycle:
-    """Tests for MomentscanApp setup/teardown lifecycle."""
-
-    def test_setup_creates_visualbase(self):
-        """setup() creates VisualBase when output_dir is set."""
-        from momentscan.main import MomentscanApp
-
-        mock_vb = MagicMock()
-        engine = _mock_engine()
-
-        with patch("visualpath.runner.get_backend", return_value=engine), \
-             patch("visualpath.runner._open_video_source", return_value=_mock_video_source()), \
-             patch("visualbase.VisualBase", return_value=mock_vb) as mock_cls, \
-             patch("visualbase.FileSource") as mock_fs:
-            app = MomentscanApp(output_dir="/tmp/clips", analyzers=["mock.dummy"])
-            app.run("video.mp4", modules=["mock.dummy"])
-
-            mock_cls.assert_called_once_with(clip_output_dir=Path("/tmp/clips"))
-            mock_vb.connect.assert_called_once()
-            mock_vb.disconnect.assert_called_once()
-
-    def test_teardown_disconnects(self):
-        """teardown() disconnects VisualBase."""
-        from momentscan.main import MomentscanApp
-
-        mock_vb = MagicMock()
-        engine = Mock()
-        engine.execute.side_effect = RuntimeError("boom")
-
-        with patch("visualpath.runner.get_backend", return_value=engine), \
-             patch("visualpath.runner._open_video_source", return_value=_mock_video_source()), \
-             patch("visualbase.VisualBase", return_value=mock_vb), \
-             patch("visualbase.FileSource"):
-            app = MomentscanApp(output_dir="/tmp/clips", analyzers=["mock.dummy"])
-            with pytest.raises(RuntimeError, match="boom"):
-                app.run("video.mp4", modules=["mock.dummy"])
-            mock_vb.disconnect.assert_called_once()
-
-    def test_on_trigger_extracts_clip(self):
-        """on_trigger() calls vb.trigger() and increments clip count."""
-        from momentscan.main import MomentscanApp
-
-        mock_vb = MagicMock()
-        mock_trigger_result = MagicMock()
-        mock_trigger_result.success = True
-        mock_vb.trigger.return_value = mock_trigger_result
-
-        app = MomentscanApp(output_dir="/tmp/clips")
-        app._vb = mock_vb
-        app._clips_extracted = 0
-
-        trigger = MagicMock()
-        app.on_trigger(trigger)
-
-        mock_vb.trigger.assert_called_once_with(trigger)
-        assert app._clips_extracted == 1
 
 
 class TestExports:

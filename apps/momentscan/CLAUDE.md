@@ -2,7 +2,6 @@
 
 981파크 Portrait981 파이프라인의 **얼굴/장면 분석 앱**.
 visualpath 프레임워크 기반으로 얼굴 감지, 표정 분석, 포즈 추정, 하이라이트 순간 감지를 수행.
-GR차량 시나리오 특화 기능 포함.
 
 ## 디렉토리 구조
 
@@ -10,35 +9,23 @@ GR차량 시나리오 특화 기능 포함.
 src/momentscan/
 ├── __init__.py                # ms.run() re-export
 ├── main.py                    # MomentscanApp, run(), Result
-├── cli/
-│   ├── __init__.py            # main(), argparse
-│   ├── debug_handler.py       # debug 프레임 핸들러
-│   ├── utils.py               # visualbase 호환성, 노이즈 억제
-│   └── commands/
-│       ├── info.py            # momentscan info
-│       ├── debug.py           # momentscan debug
-│       └── process.py         # momentscan process
 ├── algorithm/
 │   ├── analyzers/
 │   │   ├── __init__.py        # Lazy import, Output 타입 re-export
 │   │   ├── face_classifier/   # vpx 플러그인 구조 (momentscan 전용)
-│   │   │   ├── __init__.py    # re-export: FaceClassifierAnalyzer, ClassifiedFace, FaceClassifierOutput
 │   │   │   ├── analyzer.py    # FaceClassifierAnalyzer
 │   │   │   ├── output.py      # FaceClassifierOutput
 │   │   │   └── types.py       # ClassifiedFace
 │   │   ├── quality/           # vpx 플러그인 구조 (momentscan 전용)
-│   │   │   ├── __init__.py    # re-export: QualityAnalyzer, QualityOutput
 │   │   │   ├── analyzer.py    # QualityAnalyzer
 │   │   │   └── output.py      # QualityOutput
-│   │   ├── highlight/         # HighlightFusion + trigger/gate records
-│   │   │   ├── __init__.py    # re-export: HighlightFusion, records
-│   │   │   ├── analyzer.py    # HighlightFusion
-│   │   │   ├── records.py     # TriggerFireRecord, GateChangeRecord 등
-│   │   │   └── types.py       # ExpressionState, AdaptiveEmotionState
 │   │   ├── frame_scoring/     # FrameScoringAnalyzer, FrameScorer
 │   │   └── source.py          # SourceProcessor, BackendPreprocessor
+│   ├── batch/                 # Phase 1: 배치 하이라이트 분석
+│   │   ├── types.py           # FrameRecord, HighlightConfig, HighlightWindow, HighlightResult
+│   │   ├── extract.py         # FlowData → FrameRecord 변환
+│   │   └── highlight.py       # BatchHighlightEngine (per-video 정규화 + peak detection)
 │   ├── monitoring/            # 파이프라인 성능 모니터링
-│   │   ├── __init__.py        # re-export: PipelineMonitor, records
 │   │   ├── monitor.py         # PipelineMonitor
 │   │   └── records.py         # PathwayFrameRecord, BackpressureRecord 등
 │   ├── frame_selector.py      # FrameSelector
@@ -63,32 +50,43 @@ ML 의존성이 필요한 analyzer는 별도 패키지로 분리됨 (vpx-face-de
 import momentscan as ms
 
 result = ms.run("video.mp4")
-result = ms.run("video.mp4", fps=10, cooldown=3.0, backend="pathway", output_dir="./clips")
+result = ms.run("video.mp4", fps=10, output_dir="./output")
+print(f"Found {len(result.highlights)} highlights")
 ```
 
-설정 상수: `DEFAULT_FPS=10`, `DEFAULT_COOLDOWN=2.0`, `DEFAULT_BACKEND="pathway"`
+설정 상수: `DEFAULT_FPS=10`, `DEFAULT_BACKEND="simple"`
 
-## FlowGraph 파이프라인
+## 배치 하이라이트 파이프라인 (Phase 1)
 
 ```
-Source: Video Input (visualbase)
-     │ Frame
+Video Source
+     │ Frame (per-frame)
      ▼
-PathNode: Modules (inline / Worker 격리)
-     face.detect ─deps─▶ face.expression, face.classify
-     body.pose, hand.gesture, frame.quality
-     │ Observations
+Analyzers (face.detect, face.expression, body.pose, hand.gesture, frame.quality)
+     │ Observations → on_frame() → FrameRecord 축적
      ▼
-     HighlightFusion (main_only=True)
-     │ Trigger
+BatchHighlightEngine (after_run, per-video batch)
+     │ 1. Numeric feature delta (EMA baseline)
+     │ 2. Per-video 정규화 (MAD z-score)
+     │ 3. Quality gate (hard filter)
+     │ 4. Scoring: quality_score × impact_score
+     │ 5. Temporal smoothing (EMA)
+     │ 6. Peak detection (scipy.signal.find_peaks)
+     │ 7. Window 생성 + best frame 선택
      ▼
-on_trigger → Clip Output (clips/highlight_001.mp4)
+HighlightResult (windows.json)
 ```
+
+MomentscanApp 생명주기:
+- `setup()`: `_frame_records` 초기화
+- `on_frame(frame, results)`: FlowData → FrameRecord 변환 후 축적
+- `after_run(result)`: BatchHighlightEngine.analyze() 실행, Result 반환
+- `teardown()`: `_frame_records` 정리
 
 Backend가 FlowGraph를 해석하여 실행:
-- **SimpleBackend**: 순차/병렬 실행 (개발, 디버그)
+- **SimpleBackend**: 순차/병렬 실행 (기본)
 - **WorkerBackend**: 격리 필요 모듈을 WorkerModule로 래핑 → SimpleBackend 위임
-- **PathwayBackend**: 스트리밍 실행 (실시간 처리)
+- **PathwayBackend**: 스트리밍 실행
 
 ## deps 패턴
 
@@ -115,6 +113,7 @@ class ExpressionAnalyzer(Module):
 | PoseAnalyzer | `body.pose` | - | vpx-body-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
 | GestureAnalyzer | `hand.gesture` | - | vpx-hand-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
 | QualityAnalyzer | `frame.quality` | - | momentscan (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
+| FrameScoringAnalyzer | `frame.scoring` | - | momentscan (core) | 내장 로직 | scoring |
 
 ## FaceClassifierAnalyzer
 
@@ -128,20 +127,6 @@ class ExpressionAnalyzer(Module):
 | `noise` | 작은 얼굴 / 낮은 confidence | 0~N명 |
 
 점수 가중치: 위치 안정성 40%, 얼굴 크기 30%, 프레임 중앙 20%, 프레임 내부 10%.
-
-## 트리거 유형
-
-| 트리거 | 소스 | 설명 |
-|--------|------|------|
-| expression_spike | FaceAnalyzer | 표정 급변 |
-| head_turn | FaceAnalyzer | 빠른 머리 회전 |
-| hand_wave | PoseAnalyzer | 손 흔들기 |
-| camera_gaze | HighlightFusion | 카메라 응시 (gokart) |
-| passenger_interaction | HighlightFusion | 동승자 상호작용 (gokart) |
-| gesture_vsign | GestureAnalyzer | V사인 (gokart) |
-| gesture_thumbsup | GestureAnalyzer | 엄지척 (gokart) |
-
-HighlightFusion `main_only=True` (기본): 주탑승자만 트리거. 동승자 표정/헤드턴 무시.
 
 ## 시각화 컬러 코딩
 
@@ -164,9 +149,6 @@ momentscan는 records와 sinks만 확장:
 from visualpath.observability import ObservabilityHub, TraceLevel
 from visualpath.observability.sinks import FileSink
 
-# Trigger/Gate records (emitter: highlight/analyzer.py)
-from momentscan.algorithm.analyzers.highlight.records import TriggerFireRecord, GateChangeRecord
-
 # Pipeline monitoring records + PipelineMonitor
 from momentscan.algorithm.monitoring import PipelineMonitor
 from momentscan.algorithm.monitoring.records import BackpressureRecord, PipelineStatsRecord
@@ -178,17 +160,17 @@ from momentscan.cli.sinks import ConsoleSink, MemorySink
 | Trace Level | 용도 | 오버헤드 |
 |-------------|------|----------|
 | OFF | 프로덕션 기본 | 0% |
-| MINIMAL | Trigger만 | <1% |
-| NORMAL | 프레임 요약 + Gate | ~5% |
-| VERBOSE | 모든 Signal + 타이밍 | ~15% |
+| MINIMAL | 세션 시작/종료 | <1% |
+| NORMAL | 프레임 요약 + 타이밍 | ~5% |
+| VERBOSE | 모든 Signal + 상세 | ~15% |
 
 ## 백엔드
 
 | 백엔드 | 설명 |
 |--------|------|
-| `pathway` | Pathway 스트리밍 엔진 (process 기본) |
-| `simple` | 순차 실행 fallback |
-| inline | 프레임별 순차 (debug 기본, 부드러운 시각화) |
+| `simple` | 순차 실행 (기본) |
+| `pathway` | Pathway 스트리밍 엔진 |
+| `worker` | 격리 필요 모듈을 WorkerModule로 래핑 |
 
 ## CLI 명령어
 
@@ -197,43 +179,18 @@ momentscan info                              # analyzer/backend 상태
 momentscan info --deps                       # 의존성 그래프
 momentscan info --steps                      # 처리 단계 DAG
 
-momentscan debug video.mp4                   # 모든 analyzer (inline)
+momentscan debug video.mp4                   # 모든 analyzer
 momentscan debug video.mp4 -e face           # face만 (+ classifier 자동)
 momentscan debug video.mp4 -e pose           # pose만
 momentscan debug video.mp4 -e face,pose      # 복수 선택
-momentscan debug video.mp4 -e face --profile # 성능 프로파일링
-momentscan debug video.mp4 --backend pathway # Pathway 엔진 직접
-momentscan debug video.mp4 --backend simple  # SimpleDebugSession
+momentscan debug video.mp4 --backend simple  # SimpleBackend
 momentscan debug video.mp4 --distributed     # 분산 모드
 momentscan debug video.mp4 -o out.mp4        # 파일 저장
 
-momentscan process video.mp4 -o ./clips      # 클립 추출
+momentscan process video.mp4 -o ./output     # 하이라이트 분석 + 결과 출력
 momentscan process video.mp4 --backend simple
 momentscan process video.mp4 --distributed
 momentscan process video.mp4 --trace verbose --trace-output trace.jsonl
-```
-
-Analyzer 개별 성능 측정은 `vpx run`을 사용:
-
-```bash
-vpx run face.detect --input video.mp4 --max-frames 100
-vpx run face.detect,face.expression --input video.mp4 --fps 5
-```
-
-새 모듈 스캐폴딩은 `vpx new`를 사용:
-
-```bash
-# vpx 플러그인 (libs/vpx/plugins/ 아래 독립 패키지)
-vpx new face.landmark                          # 기본 구조 + backends/
-vpx new face.landmark --depends face.detect    # 의존 모듈 지정
-vpx new face.landmark --no-backend             # backends/ 생략
-
-# momentscan 내부 모듈 (algorithm/analyzers/ 아래)
-vpx new scene.transition --internal
-vpx new scene.transition --internal --depends face.detect
-
-# 미리보기
-vpx new face.landmark --dry-run
 ```
 
 ## 테스트

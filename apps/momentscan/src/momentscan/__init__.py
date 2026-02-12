@@ -3,16 +3,16 @@
 import pkgutil
 __path__ = pkgutil.extend_path(__path__, __name__)
 
-"""momentscan - Face and moment detection for video analysis.
+"""momentscan - Moment highlight detection for video analysis.
 
 Quick Start:
     >>> import momentscan as ms
     >>> result = ms.run("video.mp4")
-    >>> print(f"Found {len(result.triggers)} highlights")
+    >>> print(f"Found {len(result.highlights)} highlights")
 
 With options:
-    >>> result = ms.run("video.mp4", fps=10, cooldown=3.0)
-    >>> result = ms.run("video.mp4", output_dir="./clips")
+    >>> result = ms.run("video.mp4", fps=10)
+    >>> result = ms.run("video.mp4", output_dir="./output")
 
 Frame Scoring:
     >>> from momentscan.algorithm.analyzers.frame_scoring import FrameScorer
@@ -24,7 +24,6 @@ Frame Scoring:
 from momentscan.main import (
     # Configuration
     DEFAULT_FPS,
-    DEFAULT_COOLDOWN,
     # Result type
     Result,
     # App class
@@ -37,7 +36,6 @@ from momentscan.main import (
 __all__ = [
     # Configuration
     "DEFAULT_FPS",
-    "DEFAULT_COOLDOWN",
     # High-level API
     "run",
     "MomentscanApp",

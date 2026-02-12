@@ -566,12 +566,10 @@ class TestConsoleSinkFormatters:
         record = PathwayFrameRecord(
             frame_id=42,
             total_frame_ms=105.0,
-            fusion_decision="no_trigger",
         )
         result = sink._format_record(record)
         assert "[FRAME]" in result
         assert "105ms" in result
-        assert "no_trigger" in result
 
     def test_format_pathway_frame_fast_skipped(self):
         sink = self._make_sink()
@@ -594,10 +592,9 @@ class TestConsoleSinkFormatters:
             gate_open_pct=68.0,
         )
         result = sink._format_record(record)
-        assert "Pathway Pipeline Summary" in result
+        assert "Pipeline Summary" in result
         assert "100 frames" in result
         assert "face.detect" in result
-        assert "68%" in result
 
 
 # ---------------------------------------------------------------------------

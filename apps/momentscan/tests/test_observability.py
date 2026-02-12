@@ -23,14 +23,6 @@ from visualpath.observability.records import (
 # MomentScan sinks
 from momentscan.cli.sinks import ConsoleSink, MemorySink
 
-# MomentScan records — highlight
-from momentscan.algorithm.analyzers.highlight.records import (
-    GateChangeRecord,
-    GateConditionRecord,
-    TriggerDecisionRecord,
-    TriggerFireRecord,
-)
-
 # MomentScan records — monitoring
 from momentscan.algorithm.monitoring.records import (
     FrameAnalyzeRecord,
@@ -111,9 +103,9 @@ class TestObservabilityHub:
         sink = MemorySink()
 
         hub.add_sink(sink)
-        hub.configure(level=TraceLevel.MINIMAL)
+        hub.configure(level=TraceLevel.NORMAL)
 
-        record = TriggerFireRecord(frame_id=1, reason="test", score=0.9)
+        record = TimingRecord(frame_id=1, component="test", processing_ms=10.0)
         hub.emit(record)
 
         assert len(sink) == 1
@@ -127,19 +119,19 @@ class TestObservabilityHub:
         """Test that emit respects record minimum level."""
         hub = ObservabilityHub.get_instance()
         sink = MemorySink()
-        hub.configure(level=TraceLevel.MINIMAL, sinks=[sink])
+        hub.configure(level=TraceLevel.NORMAL, sinks=[sink])
 
-        # MINIMAL level record should be emitted
-        trigger_record = TriggerFireRecord(frame_id=1, reason="test", score=0.9)
-        hub.emit(trigger_record)
+        # NORMAL level record (TimingRecord.min_level=NORMAL) should be emitted
+        timing_record = TimingRecord(frame_id=1, component="test", processing_ms=10.0)
+        hub.emit(timing_record)
 
-        # VERBOSE level record should not be emitted
+        # VERBOSE level record should not be emitted at NORMAL level
         detail_record = FaceAnalyzeDetail(frame_id=1, face_id=0)
         hub.emit(detail_record)
 
         records = sink.get_records()
         assert len(records) == 1
-        assert records[0].record_type == "trigger_fire"
+        assert records[0].record_type == "timing"
 
     def test_emit_when_disabled(self):
         """Test that emit does nothing when disabled."""
@@ -148,7 +140,7 @@ class TestObservabilityHub:
         hub.add_sink(sink)
         # Don't configure, so level is OFF
 
-        record = TriggerFireRecord(frame_id=1, reason="test", score=0.9)
+        record = TimingRecord(frame_id=1, component="test", processing_ms=10.0)
         hub.emit(record)
 
         assert len(sink) == 0
@@ -190,39 +182,6 @@ class TestTraceRecords:
         parsed = json.loads(json_str)
         assert parsed["frame_id"] == 100
 
-    def test_trigger_fire_record(self):
-        """Test TriggerFireRecord fields."""
-        record = TriggerFireRecord(
-            frame_id=500,
-            t_ns=5000000000,
-            event_t_ns=4800000000,
-            reason="expression_spike",
-            score=0.85,
-            pre_sec=2.0,
-            post_sec=2.0,
-            face_count=1,
-            consecutive_frames=2,
-        )
-
-        assert record.record_type == "trigger_fire"
-        assert record.min_level == TraceLevel.MINIMAL
-        assert record.reason == "expression_spike"
-        assert record.score == 0.85
-
-    def test_gate_change_record(self):
-        """Test GateChangeRecord fields."""
-        record = GateChangeRecord(
-            frame_id=100,
-            t_ns=1000000000,
-            old_state="closed",
-            new_state="open",
-            duration_ns=700000000,
-        )
-
-        assert record.record_type == "gate_change"
-        assert record.old_state == "closed"
-        assert record.new_state == "open"
-
     def test_timing_record(self):
         """Test TimingRecord fields."""
         record = TimingRecord(
@@ -247,26 +206,6 @@ class TestTraceRecords:
         assert record.record_type == "frame_drop"
         assert len(record.dropped_frame_ids) == 3
 
-    def test_trigger_decision_record(self):
-        """Test TriggerDecisionRecord with candidates."""
-        record = TriggerDecisionRecord(
-            frame_id=200,
-            t_ns=2000000000,
-            gate_open=True,
-            in_cooldown=False,
-            candidates=[
-                {"reason": "expression_spike", "score": 0.7},
-                {"reason": "head_turn", "score": 0.5},
-            ],
-            consecutive_count=1,
-            consecutive_required=2,
-            decision="consecutive_pending",
-        )
-
-        assert record.record_type == "trigger_decision"
-        assert len(record.candidates) == 2
-        assert record.decision == "consecutive_pending"
-
 
 class TestFileSink:
     """Tests for FileSink."""
@@ -277,13 +216,13 @@ class TestFileSink:
             path = Path(tmpdir) / "trace.jsonl"
             sink = FileSink(str(path), buffer_size=1)
 
-            record = TriggerFireRecord(frame_id=1, reason="test", score=0.9)
+            record = TimingRecord(frame_id=1, component="test", processing_ms=10.0)
             sink.write(record)
             sink.flush()
 
             assert path.exists()
             content = path.read_text()
-            assert "trigger_fire" in content
+            assert "timing" in content
 
             sink.close()
 
@@ -314,8 +253,8 @@ class TestFileSink:
             sink = FileSink(str(path), buffer_size=1)
 
             records = [
-                TriggerFireRecord(frame_id=1, reason="test1", score=0.9),
-                TriggerFireRecord(frame_id=2, reason="test2", score=0.8),
+                TimingRecord(frame_id=1, component="test1", processing_ms=10.0),
+                TimingRecord(frame_id=2, component="test2", processing_ms=20.0),
             ]
 
             for r in records:
@@ -367,18 +306,6 @@ class TestMemorySink:
         frame_1_records = sink.get_by_frame(1)
         assert len(frame_1_records) == 2
 
-    def test_get_triggers(self):
-        """Test getting trigger records."""
-        sink = MemorySink()
-
-        sink.write(TimingRecord(frame_id=1, component="face.detect", processing_ms=40.0))
-        sink.write(TriggerFireRecord(frame_id=2, reason="test", score=0.9))
-        sink.write(TimingRecord(frame_id=3, component="face.detect", processing_ms=41.0))
-
-        triggers = sink.get_triggers()
-        assert len(triggers) == 1
-        assert triggers[0].frame_id == 2
-
     def test_get_timing_stats(self):
         """Test timing statistics calculation."""
         sink = MemorySink()
@@ -421,46 +348,6 @@ class TestMemorySink:
 
 class TestConsoleSink:
     """Tests for ConsoleSink."""
-
-    def test_formats_trigger_fire(self):
-        """Test trigger fire formatting."""
-        import io
-
-        stream = io.StringIO()
-        sink = ConsoleSink(stream=stream, color=False)
-
-        record = TriggerFireRecord(
-            frame_id=100,
-            reason="expression_spike",
-            score=0.85,
-            face_count=1,
-        )
-        sink.write(record)
-
-        output = stream.getvalue()
-        assert "[TRIGGER]" in output
-        assert "expression_spike" in output
-        assert "0.85" in output
-
-    def test_formats_gate_change(self):
-        """Test gate change formatting."""
-        import io
-
-        stream = io.StringIO()
-        sink = ConsoleSink(stream=stream, color=False)
-
-        record = GateChangeRecord(
-            frame_id=100,
-            old_state="closed",
-            new_state="open",
-            duration_ns=700000000,
-        )
-        sink.write(record)
-
-        output = stream.getvalue()
-        assert "[GATE]" in output
-        assert "closed" in output
-        assert "open" in output or "OPEN" in output
 
     def test_timing_warning(self):
         """Test timing warning for slow frames."""
@@ -536,7 +423,6 @@ class TestIntegration:
             ))
 
             for frame_id in range(10):
-                # Extract record
                 hub.emit(FrameAnalyzeRecord(
                     frame_id=frame_id,
                     source="face.detect",
@@ -544,27 +430,17 @@ class TestIntegration:
                     processing_ms=40.0,
                 ))
 
-                # Timing record
                 hub.emit(TimingRecord(
                     frame_id=frame_id,
                     component="face.detect",
                     processing_ms=40.0,
                 ))
 
-                # Trigger on frame 5
-                if frame_id == 5:
-                    hub.emit(TriggerFireRecord(
-                        frame_id=frame_id,
-                        reason="expression_spike",
-                        score=0.9,
-                        face_count=1,
-                    ))
-
             hub.emit(SessionEndRecord(
                 session_id="test-001",
                 duration_sec=1.0,
                 total_frames=10,
-                total_triggers=1,
+                total_triggers=0,
             ))
 
             file_sink.close()
@@ -572,10 +448,6 @@ class TestIntegration:
             # Verify memory sink
             records = memory_sink.get_records()
             assert len(records) > 0
-
-            triggers = memory_sink.get_triggers()
-            assert len(triggers) == 1
-            assert triggers[0].frame_id == 5
 
             # Verify file sink
             content = file_path.read_text()
@@ -613,7 +485,6 @@ class TestIntegration:
         elapsed_on = time.perf_counter() - start
 
         # OFF should be much faster than ON
-        # Allow for some variance in timing
-        assert elapsed_off < elapsed_on / 10  # OFF should be at least 10x faster
+        assert elapsed_off < elapsed_on / 10
 
         hub.shutdown()

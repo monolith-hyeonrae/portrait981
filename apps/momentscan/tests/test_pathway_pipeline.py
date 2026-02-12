@@ -5,8 +5,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from vpx.sdk import Observation
-from vpx.face_detect.types import FaceObservation
-from vpx.face_detect.output import FaceDetectOutput
 
 
 class TestHighlevelAPIBackend:
@@ -32,94 +30,10 @@ class TestHighlevelAPIBackend:
         with patch("visualpath.runner.get_backend", return_value=mock_engine), \
              patch("visualpath.runner._open_video_source", return_value=(iter([]), None)):
             from momentscan.main import run
-            result = run("fake.mp4", analyzers=["mock.dummy"], fps=5, cooldown=1.5)
+            result = run("fake.mp4", analyzers=["mock.dummy"], fps=5)
 
             assert result.frame_count == 2
             assert result.actual_backend == "SimpleBackend"
-
-    def test_main_run_passes_on_trigger(self):
-        """Test ms.run passes on_trigger through App."""
-        from visualpath.backends.base import PipelineResult
-
-        mock_engine = Mock()
-        mock_engine.execute.return_value = PipelineResult(triggers=[], frame_count=0)
-        mock_engine.name = "SimpleBackend"
-        cb = lambda t: None
-
-        with patch("visualpath.runner.get_backend", return_value=mock_engine), \
-             patch("visualpath.runner._open_video_source", return_value=(iter([]), None)):
-            from momentscan.main import run
-            # Should not raise — on_trigger is passed through App
-            run("test.mp4", analyzers=["mock.dummy"], on_trigger=cb)
-
-
-class TestHighlightFusionMergedSignals:
-    """Tests for HighlightFusion reading from merged signals."""
-
-    def test_update_main_face_id_from_merged_signals(self):
-        """Test that fusion reads main_face_id from merged signals."""
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
-
-        fusion = HighlightFusion(main_only=True)
-
-        # Create observation with main_face_id in signals
-        obs = Observation(
-            source="merged",
-            frame_id=1,
-            t_ns=1000000,
-            signals={"main_face_id": 42, "face_count": 1},
-            data=FaceDetectOutput(faces=[
-                FaceObservation(
-                    face_id=42, bbox=(0.1, 0.1, 0.3, 0.3),
-                    confidence=0.9, yaw=0.0, pitch=0.0, expression=0.8,
-                )
-            ]),
-            metadata={},
-        )
-
-        # Call update (which calls _update_main_face_id internally)
-        fusion.update(obs)
-
-        # main_face_id should be set from signals
-        assert fusion._main_face_id == 42
-
-    def test_explicit_classifier_obs_takes_priority(self):
-        """Test that explicit classifier_obs takes priority over signals."""
-        from momentscan.algorithm.analyzers.highlight import HighlightFusion
-
-        fusion = HighlightFusion(main_only=True)
-
-        # Create mock classifier observation
-        mock_main_face = Mock()
-        mock_main_face.face = Mock()
-        mock_main_face.face.face_id = 99
-
-        mock_data = Mock()
-        mock_data.main_face = mock_main_face
-
-        classifier_obs = Observation(
-            source="face.classify",
-            frame_id=1,
-            t_ns=1000000,
-            signals={},
-            metadata={},
-            data=mock_data,
-        )
-
-        # Create main observation with different main_face_id in signals
-        obs = Observation(
-            source="merged",
-            frame_id=1,
-            t_ns=1000000,
-            signals={"main_face_id": 42},  # Different ID
-            metadata={},
-        )
-
-        # Call update with explicit classifier_obs
-        fusion.update(obs, classifier_obs=classifier_obs)
-
-        # Explicit classifier_obs should take priority
-        assert fusion._main_face_id == 99
 
 
 class TestResourceConflictIsolation:

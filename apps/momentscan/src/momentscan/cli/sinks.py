@@ -23,10 +23,6 @@ from visualpath.observability import Sink, TraceLevel
 from visualpath.observability.records import TraceRecord, TimingRecord, FrameDropRecord, SyncDelayRecord
 
 # Import momentscan-specific records
-from momentscan.algorithm.analyzers.highlight.records import (
-    TriggerFireRecord,
-    GateChangeRecord,
-)
 from momentscan.algorithm.monitoring.records import (
     BackpressureRecord,
     PathwayFrameRecord,
@@ -35,45 +31,20 @@ from momentscan.algorithm.monitoring.records import (
 
 
 class MemorySink(BaseMemorySink):
-    """Memory sink with MomentScan-specific helper methods.
-
-    Extends the base MemorySink to add convenience methods for
-    getting MomentScan-specific record types like triggers.
-    """
-
-    def get_triggers(self) -> List[TriggerFireRecord]:
-        """Get all trigger fire records.
-
-        Returns:
-            List of trigger fire records.
-        """
-        return [
-            r for r in self.get_records()
-            if isinstance(r, TriggerFireRecord)
-        ]
+    """Memory sink with MomentScan-specific helper methods."""
+    pass
 
 
 class ConsoleSink(BaseConsoleSink):
     """Console sink with MomentScan-specific formatting.
 
     Extends the base ConsoleSink to format MomentScan-specific
-    records like TriggerFireRecord and GateChangeRecord.
+    records like BackpressureRecord and PipelineStatsRecord.
     """
 
     def _format_record(self, record: TraceRecord) -> Optional[str]:
-        """Format a record for console output.
-
-        Args:
-            record: The trace record to format.
-
-        Returns:
-            Formatted string or None to skip output.
-        """
-        if isinstance(record, TriggerFireRecord):
-            return self._format_trigger_fire(record)
-        elif isinstance(record, GateChangeRecord):
-            return self._format_gate_change(record)
-        elif isinstance(record, BackpressureRecord):
+        """Format a record for console output."""
+        if isinstance(record, BackpressureRecord):
             return self._format_backpressure(record)
         elif isinstance(record, PathwayFrameRecord):
             return self._format_pathway_frame(record)
@@ -86,38 +57,12 @@ class ConsoleSink(BaseConsoleSink):
         elif isinstance(record, SyncDelayRecord):
             return self._format_sync_delay(record)
         else:
-            # Skip other record types for console
             return None
-
-    def _format_trigger_fire(self, record: TriggerFireRecord) -> str:
-        """Format trigger fire record."""
-        tag = self._colorize("[TRIGGER]", "green")
-        reason = self._colorize(record.reason, "cyan")
-        return (
-            f"{tag} Frame {record.frame_id}: {reason} "
-            f"score={record.score:.2f} faces={record.face_count}"
-        )
-
-    def _format_gate_change(self, record: GateChangeRecord) -> str:
-        """Format gate change record."""
-        if record.new_state == "open":
-            tag = self._colorize("[GATE]", "blue")
-            state = self._colorize("OPEN", "green")
-        else:
-            tag = self._colorize("[GATE]", "blue")
-            state = self._colorize("CLOSED", "yellow")
-
-        duration_ms = record.duration_ns / 1_000_000
-        return (
-            f"{tag} Frame {record.frame_id}: {record.old_state} -> {state} "
-            f"(after {duration_ms:.0f}ms)"
-        )
 
     def _format_backpressure(self, record: BackpressureRecord) -> str:
         """Format backpressure/rolling performance record."""
         tag = self._colorize("[PERF]", "magenta")
 
-        # Color FPS ratio
         if record.fps_ratio >= 0.9:
             fps_str = self._colorize(f"{record.effective_fps:.1f}fps ({record.fps_ratio:.0%})", "green")
         elif record.fps_ratio >= 0.7:
@@ -142,7 +87,7 @@ class ConsoleSink(BaseConsoleSink):
         tag = self._colorize("[FRAME]", "yellow")
         return (
             f"{tag} Frame {record.frame_id}: "
-            f"{record.total_frame_ms:.0f}ms ({record.fusion_decision})"
+            f"{record.total_frame_ms:.0f}ms"
         )
 
     def _format_pipeline_stats(self, record: PipelineStatsRecord) -> str:
@@ -150,11 +95,10 @@ class ConsoleSink(BaseConsoleSink):
         lines = []
         sep = "=" * 50
         lines.append(sep)
-        lines.append("Pathway Pipeline Summary")
+        lines.append("Pipeline Summary")
         lines.append(sep)
         lines.append(f"  Duration:      {record.wall_time_sec:.1f}s ({record.total_frames} frames)")
         lines.append(f"  Effective FPS: {record.effective_fps:.1f}")
-        lines.append(f"  Triggers:      {record.total_triggers}")
 
         if record.analyzer_stats:
             lines.append("")
@@ -169,11 +113,6 @@ class ConsoleSink(BaseConsoleSink):
                 errs = int(stats.get("errors", 0))
                 lines.append(f"  {name:<14} {avg:>8.1f} {p95:>8.1f} {mx:>8.1f} {errs:>8}")
 
-        if record.fusion_avg_ms > 0:
-            lines.append(f"  {'fusion':<14} {record.fusion_avg_ms:>8.1f}{'':>8}{'':>8}{'  -':>8}")
-
-        lines.append("")
-        lines.append(f"  Gate: open {record.gate_open_pct:.0f}% of frames")
         lines.append(sep)
 
         return "\n".join(lines)

@@ -32,7 +32,6 @@ def run_process(args):
     import momentscan as ms
     from momentscan.main import MomentscanApp
     from visualpath.core.compat import build_distributed_config
-    from visualbase import VisualBase, FileSource
 
     # Setup observability
     trace_level = getattr(args, 'trace', 'off')
@@ -42,7 +41,7 @@ def run_process(args):
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    backend = getattr(args, 'backend', 'pathway')
+    backend = getattr(args, 'backend', 'simple')
     profile = getattr(args, 'profile', None)
     distributed = detect_distributed_mode(args)
 
@@ -68,102 +67,47 @@ def run_process(args):
 
     print()
     print(f"{BOLD}{'Process':<10}{RESET}{args.path}")
-    print(f"{_}{DIM}{args.fps} fps · cooldown {args.cooldown}s · {ITALIC}{mode}{RESET}")
+    print(f"{_}{DIM}{args.fps} fps · {ITALIC}{mode}{RESET}")
     print(f"{_}{DIM}backend: {backend} · output: {output_dir}{RESET}")
     print()
 
-    # Initialize visualbase for real-time clip extraction
-    vb = VisualBase(clip_output_dir=output_dir)
-    vb.connect(FileSource(args.path))
-
-    # Track metadata for each clip
-    clip_metadata = []
-    clips = []
-    triggers_fired = 0
     start_time = time.time()
 
-    def on_trigger(trigger):
-        nonlocal triggers_fired
-        triggers_fired += 1
-        event_time_sec = trigger.event_time_ns / 1e9 if trigger.event_time_ns else 0
-
-        reason = trigger.metadata.get("reason", "highlight") if trigger.metadata else "highlight"
-        score = trigger.metadata.get("score", 0.0) if trigger.metadata else 0.0
-
-        meta = {
-            "trigger_id": len(clip_metadata) + 1,
-            "reason": reason,
-            "score": score,
-            "timestamp_sec": event_time_sec,
-            "metadata": trigger.metadata,
-        }
-        clip_metadata.append(meta)
-        print(f"\n  {BOLD}TRIGGER #{meta['trigger_id']}{RESET}  {reason}  {DIM}score={score:.2f} · t={event_time_sec:.2f}s{RESET}")
-
-        # Extract clip via visualbase
-        clip_result = vb.trigger(trigger)
-        clips.append(clip_result)
-
-    # Process video via unified path
+    # Process video via unified path (batch highlight)
     print(f"{DIM}Processing...{RESET}")
     try:
         result = ms.run(
             args.path,
             analyzers=analyzer_names,
+            output_dir=str(output_dir),
             fps=args.fps,
-            cooldown=args.cooldown,
             backend=backend,
             profile=profile,
             isolation=isolation_config,
-            on_trigger=on_trigger,
         )
     except Exception as e:
         print(f"\nError during processing: {e}")
-        vb.disconnect()
         cleanup_observability(hub, file_sink)
         sys.exit(1)
 
-    vb.disconnect()
     print()
 
     elapsed = time.time() - start_time
-    clips_extracted = len([c for c in clips if c.success])
+    n_highlights = len(result.highlights)
 
-    print(f"{BOLD}{'Summary':<10}{RESET}{DIM}{elapsed:.1f}s · {result.frame_count} frames · {triggers_fired} triggers · {clips_extracted} clips{RESET}")
+    print(f"{BOLD}{'Summary':<10}{RESET}{DIM}{elapsed:.1f}s · {result.frame_count} frames · {n_highlights} highlights{RESET}")
     print(f"{_}{DIM}backend: {ITALIC}{result.actual_backend}{RESET}")
     _print_backend_stats(result.stats)
     print()
 
-    # Save metadata for each clip
-    if clips:
-        print(f"{BOLD}{'Clips':<10}{RESET}")
-    for i, clip in enumerate(clips):
-        if clip.success and clip.output_path:
-            clip_path = Path(clip.output_path)
-            meta_path = clip_path.with_suffix(".json")
-
-            trigger_meta = clip_metadata[i] if i < len(clip_metadata) else {}
-
-            full_meta = {
-                "clip_id": clip_path.stem,
-                "video_source": str(Path(args.path).resolve()),
-                "created_at": datetime.now().isoformat(),
-                "mode": mode,
-                "trigger": trigger_meta,
-                "clip": {
-                    "output_path": str(clip_path),
-                    "duration_sec": clip.duration_sec,
-                    "success": clip.success,
-                },
-            }
-
-            with open(meta_path, "w") as f:
-                json.dump(full_meta, f, indent=2, default=str)
-
-            reason = trigger_meta.get('reason', 'unknown')
-            print(f"  {clip_path.name}  {DIM}{clip.duration_sec:.2f}s · {ITALIC}{reason}{RESET}")
-        else:
-            print(f"  {DIM}FAILED: {clip.error}{RESET}")
+    # Print highlight windows
+    if result.highlights:
+        print(f"{BOLD}{'Highlights':<10}{RESET}")
+        for w in result.highlights:
+            reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
+            n_frames = len(w.selected_frames)
+            print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
+        print()
 
     # Save processing report if requested
     if args.report:
@@ -174,23 +118,23 @@ def run_process(args):
             "backend": result.actual_backend,
             "settings": {
                 "fps": args.fps,
-                "cooldown_sec": args.cooldown,
             },
             "results": {
                 "frames_processed": result.frame_count,
-                "triggers_fired": triggers_fired,
-                "clips_extracted": clips_extracted,
+                "highlights_found": n_highlights,
                 "processing_time_sec": elapsed,
             },
-            "clips": [
+            "highlights": [
                 {
-                    "clip_id": Path(c.output_path).stem if c.output_path else None,
-                    "success": c.success,
-                    "duration_sec": c.duration_sec,
-                    "error": c.error,
-                    "trigger": clip_metadata[i] if i < len(clip_metadata) else None,
+                    "window_id": w.window_id,
+                    "start_ms": w.start_ms,
+                    "end_ms": w.end_ms,
+                    "peak_ms": w.peak_ms,
+                    "score": w.score,
+                    "reason": w.reason,
+                    "selected_frames": w.selected_frames,
                 }
-                for i, c in enumerate(clips)
+                for w in result.highlights
             ],
         }
 

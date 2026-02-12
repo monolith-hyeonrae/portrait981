@@ -9,6 +9,8 @@ dependencies = [
     "vpx-sdk",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
+    "scipy>=1.10.0",
+    "pandas>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -43,7 +45,6 @@ momentscan = "momentscan.cli:main"
 [project.entry-points."visualpath.modules"]
 "face.classify" = "momentscan.algorithm.analyzers.face_classifier:FaceClassifierAnalyzer"
 "frame.quality" = "momentscan.algorithm.analyzers.quality:QualityAnalyzer"
-highlight = "momentscan.algorithm.analyzers.highlight:HighlightFusion"
 "frame.scoring" = "momentscan.algorithm.analyzers.frame_scoring:FrameScoringAnalyzer"
 
 [build-system]

@@ -1,0 +1,351 @@
+"""Batch highlight detection engine.
+
+highlight_rules.md 설계를 따르는 배치 분석 엔진:
+1. Numeric feature delta 계산
+2. Per-video 정규화 (MAD z-score)
+3. QualityGate (hard filter)
+4. Scoring: quality_score × impact_score
+5. Temporal smoothing + peak detection
+6. Window 생성 + best frame 선택
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import List, Optional
+
+import numpy as np
+
+from momentscan.algorithm.batch.types import (
+    FrameRecord,
+    HighlightConfig,
+    HighlightResult,
+    HighlightWindow,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class BatchHighlightEngine:
+    """Per-video 정규화 + peak detection 기반 하이라이트 분석."""
+
+    def __init__(self, config: Optional[HighlightConfig] = None):
+        self.config = config or HighlightConfig()
+
+    def analyze(self, records: List[FrameRecord]) -> HighlightResult:
+        """전체 비디오의 프레임 레코드를 분석하여 하이라이트 구간을 찾는다.
+
+        Args:
+            records: on_frame()에서 축적한 FrameRecord 리스트.
+
+        Returns:
+            HighlightResult with detected windows.
+        """
+        if len(records) < 3:
+            return HighlightResult(frame_count=len(records), config=self.config)
+
+        cfg = self.config
+        n = len(records)
+
+        # 1. 수치 배열 구성
+        arrays = self._build_arrays(records)
+
+        # 2. Temporal delta 계산
+        deltas = self._compute_deltas(arrays)
+
+        # 3. Per-video 정규화 (MAD z-score)
+        normed = self._normalize(deltas)
+
+        # 4. Quality gate (hard filter)
+        gate_mask = self._apply_quality_gate(records)
+
+        # 5. Quality score (연속 품질)
+        quality_scores = self._compute_quality_scores(arrays, normed)
+
+        # 6. Impact score
+        impact_scores = self._compute_impact_scores(normed)
+
+        # 7. Final score = quality × impact (gate 통과 프레임만)
+        final_scores = np.where(gate_mask, quality_scores * impact_scores, 0.0)
+
+        # 8. Temporal smoothing (EMA)
+        smoothed = self._smooth_ema(final_scores, alpha=cfg.smoothing_alpha)
+
+        # 9. Peak detection
+        peaks = self._detect_peaks(smoothed)
+
+        # 10. Window 생성 + best frame 선택
+        windows = self._generate_windows(peaks, records, final_scores, normed)
+
+        return HighlightResult(
+            windows=windows,
+            frame_count=n,
+            config=self.config,
+        )
+
+    # ── Step 1: 배열 구성 ──
+
+    def _build_arrays(self, records: List[FrameRecord]) -> dict[str, np.ndarray]:
+        """FrameRecord 리스트를 feature별 numpy 배열로 변환."""
+        n = len(records)
+        return {
+            "mouth_open_ratio": np.array([r.mouth_open_ratio for r in records]),
+            "eye_open_ratio": np.array([r.eye_open_ratio for r in records]),
+            "head_yaw": np.array([r.head_yaw for r in records]),
+            "head_pitch": np.array([r.head_pitch for r in records]),
+            "wrist_raise": np.array([r.wrist_raise for r in records]),
+            "torso_rotation": np.array([r.torso_rotation for r in records]),
+            "face_area_ratio": np.array([r.face_area_ratio for r in records]),
+            "blur_score": np.array([r.blur_score for r in records]),
+            "brightness": np.array([r.brightness for r in records]),
+            "face_confidence": np.array([r.face_confidence for r in records]),
+        }
+
+    # ── Step 2: Temporal delta ──
+
+    def _compute_deltas(self, arrays: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """EMA 기준선 대비 변화량(delta)을 계산.
+
+        delta(t) = |feature(t) - EMA(feature, alpha=0.1)|
+        highlight_rules.md §4.D
+        """
+        alpha = 0.1
+        deltas = {}
+        for key in ["mouth_open_ratio", "head_yaw", "head_pitch",
+                     "wrist_raise", "torso_rotation", "face_area_ratio",
+                     "brightness"]:
+            arr = arrays[key]
+            ema = self._compute_ema(arr, alpha)
+            deltas[key] = np.abs(arr - ema)
+
+        # head_velocity = sqrt(delta_yaw^2 + delta_pitch^2) / dt
+        # 간소화: 프레임 간 각도 변화
+        yaw = arrays["head_yaw"]
+        pitch = arrays["head_pitch"]
+        dt = 1.0 / self.config.fps
+        dyaw = np.abs(np.diff(yaw, prepend=yaw[0])) / dt
+        dpitch = np.abs(np.diff(pitch, prepend=pitch[0])) / dt
+        deltas["head_velocity"] = np.sqrt(dyaw**2 + dpitch**2)
+
+        return deltas
+
+    # ── Step 3: Per-video 정규화 ──
+
+    def _normalize(self, deltas: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """MAD 기반 z-score 정규화.
+
+        z = (x - median) / MAD
+        highlight_rules.md §5
+        """
+        normed = {}
+        for key, arr in deltas.items():
+            median = np.median(arr)
+            mad = np.median(np.abs(arr - median))
+            if mad > 1e-8:
+                normed[key] = (arr - median) / mad
+            else:
+                normed[key] = np.zeros_like(arr)
+        return normed
+
+    # ── Step 4: Quality gate ──
+
+    def _apply_quality_gate(self, records: List[FrameRecord]) -> np.ndarray:
+        """Hard filter: gate를 통과하지 못하면 score=0.
+
+        highlight_rules.md §6 Step 1
+        """
+        cfg = self.config
+        mask = np.ones(len(records), dtype=bool)
+
+        for i, r in enumerate(records):
+            if not r.face_detected:
+                mask[i] = False
+            elif r.face_confidence < cfg.gate_face_confidence:
+                mask[i] = False
+            elif r.face_area_ratio < cfg.gate_face_area_ratio:
+                mask[i] = False
+            elif r.blur_score < cfg.gate_blur_min:
+                mask[i] = False
+            elif not (cfg.gate_exposure_min <= r.brightness <= cfg.gate_exposure_max):
+                mask[i] = False
+
+        return mask
+
+    # ── Step 5: Quality score ──
+
+    def _compute_quality_scores(
+        self,
+        arrays: dict[str, np.ndarray],
+        normed: dict[str, np.ndarray],
+    ) -> np.ndarray:
+        """연속 품질 점수.
+
+        quality_score = 0.4 * blur_norm + 0.3 * face_size_norm + 0.3 * frontalness
+        highlight_rules.md §6 Step 2
+        """
+        cfg = self.config
+        n = len(arrays["blur_score"])
+
+        # Per-video 정규화된 blur (높을수록 좋음 → 0~1 clamp)
+        blur = arrays["blur_score"]
+        blur_normed = self._minmax_normalize(blur)
+
+        # Face size (face_area_ratio, 높을수록 좋음)
+        face_size_normed = self._minmax_normalize(arrays["face_area_ratio"])
+
+        # Frontalness (1 - |yaw|/45, 정면에 가까울수록 1)
+        frontalness = np.clip(1.0 - np.abs(arrays["head_yaw"]) / 45.0, 0.0, 1.0)
+
+        quality = (
+            cfg.quality_blur_weight * blur_normed
+            + cfg.quality_face_size_weight * face_size_normed
+            + cfg.quality_frontalness_weight * frontalness
+        )
+        return np.clip(quality, 0.0, 1.0)
+
+    # ── Step 6: Impact score ──
+
+    def _compute_impact_scores(self, normed: dict[str, np.ndarray]) -> np.ndarray:
+        """감정/동작 변화 점수.
+
+        highlight_rules.md §6 Step 3
+        """
+        cfg = self.config
+
+        # ReLU: 정규화된 delta 중 양수만 사용 (평균 이상 변화)
+        def relu(x: np.ndarray) -> np.ndarray:
+            return np.maximum(x, 0.0)
+
+        impact = (
+            cfg.impact_mouth_open_weight * relu(normed["mouth_open_ratio"])
+            + cfg.impact_head_velocity_weight * relu(normed["head_velocity"])
+            + cfg.impact_wrist_raise_weight * relu(normed["wrist_raise"])
+            + cfg.impact_torso_rotation_weight * relu(normed["torso_rotation"])
+            + cfg.impact_face_size_change_weight * relu(normed["face_area_ratio"])
+            + cfg.impact_exposure_change_weight * relu(normed["brightness"])
+        )
+        return impact
+
+    # ── Step 8: Smoothing ──
+
+    def _smooth_ema(self, scores: np.ndarray, alpha: float) -> np.ndarray:
+        """EMA smoothing for spike noise removal.
+
+        highlight_rules.md §7
+        """
+        return self._compute_ema(scores, alpha)
+
+    # ── Step 9: Peak detection ──
+
+    def _detect_peaks(self, smoothed: np.ndarray) -> np.ndarray:
+        """scipy.signal.find_peaks 기반 peak detection.
+
+        highlight_rules.md §7
+        """
+        from scipy.signal import find_peaks
+
+        cfg = self.config
+        min_distance = int(cfg.peak_min_distance_sec * cfg.fps)
+        if min_distance < 1:
+            min_distance = 1
+
+        # Prominence: per-video 상대적 (상위 percentile)
+        positive_scores = smoothed[smoothed > 0]
+        if len(positive_scores) == 0:
+            return np.array([], dtype=int)
+
+        prominence = np.percentile(positive_scores, cfg.peak_prominence_percentile)
+        if prominence <= 0:
+            prominence = np.max(smoothed) * 0.1
+
+        peaks, _ = find_peaks(
+            smoothed,
+            distance=min_distance,
+            prominence=prominence,
+        )
+        return peaks
+
+    # ── Step 10: Window 생성 ──
+
+    def _generate_windows(
+        self,
+        peaks: np.ndarray,
+        records: List[FrameRecord],
+        final_scores: np.ndarray,
+        normed: dict[str, np.ndarray],
+    ) -> List[HighlightWindow]:
+        """Peak 기준 ±window_half_sec 구간을 생성하고 best frame을 선택.
+
+        highlight_rules.md §7-§8
+        """
+        cfg = self.config
+        half_frames = int(cfg.window_half_sec * cfg.fps)
+        n = len(records)
+        windows = []
+
+        for wid, peak_idx in enumerate(peaks):
+            start_idx = max(0, peak_idx - half_frames)
+            end_idx = min(n - 1, peak_idx + half_frames)
+
+            peak_rec = records[peak_idx]
+            start_rec = records[start_idx]
+            end_rec = records[end_idx]
+
+            # Reason: 정규화된 delta 중 상위 기여 feature
+            reason = self._build_reason(normed, peak_idx)
+
+            # Best frame selection within window
+            window_scores = final_scores[start_idx:end_idx + 1]
+            window_indices = np.argsort(window_scores)[::-1][:cfg.best_frame_count]
+
+            selected = []
+            for local_idx in window_indices:
+                abs_idx = start_idx + local_idx
+                if final_scores[abs_idx] <= 0:
+                    continue
+                r = records[abs_idx]
+                selected.append({
+                    "frame_idx": r.frame_idx,
+                    "timestamp_ms": r.timestamp_ms,
+                    "frame_score": float(final_scores[abs_idx]),
+                })
+
+            windows.append(HighlightWindow(
+                window_id=wid + 1,
+                start_ms=start_rec.timestamp_ms,
+                end_ms=end_rec.timestamp_ms,
+                peak_ms=peak_rec.timestamp_ms,
+                score=float(final_scores[peak_idx]),
+                reason=reason,
+                selected_frames=selected,
+            ))
+
+        return windows
+
+    # ── Helpers ──
+
+    def _build_reason(self, normed: dict[str, np.ndarray], idx: int) -> dict[str, float]:
+        """Peak 지점에서 각 feature의 기여도를 반환."""
+        reason = {}
+        for key, arr in normed.items():
+            val = float(arr[idx])
+            if val > 0.5:  # 평균 이상 기여하는 feature만
+                reason[key] = round(val, 2)
+        return reason
+
+    @staticmethod
+    def _compute_ema(arr: np.ndarray, alpha: float) -> np.ndarray:
+        """Exponential Moving Average."""
+        ema = np.zeros_like(arr)
+        ema[0] = arr[0]
+        for i in range(1, len(arr)):
+            ema[i] = alpha * arr[i] + (1 - alpha) * ema[i - 1]
+        return ema
+
+    @staticmethod
+    def _minmax_normalize(arr: np.ndarray) -> np.ndarray:
+        """0~1 min-max 정규화."""
+        mn, mx = arr.min(), arr.max()
+        if mx - mn < 1e-8:
+            return np.zeros_like(arr)
+        return (arr - mn) / (mx - mn)
