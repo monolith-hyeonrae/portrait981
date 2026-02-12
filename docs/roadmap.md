@@ -23,7 +23,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │  981파크 특화 레이어 (앱)                                │
 │  ┌─────────────┐  ┌──────────────────┐  ┌───────────┐  │
-│  │ momentscan  │→ │ appearance-vault │→ │ reportrait│  │
+│  │ momentscan  │→ │ momentbank │→ │ reportrait│  │
 │  │ (분석 앱)   │  │ (저장)           │  │ (AI 변환) │  │
 │  └─────────────┘  └──────────────────┘  └───────────┘  │
 │                              │                          │
@@ -51,7 +51,7 @@
 | `vpx-body-pose` | 범용 플러그인 | - | YOLO-Pose | ✅ 완료 |
 | `vpx-hand-gesture` | 범용 플러그인 | - | MediaPipe Hands | ✅ 완료 |
 | `momentscan` | 981파크 앱 | `momentscan` | 얼굴/장면 분석, 하이라이트 | ✅ 완료 (327 tests) |
-| `appearance-vault` | 981파크 앱 | `vault` | member_id별 저장/검색 | ⬜ 예정 |
+| `momentbank` | 981파크 앱 | `vault` | member_id별 저장/검색 | ⬜ 예정 |
 | `reportrait` | 981파크 앱 | `reportrait` | I2I/I2V AI 재해석 | ⬜ 예정 |
 | `portrait981` | 981파크 앱 | `p981` | 전체 파이프라인 통합 | ⬜ 예정 |
 
@@ -178,7 +178,7 @@ Module boundary 설계 및 vpx 인프라 패키지 추가.
 
 | 단계 | 패키지 | 내용 | 상태 |
 |------|--------|------|------|
-| 9a | appearance-vault | member_id 기반 asset 저장 | ⬜ 예정 |
+| 9a | momentbank | member_id 기반 asset 저장 | ⬜ 예정 |
 | 9b | reportrait | I2I/I2V AI 변환 | ⬜ 예정 |
 | 9c | portrait981 | 전체 파이프라인 통합 | ⬜ 예정 |
 
@@ -191,7 +191,7 @@ Module boundary 설계 및 vpx 인프라 패키지 추가.
   - 다른 프로젝트에서 재사용 가능
   - 비즈니스 로직 없음
   - on_trigger 콜백만 제공 (Action 처리 안 함)
-- **특화 레이어**: momentscan, appearance-vault, reportrait, portrait981
+- **특화 레이어**: momentscan, momentbank, reportrait, portrait981
   - 981파크 비즈니스 로직 포함
   - on_trigger → 클립 저장 등 Action 처리
 

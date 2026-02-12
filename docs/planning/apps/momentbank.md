@@ -1,4 +1,4 @@
-# appearance-vault — 인물 외형 저장/관리 시스템
+# momentbank — 인물 외형 저장/관리 시스템
 
 > momentscan이 수집한 인물별 이미지와 임베딩을 저장하고,
 > reportrait이 필요로 하는 reference image를 맥락 기반으로 선택하는 시스템.
@@ -7,7 +7,7 @@
 ## 위치
 
 ```
-momentscan (분석/수집) → appearance-vault (저장/관리) → reportrait (AI 생성)
+momentscan (분석/수집) → momentbank (저장/관리) → reportrait (AI 생성)
 ```
 
 ## 핵심 역할
@@ -42,7 +42,7 @@ momentscan (분석/수집) → appearance-vault (저장/관리) → reportrait (
 ## 출력 구조
 
 ```
-output/{video_id}/appearance-vault/
+output/{video_id}/momentbank/
 ├── person_0/
 │   └── memory_bank.json
 ├── person_1/
@@ -57,7 +57,7 @@ output/{video_id}/appearance-vault/
 | vpx-sdk | 공유 타입 |
 | vpx-face-detect | Face-ID 임베딩 (ArcFace recognition model) |
 
-appearance-vault 자체는 임베딩 모델을 직접 실행하지 않음.
+momentbank 자체는 임베딩 모델을 직접 실행하지 않음.
 momentscan이 추출한 임베딩을 받아서 저장/검색만 수행.
 
 ## 개발 순서

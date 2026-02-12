@@ -1,17 +1,17 @@
 # reportrait — AI 초상화 생성 앱
 
-> appearance-vault가 선택한 reference image를 디퓨전 모델에 전달하여
+> momentbank가 선택한 reference image를 디퓨전 모델에 전달하여
 > 인물 일관성을 유지한 AI 초상화를 생성하는 시스템.
 
 ## 위치
 
 ```
-momentscan (분석/수집) → appearance-vault (저장/관리) → reportrait (AI 생성)
+momentscan (분석/수집) → momentbank (저장/관리) → reportrait (AI 생성)
 ```
 
 ## 핵심 역할
 
-1. appearance-vault의 `select_refs()` → reference image 경로 수신
+1. momentbank의 `select_refs()` → reference image 경로 수신
 2. ComfyUI workflow에 reference image 주입
 3. 디퓨전 모델로 초상화 생성 (InstantID / IP-Adapter / PuLID)
 
@@ -20,7 +20,7 @@ momentscan (분석/수집) → appearance-vault (저장/관리) → reportrait (
 ### 연동 방식
 
 ```
-appearance-vault.select_refs(query)
+momentbank.select_refs(query)
         │ paths_for_comfy = [img1.jpg, img2.jpg, ...]
         ▼
 comfy_bridge
@@ -86,7 +86,7 @@ output/{video_id}/reportrait/
 
 | 항목 | 역할 |
 |------|------|
-| appearance-vault | select_refs API → reference image 경로 |
+| momentbank | select_refs API → reference image 경로 |
 | ComfyUI | 디퓨전 생성 엔진 (외부 서비스) |
 
 ## 개발 순서
@@ -95,6 +95,6 @@ output/{video_id}/reportrait/
 |------|------|------|
 | 1 | ComfyUI API 연동 모듈 (workflow JSON 전송/수신) | ComfyUI 설치 |
 | 2 | comfy_bridge (workflow template + image path 교체) | 1 |
-| 3 | appearance-vault.select_refs() 연동 | appearance-vault |
+| 3 | momentbank.select_refs() 연동 | momentbank |
 | 4 | 배치 생성 파이프라인 | 2, 3 |
 | 5 | 품질 평가 + 피드백 루프 | 4 |

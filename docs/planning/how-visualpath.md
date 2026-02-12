@@ -201,7 +201,7 @@ ObservabilityHub는 TraceLevel (OFF/MINIMAL/NORMAL/VERBOSE)로 제어됩니다. 
 
 momentscan(구 momentscan)은 실시간 스트리밍에서 **배치 후처리**로 전환합니다. 같은 분석 모듈(vpx 플러그인)을 사용하지만, 실행 패턴이 달라집니다.
 
-3-app 구조: `momentscan (분석/수집) → appearance-vault (저장/관리) → reportrait (AI 생성)`
+3-app 구조: `momentscan (분석/수집) → momentbank (저장/관리) → reportrait (AI 생성)`
 
 현재 프레임워크의 준비 상태를 평가하고, 진화 방향을 정리합니다.
 
@@ -302,7 +302,7 @@ class App:
 
 ### 공용 유틸리티 → vpx-sdk 이동
 
-momentscan의 Phase별 + appearance-vault가 공통으로 필요한 것들이 있습니다. 중복 구현하면 계약이 어긋나므로, `vpx-sdk` 또는 공용 위치에 한 번 구현해야 합니다:
+momentscan의 Phase별 + momentbank가 공통으로 필요한 것들이 있습니다. 중복 구현하면 계약이 어긋나므로, `vpx-sdk` 또는 공용 위치에 한 번 구현해야 합니다:
 
 | 유틸리티 | 용도 | 현재 위치 |
 |---------|------|-----------|
@@ -328,13 +328,13 @@ libs/vpx/plugins/vision-embed/
 
 `vpx new vision.embed`로 스캐폴딩 후 구현. 기존 인프라 변경 없음.
 
-### appearance-vault의 위치
+### momentbank의 위치
 
-appearance-vault는 앱이라기보다 **라이브러리**(memory bank API)에 가깝습니다. momentscan이 `update()`를 호출하고, reportrait이 `select_refs()`를 호출합니다.
+momentbank는 앱이라기보다 **라이브러리**(memory bank API)에 가깝습니다. momentscan이 `update()`를 호출하고, reportrait이 `select_refs()`를 호출합니다.
 
 선택지:
-- `apps/appearance-vault/` — 독립 앱 + CLI
-- `libs/appearance-vault/` — 라이브러리, 다른 앱이 import
+- `apps/momentbank/` — 독립 앱 + CLI
+- `libs/momentbank/` — 라이브러리, 다른 앱이 import
 
 현재 계획: 앱으로 시작하되, API가 안정화되면 libs로 이동 가능.
 

@@ -1,6 +1,6 @@
 # Shared Contracts — 앱 간 공통 정의
 
-> momentscan, appearance-vault, reportrait이 공유하는 인터페이스, 타입, 기준값 정의.
+> momentscan, momentbank, reportrait이 공유하는 인터페이스, 타입, 기준값 정의.
 > 이 문서의 정의를 바꾸면 전체 파이프라인에 영향이 있으므로 변경 시 전체 리뷰 필수.
 
 ## 1. QualityGate
@@ -117,7 +117,7 @@ vpx plugins ───► momentscan
                     │
                     │ (identity set: anchor/coverage/challenge + meta)
                     ▼
-              appearance-vault
+              momentbank
                     │ (select_refs → image paths)
                     ▼
                reportrait
@@ -128,8 +128,8 @@ vpx plugins ───► momentscan
 
 ### 연결 정책
 
-1. **momentscan → appearance-vault**: identity set 이미지 + 임베딩 전달, match/update API 호출
-2. **appearance-vault → reportrait**: select_refs() → reference image 경로 전달
+1. **momentscan → momentbank**: identity set 이미지 + 임베딩 전달, match/update API 호출
+2. **momentbank → reportrait**: select_refs() → reference image 경로 전달
 3. **reportrait → ComfyUI**: workflow JSON에 image path 주입, REST API로 생성 요청
 4. momentscan 내부: Phase 1/2 highlight window → Phase 3 sampling priority로 활용
 
@@ -151,7 +151,7 @@ output/
 │   │   │   │   └── meta.json
 │   │   │   └── person_1/
 │   │   └── debug/
-│   ├── appearance-vault/
+│   ├── momentbank/
 │   │   ├── person_0/
 │   │   │   └── memory_bank.json
 │   │   └── person_1/
@@ -185,7 +185,7 @@ output/
 | 2 | momentscan Phase 1 (batch highlight) | 기존 로직 확장, 빠른 베이스라인 |
 | 3 | momentscan Phase 2 (embedding experiment) | Phase 1과 병렬 비교, 효과 검증 |
 | 4 | momentscan Phase 3 (identity collection) | 진짜 목표, 데이터 수집 |
-| 5 | appearance-vault | Phase 3 출력을 저장/관리하는 핵심 인프라 |
+| 5 | momentbank | Phase 3 출력을 저장/관리하는 핵심 인프라 |
 | 6 | reportrait | memory bank API 확정 후 ComfyUI 연동 |
 
 ## 9. 평가 기준
@@ -202,7 +202,7 @@ output/
 - Anchor 품질 (avg quality_score, frontalness)
 - 중복도 (saved set의 avg novelty)
 
-### appearance-vault
+### momentbank
 
 - 노드 수 안정성 (비디오 진행에 따른 k 변화)
 - stable_score 분포 (동일 인물 매칭 정확도)
@@ -217,7 +217,7 @@ output/
 ### 배포 전략
 
 ```
-momentscan Phase 1 → Phase 2 shadow → appearance-vault → reportrait
+momentscan Phase 1 → Phase 2 shadow → momentbank → reportrait
 ```
 
 - Phase 2는 Phase 1과 병렬 shadow mode로 비교 후 전환

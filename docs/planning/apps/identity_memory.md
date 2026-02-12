@@ -1,6 +1,6 @@
 # identity_memory — Temporal Identity Memory Bank
 
-> **appearance-vault** 핵심 구현 상세. 마스터 플랜: [appearance-vault.md](appearance-vault.md)
+> **momentbank** 핵심 구현 상세. 마스터 플랜: [momentbank.md](momentbank.md)
 >
 > 인물별 Face-ID 임베딩을 시간 경과에 따라 누적·관리하는 메모리 뱅크.
 > 단일 prototype(medoid)의 한계를 극복하여 **상태별 다중 centroid**를 유지하고,

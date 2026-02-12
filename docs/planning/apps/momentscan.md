@@ -7,7 +7,7 @@
 ## 위치
 
 ```
-momentscan (분석/수집) → appearance-vault (저장/관리) → reportrait (AI 생성)
+momentscan (분석/수집) → momentbank (저장/관리) → reportrait (AI 생성)
 ```
 
 ## 현재 상태
@@ -134,4 +134,4 @@ output/{video_id}/momentscan/
 | 5 | vpx-vision-embed 플러그인 (Phase 2) | - |
 | 6 | embedding temporal delta + Phase 1 비교 | 3, 5 |
 | 7 | 듀얼 임베딩 + 버킷 수집 (Phase 3) | 5 |
-| 8 | appearance-vault 연동 | 7 |
+| 8 | momentbank 연동 | 7 |

@@ -299,11 +299,11 @@ momentscan (분석/수집)
   → visualpath의 Module, FlowGraph, WorkerBackend, ObservabilityHub 사용
   → Phase별로 같은 vpx 플러그인 재사용, 실행 패턴만 변경
 
-appearance-vault (저장/관리)
+momentbank (저장/관리)
   → momentscan의 출력을 memory bank로 저장, match/select API 제공
 
 reportrait (AI 생성)
-  → appearance-vault의 select_refs() → ComfyUI 연동
+  → momentbank의 select_refs() → ComfyUI 연동
 ```
 
 각 앱은 분석 로직(`analyze` 메서드)만 작성합니다. subprocess 관리, IPC, deps 전달, 성능 측정은 모두 visualpath가 제공합니다. 이것이 없으면 각 앱이 독자적으로 같은 인프라를 다시 만들어야 합니다.
