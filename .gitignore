@@ -23,6 +23,7 @@ htmlcov/
 *.onnx
 *.pth
 *.task
+models/
 
 # IDE
 .idea/
