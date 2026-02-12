@@ -7,7 +7,7 @@
 | 문서 | 설명 |
 |------|------|
 | [architecture.md](architecture.md) | visualpath 3계층 아키텍처, 플러그인 시스템, Worker 격리, 실행 백엔드 |
-| [stream-synchronization.md](stream-synchronization.md) | A-B*-C 스트림 동기화, Pathway 백엔드, Observability 연동 |
+| [stream-synchronization.md](stream-synchronization.md) | 분산 실행 스트림 동기화, Pathway 백엔드, Observability 연동 |
 | [isolation.md](isolation.md) | ML 의존성 충돌 사례 (onnxruntime GPU/CPU, CUDA 런타임) 및 프로세스 격리 해결 |
 
 ## 도메인 & 알고리즘

@@ -104,27 +104,28 @@ facemoment info -v
 
 ## Architecture
 
-Part of the Portrait981 system (A-B*-C architecture):
+Part of the Portrait981 system (FlowGraph + Backend architecture):
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  fm.run("video.mp4")                                        │
 │                                                             │
 │  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐   │
-│  │   Source    │ ──► │  Extractors │ ──► │   Fusion    │   │
+│  │   Source    │ ──► │   Modules   │ ──► │   Fusion    │   │
 │  │  (frames)   │     │ face, pose  │     │ (triggers)  │   │
 │  └─────────────┘     └─────────────┘     └─────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Extractors
+## Modules
 
-| Extractor | Backend | Description |
-|-----------|---------|-------------|
-| `face` | InsightFace + HSEmotion | Face detection + expression |
-| `pose` | YOLO-Pose | Body keypoints + gestures |
-| `gesture` | MediaPipe | Hand gestures (V-sign, thumbsup) |
-| `quality` | OpenCV | Blur, brightness, contrast |
+| Module | Backend | Description |
+|--------|---------|-------------|
+| `face.detect` | InsightFace SCRFD | Face detection + landmarks |
+| `face.expression` | HSEmotion | Facial expression analysis |
+| `body.pose` | YOLO-Pose | Body keypoints + gestures |
+| `hand.gesture` | MediaPipe | Hand gestures (V-sign, thumbsup) |
+| `frame.quality` | OpenCV | Blur, brightness, contrast |
 
 ## Trigger Types
 

@@ -175,6 +175,9 @@ class WorkerBackend(ExecutionBackend):
                     name=module.name,
                     worker=worker,
                     depends=list(module.depends) if module.depends else [],
+                    optional_depends=list(module.optional_depends) if module.optional_depends else [],
+                    stateful=module.stateful,
+                    capabilities=module.capabilities,
                 )
                 result.append(wrapped)
                 logger.info(

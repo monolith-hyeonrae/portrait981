@@ -302,6 +302,9 @@ class FaceDetectionAnalyzer(Module):
         Step 1: Batch detection (stateless GPU inference).
         Step 2: Per-frame sequential post-processing (stateful tracking).
 
+        Timing is tracked per-frame: batch detect time is amortized across
+        frames, while tracking/roi_filter are measured individually.
+
         Args:
             frames: List of frames to process.
             deps_list: Corresponding deps for each frame.
@@ -309,12 +312,19 @@ class FaceDetectionAnalyzer(Module):
         Returns:
             List of Observations, same length as frames.
         """
+        import time as _time
+
         if self._face_backend is None:
             raise RuntimeError("Analyzer not initialized")
 
-        # Step 1: GPU batch detection (stateless)
+        n = len(frames)
+
+        # Step 1: GPU batch detection (stateless) — measure total time
         images = [f.data for f in frames]
+        t0 = _time.perf_counter_ns()
         batch_faces = self._face_backend.detect_batch(images)
+        detect_total_ms = (_time.perf_counter_ns() - t0) / 1_000_000
+        detect_per_frame_ms = detect_total_ms / n if n > 0 else 0.0
 
         # Step 2: Per-frame sequential post-processing (stateful tracking)
         results: List[Optional[Observation]] = []
@@ -322,6 +332,7 @@ class FaceDetectionAnalyzer(Module):
             h, w = frame.data.shape[:2]
 
             if not detected_faces:
+                timing = {"detect": detect_per_frame_ms}
                 results.append(Observation(
                     source=self.name,
                     frame_id=frame.frame_id,
@@ -331,14 +342,24 @@ class FaceDetectionAnalyzer(Module):
                         faces=[], detected_faces=[], image_size=(w, h)
                     ),
                     metadata={"_metrics": {"detection_count": 0}},
+                    timing=timing,
                 ))
                 continue
+
+            # Enable step timing for decorated methods (tracking, roi_filter)
+            self._step_timings = {}
 
             face_ids = self._assign_face_ids(detected_faces)
             face_observations, prev_faces_update = self._filter_and_convert(
                 detected_faces, face_ids, (w, h)
             )
             self._prev_faces = prev_faces_update
+
+            # Compose timing: amortized detect + per-frame post-processing
+            timing = {"detect": detect_per_frame_ms}
+            if self._step_timings:
+                timing.update(self._step_timings)
+            self._step_timings = None
 
             avg_conf = (
                 sum(f.confidence for f in face_observations) / len(face_observations)
@@ -362,6 +383,7 @@ class FaceDetectionAnalyzer(Module):
                     image_size=(w, h),
                 ),
                 metadata={"_metrics": _metrics},
+                timing=timing,
             ))
 
         return results

@@ -113,7 +113,7 @@ portrait981/                        ← repo root (uv workspace)
 - ✅ 테스트 검증
 - ✅ Git 초기화 완료
 
-### Phase 8: A-B*-C 프로세스 분리 (IPC) ✅ 완료
+### Phase 8: Worker 프로세스 격리 (IPC) ✅ 완료
 
 | 단계 | 패키지 | 내용 | 상태 |
 |------|--------|------|------|

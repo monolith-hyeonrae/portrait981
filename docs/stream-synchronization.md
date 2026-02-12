@@ -1,15 +1,15 @@
 # 스트림 동기화
 
-visualpath의 A-B*-C 아키텍처에서 여러 데이터 스트림을 동기화하는 문제와 해결책을 설명합니다.
+분산 실행(Worker 격리) 환경에서 여러 모듈의 데이터 스트림을 동기화하는 문제와 해결책을 설명합니다.
 
 ## 목차
 
 1. [아키텍처 개요](#아키텍처-개요)
 2. [visualbase와의 연동](#visualbase와의-연동)
-3. [문제 1: Extractor 처리 시간 불균형](#문제-1-extractor-처리-시간-불균형)
+3. [문제 1: 모듈 처리 시간 불균형](#문제-1-모듈-처리-시간-불균형)
 4. [문제 2: 프레임 드롭과 백프레셔](#문제-2-프레임-드롭과-백프레셔)
 5. [문제 3: OBS 동기화 지연](#문제-3-obs-동기화-지연)
-6. [해결책: ExtractorOrchestrator](#해결책-extractororchestrator)
+6. [해결책: 병렬 실행 (SimpleInterpreter)](#해결책-병렬-실행-simpleinterpreter)
 7. [해결책: 시간 윈도우 정렬](#해결책-시간-윈도우-정렬)
 8. [Observability 연동](#observability-연동)
 9. [설정 가이드](#설정-가이드)
@@ -21,31 +21,29 @@ visualpath의 A-B*-C 아키텍처에서 여러 데이터 스트림을 동기화�
 
 ```
               ┌─────────────────────────────────┐
-              │      visualbase (A 모듈)        │
+              │       Source (visualbase)        │
               │  - VideoSource: 프레임 공급     │
-              │  - ClipExtractor: 클립 추출     │
-              │  - Daemon: ZMQ 프레임 배포      │
               └──────────────┬──────────────────┘
                              │
               ┌──────────────┼──────────────────┐
               ▼              ▼                  ▼
         ┌──────────┐   ┌──────────┐      ┌──────────┐
-        │ Extractor│   │ Extractor│      │ Extractor│  (B* 모듈)
-        │    A     │   │    B     │      │    C     │
+        │  Worker  │   │  Worker  │      │  Worker  │  (격리 모듈)
+        │ Module A │   │ Module B │      │ Module C │
         └────┬─────┘   └────┬─────┘      └────┬─────┘
              │              │                  │
-             │    OBS 메시지│                  │
+             │  Observations│                  │
              └──────────────┼──────────────────┘
                             ▼
                       ┌──────────┐
-                      │  Fusion  │  (C 모듈)
-                      │  Process │
+                      │  Fusion  │  (Trigger 모듈)
+                      │  Module  │
                       └────┬─────┘
-                           │  TRIG 메시지
+                           │  on_trigger
                            ▼
               ┌─────────────────────────────────┐
-              │      visualbase (A 모듈)        │
-              │  - ClipExtractor로 클립 생성    │
+              │  ClipExtractor (visualbase)     │
+              │  - on_trigger 콜백으로 클립 생성 │
               └─────────────────────────────────┘
 ```
 
@@ -102,9 +100,9 @@ receiver = TransportFactory.create_message_receiver("uds", "/tmp/trig.sock")
 
 ---
 
-## 문제 1: Extractor 처리 시간 불균형
+## 문제 1: 모듈 처리 시간 불균형
 
-각 Extractor의 처리 시간이 크게 다릅니다. Fusion에서 모든 결과를 기다리면 가장 느린 Extractor가 전체 파이프라인의 병목이 됩니다.
+각 모듈의 처리 시간이 크게 다릅니다. 의존 모듈이 모든 결과를 기다리면 가장 느린 모듈이 전체 파이프라인의 병목이 됩니다.
 
 ```
 시간 →
@@ -131,7 +129,7 @@ Ext-D   ├────┤                                             8ms
 | Heavy ML | 40-80ms | 높음 | 복잡한 모델 |
 | 이미지 분석 | 5-10ms | 매우 낮음 | 순수 이미지 처리 |
 
-**문제**: 같은 프레임에 대한 OBS가 서로 다른 시간에 Fusion에 도착합니다.
+**문제**: 같은 프레임에 대한 Observation이 서로 다른 시간에 Fusion 모듈에 도착합니다.
 
 ---
 
@@ -187,13 +185,13 @@ Ext-D   ├────┤                                             8ms
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**문제**: 모든 프레임에 모든 Extractor의 OBS가 있지 않습니다.
+**문제**: 모든 프레임에 모든 모듈의 Observation이 있지 않습니다.
 
 ---
 
-## 문제 3: OBS 동기화 지연
+## 문제 3: Observation 동기화 지연
 
-여러 Extractor에서 같은 프레임에 대한 OBS(Observation) 메시지가 서로 다른 시간에 Fusion에 도착합니다.
+여러 Worker 모듈에서 같은 프레임에 대한 Observation이 서로 다른 시간에 Fusion 모듈에 도착합니다.
 
 ```
 Frame #100 에 대한 OBS 도착 타이밍:
@@ -222,9 +220,9 @@ Ext-C    ───────────────────────�
 
 ---
 
-## 해결책: ExtractorOrchestrator
+## 해결책: 병렬 실행 (SimpleInterpreter)
 
-동일 프로세스 내 사용 시 Orchestrator가 병렬 실행 + 타임아웃으로 동기화를 단순화합니다.
+동일 프로세스 내에서 SimpleInterpreter가 의존성 레벨별 병렬 실행으로 동기화를 단순화합니다.
 
 ```
                     ┌─────────────────────────────────────┐
@@ -301,7 +299,7 @@ class ExtractorOrchestrator:
 
 ## 해결책: 시간 윈도우 정렬
 
-분산 처리 (A-B*-C) 환경에서 FusionProcess가 OBS를 정렬합니다.
+분산 처리(Worker 격리) 환경에서 Fusion 모듈이 Observation을 정렬합니다.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

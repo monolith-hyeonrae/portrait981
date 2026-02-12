@@ -240,19 +240,18 @@ pose_worker.start()
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### IPC Architecture (A-B*-C)
+### Worker 격리 아키텍처
 
-분산 환경에서의 처리:
+분산 환경에서의 처리 (WorkerBackend):
 
 ```
-A (Ingest) ←── TRIG ──← C (Fusion)
-    ↓                      ↑
-  Video                 OBS messages
-    ↓                      │
-    ├→ B1: Extractor1 ───→ ┤
-    ├→ B2: Extractor2 ───→ ├→ Fusion
-    └→ B3: Extractor3 ───→ ┘
+Source ──→ WorkerModule(mod1) ──→ ┐
+           WorkerModule(mod2) ──→ ├→ deps 합류 → Trigger Module
+           WorkerModule(mod3) ──→ ┘       ↓
+                                     on_trigger → Clip Output
 ```
+
+WorkerBackend가 격리 필요 모듈을 WorkerModule로 래핑 후 SimpleBackend에 위임.
 
 ## Module Structure
 

@@ -54,22 +54,27 @@ result = fm.run("video.mp4", fps=10, cooldown=3.0, backend="pathway", output_dir
 
 설정 상수: `DEFAULT_FPS=10`, `DEFAULT_COOLDOWN=2.0`, `DEFAULT_BACKEND="pathway"`
 
-## A-B*-C-A 파이프라인
+## FlowGraph 파이프라인
 
 ```
-A: Video Input (visualbase)
+Source: Video Input (visualbase)
      │ Frame
      ▼
-B* Analyzers (VenvWorker/InlineWorker)
+PathNode: Modules (inline / Worker 격리)
      face.detect ─deps─▶ face.expression, face.classify
      body.pose, hand.gesture, frame.quality
      │ Observations
      ▼
-C: HighlightFusion (main_only=True)
+     HighlightFusion (main_only=True)
      │ Trigger
      ▼
-A: Clip Output → clips/highlight_001.mp4
+on_trigger → Clip Output (clips/highlight_001.mp4)
 ```
+
+Backend가 FlowGraph를 해석하여 실행:
+- **SimpleBackend**: 순차/병렬 실행 (개발, 디버그)
+- **WorkerBackend**: 격리 필요 모듈을 WorkerModule로 래핑 → SimpleBackend 위임
+- **PathwayBackend**: 스트리밍 실행 (실시간 처리)
 
 ## deps 패턴
 
@@ -83,7 +88,7 @@ class ExpressionAnalyzer(Module):
         face_obs = deps["face.detect"] if deps else None
 ```
 
-모든 실행 경로 (Pathway, Simple, Worker, VenvWorker ZMQ)에서 동일한 deps 누적 패턴 적용.
+모든 Backend (Simple, Worker, Pathway)에서 동일한 deps 누적 패턴 적용.
 의존성 순서는 Path 초기화 시 자동 검증.
 
 ## Analyzer 전체 목록

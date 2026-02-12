@@ -193,6 +193,40 @@ class TestFaceDetectBatch:
         assert len(results) == 1
         assert results[0].signals["face_count"] == 1
 
+    def test_batch_timing_populated(self):
+        """process_batch() populates timing on every Observation."""
+        faces_per_frame = [_make_faces(2), [], _make_faces(1)]
+        backend = MockBatchBackend(faces_per_frame=faces_per_frame)
+        analyzer = FaceDetectionAnalyzer(face_backend=backend, track_faces=False)
+        analyzer.initialize()
+
+        frames = [MockFrame(frame_id=i) for i in range(3)]
+        results = analyzer.process_batch(frames, [None] * 3)
+
+        for obs in results:
+            assert obs is not None
+            assert obs.timing is not None, "timing must be populated in batch mode"
+            assert "detect" in obs.timing, "timing must include 'detect' key"
+            assert obs.timing["detect"] >= 0
+
+        # Frames with faces should also have tracking/roi_filter timing
+        assert "tracking" in results[0].timing
+        assert "roi_filter" in results[0].timing
+        assert "tracking" in results[2].timing
+
+    def test_batch_timing_detect_amortized(self):
+        """Batch detect time is amortized equally across frames."""
+        backend = MockBatchBackend(faces_per_frame=[[], [], [], []])
+        analyzer = FaceDetectionAnalyzer(face_backend=backend, track_faces=False)
+        analyzer.initialize()
+
+        frames = [MockFrame(frame_id=i) for i in range(4)]
+        results = analyzer.process_batch(frames, [None] * 4)
+
+        # All frames should get the same amortized detect time
+        detect_times = [obs.timing["detect"] for obs in results]
+        assert all(t == detect_times[0] for t in detect_times)
+
 
 class TestInsightFaceBatchSession:
     """Tests for InsightFaceSCRFD batch session setup."""

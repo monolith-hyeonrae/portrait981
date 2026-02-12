@@ -28,6 +28,7 @@ from visualpath.core.module import Module, DepsContext
 
 if TYPE_CHECKING:
     from visualbase import Frame
+    from visualpath.core.capabilities import ModuleCapabilities
     from visualpath.core.observation import Observation
     from visualpath.process.launcher import BaseWorker
 
@@ -52,14 +53,28 @@ class WorkerModule(Module):
         name: str,
         worker: "BaseWorker",
         depends: Optional[List[str]] = None,
+        *,
+        optional_depends: Optional[List[str]] = None,
+        stateful: bool = False,
+        capabilities: Optional["ModuleCapabilities"] = None,
     ):
         self._name = name
         self._worker = worker
         self.depends = depends or []
+        self.optional_depends = optional_depends or []
+        self.stateful = stateful
+        self._capabilities = capabilities
 
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def capabilities(self) -> "ModuleCapabilities":
+        if self._capabilities is not None:
+            return self._capabilities
+        from visualpath.core.capabilities import ModuleCapabilities
+        return ModuleCapabilities()
 
     def initialize(self) -> None:
         """Start the worker and emit observability record."""
