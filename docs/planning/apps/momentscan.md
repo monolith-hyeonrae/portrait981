@@ -62,8 +62,18 @@ portrait981의 진짜 목표. 인물의 **다양한 상태를 체계적으로 �
 - **3-Set 출력**: Anchor(정면 고품질) + Coverage(각도/표정 다양성) + Challenge(극단 조건)
 - **Coverage-driven 중단**: 수량이 아닌 커버리지 충족 기준
 
-Phase 1/2의 highlight window는 sampling priority로 활용:
-highlight 구간 내 프레임에 수집 우선순위 부여.
+### Highlight ↔ Identity Builder 연결
+
+Phase 1/2의 highlight 결과를 Phase 3 identity collection에 활용하는 3단계 전략:
+
+| 단계 | 방식 | 설명 |
+|------|------|------|
+| **1. Sampling Priority** | highlight window 내 프레임 우선 수집 | highlight 구간 = 감정/동작 변화 → 표정 다양성 높음 |
+| **2. QualityGate 공유** | shared_contracts의 gate 기준 재사용 | blur/exposure/occlusion 판정을 중복 구현하지 않음 |
+| **3. Learning Data** | highlight 판정 데이터를 identity 학습에 활용 | 장기: 어떤 프레임이 좋은 reference인지 학습 |
+
+단계 1은 Phase 3 초기부터 적용. 단계 2는 shared_contracts로 이미 설계됨.
+단계 3은 운영 데이터 확보 후 탐색.
 
 상세: [identity_builder.md](identity_builder.md)
 

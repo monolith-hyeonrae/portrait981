@@ -13,7 +13,36 @@
 - Pairwise ranking loss로 학습 가능한 reranker (shadow mode부터)
 - highlight_rules와 병렬 운영 + 비교 평가
 
-## 2. 입출력
+## 2. 왜 Emotion Classifier가 아닌 Embedding인가
+
+하이라이트는 **identity problem이 아닌 state-change problem**이다.
+글로벌 video AI 팀들이 face landmark/emotion classifier를 중심에 두지 않는 이유:
+
+### Emotion Classifier의 구조적 한계
+
+| 문제 | 설명 |
+|------|------|
+| **라벨 불안정** | "놀람 / 공포 / 즐거움" 경계가 모호. 문화/개인/ride마다 다름 |
+| **거짓 확신** | 모델의 confidence가 높아 보이지만 실제 오판 빈번 (blur + extreme pose) |
+| **temporal context 부재** | 감정은 "순간 값"이 아니라 **변화 과정**. classifier는 프레임 단위 독립 판정 |
+| **domain shift** | 학습 데이터(정면, 정적)와 온라이드 환경(동적, 그림자, 모션블러)의 괴리 |
+
+### 대안: State Change + Context
+
+```
+emotion = label ❌
+emotion = emergent pattern ⭕
+```
+
+감정을 직접 분류하지 않고, **embedding temporal delta + quality gate**로 "이전 대비 얼마나 튀는가"를 측정.
+놀람, 웃음 burst, 몸 반응 같은 순간은 delta가 커지는 패턴으로 자연스럽게 감지된다.
+
+### Face Landmark의 역할 축소
+
+Face landmark와 head pose는 **crop 안정화와 tracking 보조**로만 사용.
+정면도 판정도 landmark 대신 embedding 기반 방법을 사용한다 (§7 참조).
+
+## 3. 입출력
 
 ### Input
 
@@ -65,7 +94,7 @@ output/{video_id}/highlight_vector/
 ]
 ```
 
-## 3. 파이프라인
+## 4. 파이프라인
 
 ```
 Video
@@ -94,21 +123,36 @@ Best Frame Selection (photo-quality gate)
 Export (windows.json + frames/ + debug/)
 ```
 
-## 4. 임베딩 모델 선택
+## 5. 임베딩 모델 선택
 
-| 모델 | 특징 | 적합 시나리오 |
-|------|------|--------------|
-| **DINOv2** | 픽셀/텍스처 변화에 민감, 표정 미세 변화 잘 감지 | emotion peak / surprise 중심 |
-| **SigLIP** | semantic 변화에 민감, identity invariance 적음 | portrait + impact 균형 |
-| **OpenCLIP** | 안정적, 검색 확장성 | 범용 MVP |
+추천 순위 (온라이드 하이라이트 기준): `SigLIP ≈ DINOv2 > OpenCLIP >>> Face-ID models`
 
-추천 순위: `SigLIP ≈ DINOv2 > OpenCLIP >>> Face-ID models`
+### 모델별 특성
 
-Face-ID 임베딩(ArcFace)은 identity invariance가 강해서 표정/포즈 변화에 둔감 → highlight에 부적합.
+| 모델 | 장점 | 온라이드 한계 | 적합 시나리오 |
+|------|------|--------------|--------------|
+| **DINOv2** | self-supervised, 픽셀/텍스처 미세 변화에 민감. temporal delta와 조합 시 특히 강함 | 배경 변화에도 민감 → crop 안정화 필수 | emotion peak / surprise 중심 |
+| **SigLIP** | contrastive 강도가 CLIP보다 강함. identity invariance 적어 상태 변화가 잘 남음. 얼굴+포즈+제스처 동시 반영 | 실전 레퍼런스가 OpenCLIP보다 적음. weight 선택 실수 시 noise 증가 | portrait + impact 균형 (추천) |
+| **OpenCLIP** | 안정적, 문서/도구 풍부. 배경+사람+포즈를 고르게 담음 | identity invariance가 의외로 강함. 감정 피크 민감도 중간. motion blur에서 변화 감도 저하 | 범용 MVP / 텍스트 검색 확장 |
+| **Face-ID (ArcFace)** | 동일인 판정에 매우 강함 | 표정/포즈 변화를 **의도적으로 무시**하도록 학습됨 (invariance) | highlight에 부적합. tracking/sanity check 용도로만 |
 
-**DINOv2 주의사항**: 배경 변화에도 민감 → crop stabilization 필수 (bbox EMA smoothing).
+### 실무 추천 조합
 
-## 5. Temporal Delta (핵심 scoring)
+1. Face crop → **DINOv2 or SigLIP** (상태 변화 민감)
+2. Upper-body crop → **동일 모델** (전신 context 포함)
+3. InsightFace(ArcFace)는 **tracking 안정화 + crop quality proxy**로만 사용
+
+### Crop Stabilization (DINOv2 필수)
+
+DINOv2는 배경 변화에도 민감하므로 crop 안정화가 필수:
+
+```python
+# bbox EMA smoothing
+smoothed_bbox(t) = alpha * bbox(t) + (1 - alpha) * smoothed_bbox(t-1)
+# alpha = 0.3~0.5
+```
+
+## 6. Temporal Delta (핵심 scoring)
 
 ### 임베딩 추출
 
@@ -160,16 +204,64 @@ peaks = find_peaks(
 # Window: peak ± 1.0s
 ```
 
-## 6. Temporal Reranker (Optional, Phase 2)
+## 7. Embedding 기반 정면도 (Frontality without Landmarks)
+
+Face landmark의 yaw/pitch 추정은 가림/블러에 취약하고 모델 변경 시 기준이 흔들린다.
+Embedding 기반 정면도 판정이 더 robust한 대안:
+
+### 방법 A: Embedding Self-Consistency
+
+정면 얼굴은 프레임 간 embedding 변화가 작고 안정적인 특성을 이용.
+
+```python
+# 인접 k 프레임의 embedding variance
+score_front(t) = -Var(e(t-k : t+k))
+# variance 낮을수록 = 정면 + 안정적
+```
+
+### 방법 B: Canonical Distance
+
+영상에서 "가장 안정적인 구간"을 canonical(기준)으로 잡고, 다른 프레임과의 거리를 측정.
+
+```python
+# canonical = 가장 embedding variance가 낮은 구간의 평균 embedding
+score_front(t) = -|| e(t) - e(canonical) ||
+# canonical에 가까울수록 = 정면 + 잘 나온 얼굴
+```
+
+### 방법 C: Gate + Embedding (하이브리드)
+
+blur/occlusion만 rule로 gate, 나머지는 embedding이 판단.
+Landmark 없이도 "정면도" 판정이 가능.
+
+### 적용
+
+Best frame selection의 `frontality` 항목에 위 방법 중 하나를 적용.
+초기에는 landmark 기반(Phase 1과 공유)으로 시작하고, 점진적으로 embedding 기반으로 전환.
+
+## 8. Temporal Reranker
 
 후보 구간(candidate windows)을 재정렬하는 작은 시퀀스 모델.
 
-### 모델 옵션
+### 아키텍처 옵션
 
 | 모델 | 구조 | 파라미터 | 특징 |
 |------|------|---------|------|
-| GRU-lite | 64-128 hidden, 1-2 layers | ~50K | 순서 의존성 학습 |
-| TCN-lite | depthwise separable conv, dilation 1/2/4 | ~30K | 병렬 추론, edge-friendly |
+| **GRU-lite** | 64-128 hidden, 1-2 layers | ~50K | 순서 의존성 학습, 가장 무난 |
+| **TCN-lite** | depthwise separable conv, dilation 1/2/4 | ~30K | 병렬 추론, edge-friendly |
+| Tiny Transformer | 2-4 head, 2 layers, d=64 | ~80K | self-attention, 더 큰 context |
+
+### Temporal 처리 패턴
+
+단순 GRU/TCN 외에 고려할 수 있는 아키텍처 패턴:
+
+| 패턴 | 설명 | 적합 상황 |
+|------|------|----------|
+| **Hierarchical** | frame → clip → video 단계적 인코딩 | 긴 영상, 다중 스케일 |
+| **Event-driven** | delta가 threshold 초과할 때만 처리 (sparse) | edge 배포, 전력 절약 |
+| **Sliding window + memory** | 고정 window + 이전 context 요약 토큰 | 스트리밍 확장 시 |
+
+초기 구현은 **GRU-lite**로 시작. 성능 한계가 보이면 패턴 변경.
 
 ### Input
 
@@ -178,10 +270,9 @@ peaks = find_peaks(
 - cheap signal features (blur, exposure, motion, ...)
 - rule score (feature로만 사용, teacher mimic 금지)
 
-### Training
+### Training: Pairwise Ranking Loss
 
 ```python
-# Pairwise ranking loss
 L = max(0, margin - score(positive) + score(negative))
 
 # positive: 구매/저장/공유된 구간 (없으면 rule top-k를 weak positive로)
@@ -190,6 +281,17 @@ L = max(0, margin - score(positive) + score(negative))
 
 **Rule score를 teacher로 mimic하는 것은 금지** — feature로만 입력.
 
+### 라벨링 전략
+
+하이라이트는 주관적이므로 절대 라벨이 아닌 **상대 비교** 기반 라벨링:
+
+1. **Self-relative labeling**: 같은 비디오 내에서 "어느 구간이 더 나은가?" 쌍 비교
+2. **Behavioral pseudo-labels**: 운영 데이터의 간접 신호 활용
+   - 구매/저장/공유 → positive
+   - 스킵 → negative
+3. **Cross-video normalization**: 영상 간 점수 비교가 필요하면 Elo/TrueSkill 방식 적용
+4. **Weak positive bootstrap**: 운영 데이터 전에는 rule top-k를 weak positive로 사용
+
 ### 배포 전략
 
 1. **Shadow mode**: rule pick과 model pick 모두 저장, 비교만
@@ -197,7 +299,22 @@ L = max(0, margin - score(positive) + score(negative))
 3. **Full**: 메트릭 확인 후 전환
 4. 메트릭 하락 시 자동 rollback
 
-## 7. Best Frame Selection
+## 9. Rule → Learned 전환 로드맵
+
+highlight_rules(Phase 1)에서 highlight_vector(Phase 2)로의 점진적 전환:
+
+| 단계 | 이름 | 내용 |
+|------|------|------|
+| **Phase 0** | Logging | 모든 signal/embedding을 기록만. 판정은 rule이 100% 담당 |
+| **Phase 1** | Rule + Label 수집 | Rule이 후보 생성. 구매/스킵 behavioral label 축적 |
+| **Phase 2** | Reranker Shadow | 학습된 reranker가 shadow mode로 동시 판정. 메트릭 비교 |
+| **Phase 3** | Gated Rollout | Canary(1-5%) → 확대. 메트릭 하락 시 자동 rollback |
+| **Phase 4** | Rules as Auxiliary | Reranker가 주, rule feature는 input의 일부로만 활용 |
+
+**핵심 원칙**: 각 단계에서 이전 단계로 즉시 rollback 가능해야 한다.
+Phase 0(logging)은 구현 첫 날부터 시작.
+
+## 10. Best Frame Selection
 
 ### Hard Gate (shared QualityGate)
 
@@ -227,7 +344,7 @@ if max(cos(e_new, e_selected)) > 0.9:
     skip
 ```
 
-## 8. Clip Indexing
+## 11. Clip Indexing
 
 ```python
 clip_len = 1.0    # seconds
@@ -237,7 +354,7 @@ clip_stride = 0.5  # seconds (50% overlap)
 # clip 내 pooling frames: 3-5 등간격 샘플
 ```
 
-## 9. vpx 의존성
+## 12. vpx 의존성
 
 | 패키지 | 용도 |
 |--------|------|
@@ -252,7 +369,7 @@ clip_stride = 0.5  # seconds (50% overlap)
 |---------|------|------|
 | **vpx-vision-embed** | DINOv2/SigLIP/OpenCLIP 임베딩 추출 | identity_builder와 공유 |
 
-## 10. highlight_rules와의 비교
+## 13. highlight_rules와의 비교
 
 | 항목 | highlight_rules | highlight_vector |
 |------|----------------|-----------------|
@@ -269,7 +386,7 @@ clip_stride = 0.5  # seconds (50% overlap)
 - 선택 프레임 품질 평균
 - 구매/저장 상관성 (운영 데이터 기반)
 
-## 11. 구현 계획
+## 14. 구현 계획
 
 ### Phase 1: 임베딩 추출 파이프라인
 

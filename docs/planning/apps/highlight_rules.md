@@ -71,8 +71,11 @@ Numeric Feature Extraction
 Per-video Signal Normalization
   │ z-score (MAD) 또는 percentile
   ▼
-Composite Impact Score
-  │ weighted sum of deltas
+QualityGate (hard filter)
+  │ blur, exposure, occlusion_by_hand → 불통과 시 score=0
+  ▼
+Scoring: quality_score × impact_score
+  │ gate 통과 프레임만 최종 점수 산출
   ▼
 Temporal Smoothing + Peak Detection
   │ EMA/median filter → local maxima
@@ -103,13 +106,15 @@ Export (windows.json + timeseries.csv + frames/)
 | `wrist_raise` | vpx-body-pose | wrist_y - shoulder_y (정규화) |
 | `elbow_angle_change` | vpx-body-pose | 팔꿈치 각도 변화율 |
 | `torso_rotation` | vpx-body-pose | 어깨 라인 회전 |
+| `hand_near_face` | vpx-body-pose | wrist와 nose 사이 거리 (정규화). 얼굴 가림 감지용 |
 
-### C. 프레임 품질 (gate 용도)
+### C. 프레임 품질 (gate + quality score)
 
 | Feature | 계산 | 용도 |
 |---------|------|------|
-| `blur` | Laplacian variance | **gate only** — score에 미포함 |
-| `exposure` | gray mean + percentile | delta만 score에 반영 |
+| `blur` | Laplacian variance | **gate + quality_score** — impact에는 미포함 |
+| `exposure` | gray mean + percentile | gate + delta만 impact에 반영 |
+| `occlusion_by_hand` | `hand_near_face < τ` | **gate** — 손이 얼굴 가리면 차단 |
 
 ### D. Temporal Delta (핵심)
 
@@ -134,7 +139,40 @@ z = (feature - p50) / (p95 - p50)
 
 MAD = Median Absolute Deviation = `median(|x - median(x)|)`
 
-## 6. Composite Impact Score
+## 6. Scoring: Gate × Impact (곱 구조)
+
+weighted sum만 쓰면 "감정이 좋은데 흐린 프레임"이 뽑히고,
+quality만 좋으면 "사진은 괜찮은데 임팩트 없는 장면"이 뽑힌다.
+이를 방지하기 위해 **gate와 impact를 곱 구조**로 결합한다.
+
+### Step 1: QualityGate (hard filter)
+
+gate를 통과하지 못하면 해당 프레임의 최종 점수는 0.
+
+```python
+quality_gate(t) = (
+    face_confidence(t) >= 0.7
+    and face_area_ratio(t) >= 0.01
+    and blur(t) >= tau_blur          # 높을수록 선명
+    and 40 <= exposure_mean(t) <= 220
+    and not occlusion_by_hand(t)     # 손 제스처로 인한 얼굴 가림 체크
+)
+```
+
+### Step 2: Quality Score (연속 품질)
+
+gate 통과 프레임에 대해 연속적 품질 점수를 계산.
+최종 점수에 곱으로 반영되어, 같은 impact라도 quality가 높은 프레임이 우선된다.
+
+```python
+quality_score(t) = (
+    0.4 * blur_norm(t) +             # 선명도 (per-video 정규화)
+    0.3 * face_size_norm(t) +         # 얼굴 크기
+    0.3 * frontalness(t)              # 정면 근접도 (1 - |yaw|/45)
+)
+```
+
+### Step 3: Impact Score (감정/동작 변화)
 
 ```python
 impact(t) = (
@@ -149,7 +187,13 @@ impact(t) = (
 
 가중치는 초기값이며 데이터 기반 튜닝 대상.
 
-**blur는 score에 포함하지 않음** — gate로만 사용.
+### Step 4: 최종 점수
+
+```python
+final_score(t) = quality_score(t) * impact(t) if quality_gate(t) else 0
+```
+
+**blur는 impact에 미포함** — quality_score와 gate에서만 사용.
 
 ## 7. Temporal 처리
 
@@ -212,7 +256,38 @@ frame_idx,timestamp_ms,mouth_open,eye_open,head_yaw,head_pitch,head_velocity,wri
 
 모든 실행에서 생성. highlight_vector와의 비교 분석에 사용.
 
-## 10. momentscan과의 관계
+## 10. 테마파크 라이드 특화 주의사항
+
+온라이드 촬영 환경에서 흔히 발생하는 문제와 대응:
+
+| 문제 | 원인 | 대응 |
+|------|------|------|
+| 표정 검출 불안정 | 조명 변화, 그림자, 모션블러 | intensity 절대값 대신 **상대 변화(delta)**만 사용. 이미 §4.D로 반영 |
+| 헤드포즈 노이즈 | ride 중 지속적 흔들림 | raw yaw/pitch를 impact에 직접 쓰지 않음. **head_velocity(변화율)**와 **정면 근접도(gate/quality)**로만 활용 |
+| 손 올림 = 얼굴 가림 | wrist_raise와 occlusion 동시 발생 | `hand_near_face` gate로 **얼굴 가림 시 차단**. wrist_raise가 높아도 사진이 망하면 제외 |
+| blur가 가장 치명적 | 카메라/탑승객 모두 움직임 | blur 나쁘면 impact 무관하게 무조건 제외 (hard gate). quality_score에도 blur 반영 |
+
+## 11. Phase 2 (highlight_vector)와의 연결
+
+Phase 1과 Phase 2는 **즉시 통합하지 않고 병렬 비교** 후 단계적으로 연결한다.
+
+### 단계 1: 병렬 비교 (현재 목표)
+- 동일 비디오에서 Phase 1 window와 Phase 2 window를 각각 생성
+- overlap rate, 선택 프레임 품질 평균으로 비교
+
+### 단계 2: 후보 → 리랭크 파이프라인
+- Phase 1이 Top-K window 후보를 생성
+- Phase 2 embedding reranker가 후보를 재정렬
+- 규칙 기반의 해석 가능성은 유지하면서 학습형 모델로 정밀도 향상
+
+### 단계 3: Hybrid (장기)
+- Phase 1의 feature importance 분석 결과를 기반으로
+- Phase 2 모델 input에 유의미한 수치 feature를 추가
+- 최종적으로 hybrid highlight 시스템으로 통합
+
+**지금은 단계 1에만 집중. 단계 2 이후는 Phase 2 구현 + 비교 데이터 확보 후 결정.**
+
+## 12. momentscan과의 관계
 
 ### 재사용 가능한 부품
 
@@ -228,7 +303,7 @@ frame_idx,timestamp_ms,mouth_open,eye_open,head_yaw,head_pitch,head_velocity,wri
 - highlight_rules: **배치 후처리** (비디오 전체를 한 번에 처리)
 - momentscan의 trigger 로직(expression_spike, head_turn 등)을 per-video 정규화 + peak detection으로 대체
 
-## 11. vpx 의존성
+## 13. vpx 의존성
 
 | 패키지 | 용도 |
 |--------|------|
@@ -238,7 +313,7 @@ frame_idx,timestamp_ms,mouth_open,eye_open,head_yaw,head_pitch,head_velocity,wri
 | vpx-sdk | QualityGate, Observation 타입 |
 | visualbase | 비디오 디코딩 |
 
-## 12. 구현 계획
+## 14. 구현 계획
 
 ### Phase 1: Feature 추출 파이프라인
 

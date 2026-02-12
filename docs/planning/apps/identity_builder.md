@@ -166,7 +166,31 @@ bucket_key = f"yaw{yaw_bin}_pitch{pitch_bin}_{expression_bin}"
 
 ## 6. ID Stability
 
-### 초기 버전: Medoid Prototype
+### Face-ID 임베딩이 연속 프레임에서 흔들리는 원인
+
+Face-ID(ArcFace)는 표정/각도에 불변을 목표로 하지만, 실전에서 연속 프레임 간 임베딩이 크게 흔들리는 경우가 있다.
+원인은 **표정 변화가 아니라 품질/정렬 문제**인 경우가 대부분:
+
+| 원인 | 설명 |
+|------|------|
+| Motion blur | detector crop이 미세하게 흔들림 |
+| Alignment 실패 | 부분 가림(손/안전바)으로 5-point alignment 오류 → 임베딩 급변 |
+| Extreme pose | roll/pitch가 모델의 안정 영역 밖 |
+| Small/jittery bbox | 작은 얼굴 or bbox 불안정 → 품질 저하가 임베딩에 직접 반영 |
+
+**대응 원칙**: "프레임 vs 프레임" 비교 대신 **"프레임 vs 프로토타입"** 비교.
+프로토타입은 품질 좋은 프레임으로만 구성하여 outlier에 강하게 만든다.
+
+### Short-term Tracker + Long-term ID 분리
+
+| 계층 | 방법 | 역할 |
+|------|------|------|
+| **단기 (1-3초)** | bbox/velocity 기반 tracker | 임베딩이 잠깐 튀어도 연속성 유지 |
+| **장기** | Face-ID prototype (medoid) | 사람 ID 안정적 유지 |
+
+단기 tracker가 프레임 연속성을 담당하므로, 임베딩 spike가 발생해도 tracking이 버텨준다.
+
+### Medoid Prototype
 
 ```python
 # strict gate를 통과한 프레임의 face-ID 임베딩으로 medoid 계산
@@ -179,6 +203,14 @@ stable(t) = cos(e_id(t), prototype)
 if stable(t) < tau_id:  # tau_id ≈ 0.3~0.4
     exclude from save candidates
 ```
+
+Medoid가 mean보다 나은 이유: blur/alignment 실패 outlier에 강함.
+
+### Prototype 업데이트 규칙
+
+prototype 업데이트에는 **품질 게이트를 통과한 프레임만** 사용:
+- blur 낮고, 가림 적고, alignment 양호한 프레임만 반영
+- 품질 불량 프레임이 prototype을 오염시키는 것을 방지
 
 ### 후기 버전: Memory Bank (identity_memory)
 
@@ -225,7 +257,9 @@ CLIP/SigLIP: 포즈/장면 semantic 변화에 민감 (상반신 다양성).
 
 - 극단 yaw/pitch OR 어두운 조명 OR heavy occlusion
 - 조건: `stable(t) >= tau_id` + blur floor 통과
-- 디퓨전 모델의 robustness 향상 목적
+- **Constraint cues for diffusion**: 단순 극단 조건이 아니라 "이런 조건에서도 이 사람" 맥락을 제공
+  - 디퓨전 모델의 robustness 향상
+  - 네거티브 프롬프트 설계에 참고 (어떤 조건을 피해야 하는지)
 
 ## 9. 중단 조건 (Coverage-driven)
 
@@ -286,6 +320,13 @@ Anchor : Coverage : Challenge = 20 : 70 : 10  (기본값)
   - 조건: 두 명 모두 quality gate 통과, 두 명 모두 stable, 상호 occlusion 최소
   - 메타에 상대 위치, 스케일 정보 포함
 
+### Joint Diversity (2인 특화)
+
+디퓨전에서 두 인물 관계/구도 가이드에 유용한 단서:
+- **상대 위치**: 두 사람의 bbox 관계 (좌우, 거리)
+- **동시 표정**: 함께 웃는/놀라는 동시성 프레임이 특히 가치 있음
+- **상호 가림 최소**: 두 명의 bbox overlap이 낮은 프레임 우선
+
 ## 13. vpx 의존성
 
 | 패키지 | 용도 |
@@ -304,7 +345,19 @@ Anchor : Coverage : Challenge = 20 : 70 : 10  (기본값)
 
 Face-ID 임베딩은 vpx-face-detect의 InsightFace recognition model에서 추출.
 
-## 14. 구현 계획
+## 14. Embedding Stability 트러블슈팅 체크리스트
+
+Face-ID 임베딩이 불안정할 때 확인할 항목:
+
+1. **Alignment 실패 프레임 제외**: roll이 큰 프레임 → save/update 후보에서 제외
+2. **bbox jitter 감소**: tracker 기반 smoothing (bbox EMA, alpha=0.3~0.5)
+3. **Quality-gated prototype update**: blur/occlusion 불량 프레임은 prototype 업데이트 금지
+4. **Medoid/trimmed mean 사용**: 단순 mean 대신 outlier-robust 대표값
+5. **"Frame vs prototype" 비교**: 연속 프레임 간 비교 금지 → 항상 prototype과 비교
+
+이 조합으로 대부분의 임베딩 불안정 문제를 해결할 수 있다.
+
+## 15. 구현 계획
 
 ### Phase 1: 추출 파이프라인
 

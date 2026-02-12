@@ -161,6 +161,12 @@ def select_refs(self, query: RefQuery) -> RefSelection:
     sims = [cos(q, m.vec_id) for m in self.nodes]
     weights = softmax(np.array(sims) / self.temperature)
 
+    # Anchor 최소 가중치 보장
+    for i, node in enumerate(self.nodes):
+        if node.is_anchor:
+            weights[i] = max(weights[i], self.anchor_min_weight)
+    weights /= weights.sum()  # re-normalize
+
     # Top-p node 선택
     top_indices = argsort(weights)[-self.top_p:]
 
@@ -204,7 +210,47 @@ def _compact(self):
 - quality 기준 정렬, 새 이미지가 기존 최저보다 높으면 교체
 - 이미지 경로는 identity_builder 출력 기준 상대 경로
 
-## 6. Configuration
+## 6. Query Embedding 구성
+
+`select_refs()`의 query는 **생성하려는 이미지의 맥락**을 표현한다.
+
+### 방식 1: State Vector (기본)
+
+```python
+# 포즈/표정/조명 조건을 수치 벡터로 인코딩
+q = concat(
+    pose_vector,        # yaw, pitch, roll (정규화)
+    expression_vector,  # mouth_open, eye_open, smile (0~1)
+    lighting_vector,    # brightness, contrast (정규화)
+)
+# → 저차원 (8~16D), Face-ID 공간과 직접 비교 불가
+# → 별도 projection layer 또는 nearest-bucket 매칭으로 변환
+```
+
+### 방식 2: Text Query (실험적)
+
+```python
+# CLIP text encoder로 자연어 쿼리 → embedding
+q = clip_text_encode("smiling person in dark lighting, side view")
+# → CLIP 공간이므로 Face-ID와 직접 비교 불가, cross-modal 매칭 필요
+```
+
+### 방식 3: Bucket 기반 매칭 (실용적)
+
+```python
+# query 조건과 각 노드의 meta_hist 분포 매칭
+# embedding 비교 없이 메타데이터 기반 선택
+scores = [node.meta_hist.coverage_score(target_buckets) for node in self.nodes]
+```
+
+초기 구현은 **방식 3 (bucket 기반)**으로 시작. embedding 기반 query는 데이터 확보 후 실험.
+
+### Anchor 최소 가중치 정책
+
+Anchor 노드(정면 고품질)는 query에 관계없이 최소 가중치(`anchor_min_weight=0.15`)를 보장.
+디퓨전 모델의 ID 유지에 anchor가 핵심이므로 query 조건이 극단적이어도 anchor가 빠지지 않도록 한다.
+
+## 7. Configuration
 
 | 파라미터 | 초기값 | 설명 |
 |---------|--------|------|
@@ -217,10 +263,11 @@ def _compact(self):
 | `q_new_min` | TBD | 새 노드 생성 최소 품질 |
 | `temperature` | 0.1 | select_refs softmax 온도 |
 | `top_p` | 3 | select_refs 상위 노드 수 |
+| `anchor_min_weight` | 0.15 | Anchor 노드 최소 가중치 |
 
 모든 threshold는 데이터 기반 튜닝 대상.
 
-## 7. ComfyUI 연동 방식
+## 8. ComfyUI 연동 방식
 
 ### 원칙: 이미지 경로 전달 (Option A)
 
@@ -253,7 +300,7 @@ Anchor : Coverage : Challenge = 20 : 70 : 10 (기본값)
 간접 가중: ComfyUI가 weight tensor를 직접 받지 못하는 경우,
 이미지 수/반복으로 가중 (예: anchor 2장, coverage 1장).
 
-## 8. identity_builder와의 관계
+## 9. identity_builder와의 관계
 
 ### Builder → Memory 데이터 흐름
 
@@ -279,7 +326,7 @@ if result.stable_score < tau_id:
 초기 버전에서는 builder의 medoid prototype 사용,
 후기 버전에서 memory bank의 `match()` API로 대체.
 
-## 9. vpx 의존성
+## 10. vpx 의존성
 
 | 패키지 | 용도 |
 |--------|------|
@@ -289,7 +336,47 @@ if result.stable_score < tau_id:
 identity_memory 자체는 **임베딩 모델을 직접 실행하지 않음**.
 builder가 추출한 임베딩을 받아서 저장/검색만 수행.
 
-## 10. 구현 계획
+## 11. Prompt Encoder 진화 (장기 로드맵)
+
+현재 memory bank는 **이미지 경로 선택**(Level 1)만 수행하지만,
+장기적으로 디퓨전 모델의 conditioning에 더 깊이 관여할 수 있다.
+
+### Level 1: Retrieval-conditioned Generation (현재 목표)
+
+```
+memory_bank.select_refs(query)
+    → image paths
+    → ComfyUI InstantID/IP-Adapter/PuLID 노드에 전달
+```
+
+- Memory bank는 **어떤 이미지를 보여줄지**만 결정
+- 디퓨전 모델 내부에 개입하지 않음
+- 구현이 단순하고 ComfyUI 생태계와 호환
+
+### Level 2: Condition Token Cross-attention (실험적)
+
+```
+memory_bank → memory embeddings → cross-attention layer → diffusion U-Net
+```
+
+- Memory node의 임베딩을 디퓨전 모델의 **추가 conditioning token**으로 주입
+- IP-Adapter의 확장 버전: 단일 이미지 대신 다중 memory node embedding 사용
+- 각 노드의 weight를 attention score에 반영
+- **요구 사항**: 커스텀 ComfyUI 노드 또는 모델 수정 필요
+
+### Level 3: MoE Expert Selection (연구)
+
+```
+memory_bank → router → expert selection → mixture generation
+```
+
+- 각 memory node를 하나의 "expert"로 취급
+- Router가 생성 조건에 따라 expert 조합을 결정
+- Mixture of Experts 패턴으로 다양한 상태의 이미지 생성
+
+**현재는 Level 1에만 집중. Level 2 이상은 Level 1의 한계가 명확해진 후 탐색.**
+
+## 12. 구현 계획
 
 ### Phase 1: Memory Node + Update Logic
 
