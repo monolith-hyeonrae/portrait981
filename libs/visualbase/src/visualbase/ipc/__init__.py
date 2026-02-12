@@ -4,9 +4,12 @@ This module provides IPC primitives for inter-process communication:
 - FIFO: Named pipes for video stream fan-out (A→B*)
 - UDS: Unix Domain Sockets for message passing (B*→C, C→A)
 - ZMQ: ZeroMQ PUB/SUB for dynamic connections (optional, requires pyzmq)
+- ZMQ RPC: ZeroMQ REQ-REP for synchronous RPC (optional, requires pyzmq)
 - Messages: OBS/TRIG message parsing and serialization
 - Interfaces: ABCs for swappable transport implementations
 - Factory: Unified transport creation
+- Codec: Frame encode/decode for IPC transmission
+- Utilities: ZMQ availability check, IPC address generation
 
 Example using interfaces (recommended for production code):
     >>> from visualbase.ipc import VideoReader, TransportFactory
@@ -31,6 +34,8 @@ from visualbase.ipc.interfaces import (
     VideoWriter,
     MessageReceiver,
     MessageSender,
+    RPCServer,
+    RPCClient,
 )
 
 # Concrete implementations
@@ -39,6 +44,12 @@ from visualbase.ipc.uds import UDSServer, UDSClient
 
 # Factory
 from visualbase.ipc.factory import TransportFactory
+
+# Codec
+from visualbase.ipc.codec import encode_frame, decode_frame
+
+# Utilities
+from visualbase.ipc._util import check_zmq_available, generate_ipc_address
 
 # Messages
 from visualbase.ipc.messages import (
@@ -57,8 +68,16 @@ __all__ = [
     "VideoWriter",
     "MessageReceiver",
     "MessageSender",
+    "RPCServer",
+    "RPCClient",
     # Factory
     "TransportFactory",
+    # Codec
+    "encode_frame",
+    "decode_frame",
+    # Utilities
+    "check_zmq_available",
+    "generate_ipc_address",
     # FIFO
     "FIFOVideoWriter",
     "FIFOVideoReader",
@@ -83,11 +102,17 @@ try:
         ZMQMessagePublisher,
         ZMQMessageSubscriber,
     )
+    from visualbase.ipc.zmq_rpc import (
+        ZMQRPCServer,
+        ZMQRPCClient,
+    )
     __all__.extend([
         "ZMQVideoPublisher",
         "ZMQVideoSubscriber",
         "ZMQMessagePublisher",
         "ZMQMessageSubscriber",
+        "ZMQRPCServer",
+        "ZMQRPCClient",
     ])
 except ImportError:
     pass  # pyzmq not installed

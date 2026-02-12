@@ -97,10 +97,10 @@ class TestFrameSerialization:
 
     def test_serialize_frame(self):
         """Test frame serialization to JSON-compatible format."""
-        from visualpath.process.launcher import _serialize_frame
+        from visualbase.ipc.codec import encode_frame
 
         frame = create_test_frame(frame_id=42, t_src_ns=123456789)
-        serialized = _serialize_frame(frame, jpeg_quality=95)
+        serialized = encode_frame(frame, jpeg_quality=95)
 
         assert serialized["frame_id"] == 42
         assert serialized["t_src_ns"] == 123456789
@@ -115,8 +115,7 @@ class TestFrameSerialization:
     def test_serialize_deserialize_round_trip(self):
         """Test frame serialization and deserialization round trip."""
         import cv2
-        from visualpath.process.launcher import _serialize_frame
-        from visualpath.process.worker import _deserialize_frame
+        from visualbase.ipc.codec import encode_frame
 
         # Create a frame with specific pixel values
         data = np.zeros((50, 50, 3), dtype=np.uint8)
@@ -124,10 +123,9 @@ class TestFrameSerialization:
         frame = MockFrame(frame_id=1, t_src_ns=1000, data=data, width=50, height=50)
 
         # Serialize
-        serialized = _serialize_frame(frame, jpeg_quality=100)
+        serialized = encode_frame(frame, jpeg_quality=100)
 
-        # Deserialize (using the worker's deserialize function with mock)
-        # Note: This requires visualbase.Frame, so we'll test the logic manually
+        # Deserialize manually (decode_frame requires visualbase.Frame)
         jpeg_bytes = base64.b64decode(serialized["data_b64"])
         nparr = np.frombuffer(jpeg_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -192,7 +190,7 @@ class TestObservationSerialization:
 
     def test_deserialize_observation(self):
         """Test observation deserialization."""
-        from visualpath.process.launcher import _deserialize_observation
+        from visualpath.process.serialization import deserialize_observation
 
         data = {
             "source": "test",
@@ -204,7 +202,7 @@ class TestObservationSerialization:
             "timing": {"detect": 10.5},
         }
 
-        obs = _deserialize_observation(data)
+        obs = deserialize_observation(data)
 
         assert obs.source == "test"
         assert obs.frame_id == 1
@@ -214,9 +212,9 @@ class TestObservationSerialization:
 
     def test_deserialize_observation_none(self):
         """Test deserialization of None."""
-        from visualpath.process.launcher import _deserialize_observation
+        from visualpath.process.serialization import deserialize_observation
 
-        assert _deserialize_observation(None) is None
+        assert deserialize_observation(None) is None
 
 
 # =============================================================================
@@ -276,7 +274,7 @@ class TestVenvWorkerFallback:
         analyzer = SimpleAnalyzer()
 
         with mock.patch(
-            "visualpath.process.launcher._check_zmq_available",
+            "visualpath.process.launcher.check_zmq_available",
             return_value=False,
         ):
             worker = VenvWorker(
@@ -401,7 +399,7 @@ class TestProcessWorker:
 
         # Mock ZMQ as unavailable to force inline fallback
         with mock.patch(
-            "visualpath.process.launcher._check_zmq_available",
+            "visualpath.process.launcher.check_zmq_available",
             return_value=False,
         ):
             worker = ProcessWorker(analyzer=analyzer)
@@ -429,7 +427,7 @@ class TestProcessWorker:
 
         # Mock ZMQ unavailability - this forces inline fallback
         with mock.patch(
-            "visualpath.process.launcher._check_zmq_available",
+            "visualpath.process.launcher.check_zmq_available",
             return_value=False,
         ):
             worker = ProcessWorker(analyzer=analyzer)
@@ -507,30 +505,27 @@ class TestZMQCommunicationMock:
     """Tests for ZMQ communication using mocks."""
 
     def test_zmq_check_available(self):
-        """Test _check_zmq_available function."""
-        from visualpath.process.launcher import _check_zmq_available
+        """Test check_zmq_available function."""
+        from visualbase.ipc import check_zmq_available
 
         # Should return True if zmq is installed
-        result = _check_zmq_available()
+        result = check_zmq_available()
         try:
             import zmq  # noqa: F401
             assert result is True
         except ImportError:
             assert result is False
 
-    def test_zmq_check_with_mock_import_error(self):
-        """Test _check_zmq_available with mock import error."""
+    def test_zmq_check_with_mock(self):
+        """Test check_zmq_available can be mocked in launcher."""
         from visualpath.process import launcher
 
-        original_func = launcher._check_zmq_available
-
-        with mock.patch.dict(sys.modules, {"zmq": None}):
-            with mock.patch.object(
-                launcher,
-                "_check_zmq_available",
-                return_value=False,
-            ):
-                assert launcher._check_zmq_available() is False
+        with mock.patch.object(
+            launcher,
+            "check_zmq_available",
+            return_value=False,
+        ):
+            assert launcher.check_zmq_available() is False
 
 
 # =============================================================================

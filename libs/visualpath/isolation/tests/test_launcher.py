@@ -263,7 +263,7 @@ class TestProcessWorker:
 
         # Mock ZMQ unavailable to force inline fallback
         with mock.patch(
-            "visualpath.process.launcher._check_zmq_available",
+            "visualpath.process.launcher.check_zmq_available",
             return_value=False,
         ):
             worker = ProcessWorker(module)
@@ -281,7 +281,7 @@ class TestProcessWorker:
 
         # Mock ZMQ unavailable to force inline fallback
         with mock.patch(
-            "visualpath.process.launcher._check_zmq_available",
+            "visualpath.process.launcher.check_zmq_available",
             return_value=False,
         ):
             worker = ProcessWorker(module)

@@ -26,8 +26,9 @@
 ## 패키지 관계
 
 ```
-visualbase (미디어 I/O)
+visualbase (미디어 I/O + IPC 인프라)
   → visualpath (분석 프레임워크)
+      → visualpath-isolation (Worker 격리, visualbase.ipc 기반)
       → vpx-sdk (공유 타입: Observation, Module, protocols)
           → vpx-face-detect      (InsightFace SCRFD, onnxruntime-gpu)
           → vpx-face-expression  (HSEmotion, onnxruntime CPU)

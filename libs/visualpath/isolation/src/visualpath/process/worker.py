@@ -12,52 +12,19 @@ Or via the entry point:
 """
 
 import argparse
-import base64
+import json
 import logging
 import sys
 import traceback
 from typing import Any, Dict, Optional
 
-import numpy as np
-
+from visualbase.ipc import decode_frame
 from visualpath.process.serialization import (
     serialize_observation,
     deserialize_observation,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _deserialize_frame(data: Dict[str, Any]) -> "Frame":
-    """Deserialize frame from ZMQ message.
-
-    Args:
-        data: Dict containing serialized frame data.
-
-    Returns:
-        Reconstructed Frame object.
-    """
-    import cv2
-    from visualbase import Frame
-
-    # Decode JPEG data
-    jpeg_bytes = base64.b64decode(data["data_b64"])
-    nparr = np.frombuffer(jpeg_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-    if img is None:
-        raise ValueError("Failed to decode frame image data")
-
-    return Frame.from_array(
-        img,
-        frame_id=data["frame_id"],
-        t_src_ns=data["t_src_ns"],
-    )
-
-
-def _deserialize_observation_in_worker(data: Dict[str, Any]) -> "Observation":
-    """Deserialize an Observation from ZMQ deps message."""
-    return deserialize_observation(data)
 
 
 def run_worker(analyzer_name: str, ipc_address: str) -> int:
@@ -70,18 +37,16 @@ def run_worker(analyzer_name: str, ipc_address: str) -> int:
     Returns:
         Exit code (0 for success, non-zero for error).
     """
-    import zmq
+    from visualbase.ipc import ZMQRPCServer
     from visualpath.plugin import create_analyzer
-    from visualpath.core import Observation  # noqa: F401 - used in type hints
 
-    # Create ZMQ socket (REP pattern - reply to requests)
-    context = zmq.Context()
-    socket = context.socket(zmq.REP)
+    # Create RPC server
+    server = ZMQRPCServer()
 
     try:
-        socket.bind(ipc_address)
+        server.bind(ipc_address)
         logger.info(f"Worker bound to {ipc_address}")
-    except zmq.ZMQError as e:
+    except Exception as e:
         logger.error(f"Failed to bind to {ipc_address}: {e}")
         return 1
 
@@ -92,36 +57,37 @@ def run_worker(analyzer_name: str, ipc_address: str) -> int:
         logger.info(f"Loaded analyzer: {analyzer_name}")
     except Exception as e:
         logger.error(f"Failed to load analyzer '{analyzer_name}': {e}")
-        socket.close()
-        context.term()
+        server.close()
         return 1
 
     try:
         while True:
             try:
-                # Receive message (blocking)
-                message = socket.recv_json()
-            except zmq.ZMQError as e:
-                logger.error(f"ZMQ receive error: {e}")
+                raw = server.recv()
+                if raw is None:
+                    continue
+                message = json.loads(raw)
+            except Exception as e:
+                logger.error(f"Receive error: {e}")
                 break
 
             msg_type = message.get("type")
 
             if msg_type == "ping":
                 # Handshake
-                socket.send_json({"type": "pong", "analyzer": analyzer_name})
+                server.send(json.dumps({"type": "pong", "analyzer": analyzer_name}).encode())
                 continue
 
             if msg_type == "shutdown":
                 # Clean shutdown
-                socket.send_json({"type": "ack"})
+                server.send(json.dumps({"type": "ack"}).encode())
                 logger.info("Received shutdown signal")
                 break
 
             if msg_type == "analyze":
                 # Process frame
                 try:
-                    frame = _deserialize_frame(message["frame"])
+                    frame = decode_frame(message["frame"])
 
                     # Deserialize deps if present
                     analyzer_deps = None
@@ -129,24 +95,24 @@ def run_worker(analyzer_name: str, ipc_address: str) -> int:
                         analyzer_deps = {}
                         for name, obs_data in message["deps"].items():
                             if obs_data is not None:
-                                analyzer_deps[name] = _deserialize_observation_in_worker(obs_data)
+                                analyzer_deps[name] = deserialize_observation(obs_data)
 
                     observation = analyzer.process(frame, analyzer_deps)
 
-                    socket.send_json({
+                    server.send(json.dumps({
                         "observation": serialize_observation(observation),
-                    })
+                    }).encode())
                 except Exception as e:
                     logger.error(f"Analysis error: {e}")
-                    socket.send_json({
+                    server.send(json.dumps({
                         "error": str(e),
                         "traceback": traceback.format_exc(),
-                    })
+                    }).encode())
                 continue
 
             # Unknown message type
             logger.warning(f"Unknown message type: {msg_type}")
-            socket.send_json({"error": f"Unknown message type: {msg_type}"})
+            server.send(json.dumps({"error": f"Unknown message type: {msg_type}"}).encode())
 
     finally:
         # Cleanup
@@ -155,8 +121,7 @@ def run_worker(analyzer_name: str, ipc_address: str) -> int:
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
-        socket.close()
-        context.term()
+        server.close()
         logger.info("Worker shutdown complete")
 
     return 0

@@ -34,19 +34,18 @@ For VenvWorker/ProcessWorker with ZMQ:
     >>> worker.stop()
 """
 
-import base64
+import json
 import logging
 import os
 import subprocess
 import sys
-import tempfile
-import threading
 import time
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, Future
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
+from visualbase.ipc import check_zmq_available, generate_ipc_address, encode_frame
 from visualpath.core.observation import Observation
 from visualpath.core.module import Module
 from visualpath.core.isolation import IsolationLevel
@@ -275,50 +274,6 @@ class ThreadWorker(BaseWorker):
         return WorkerInfo(isolation_level="THREAD", pid=os.getpid(), venv_path="")
 
 
-def _check_zmq_available() -> bool:
-    """Check if pyzmq is available."""
-    try:
-        import zmq  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
-def _serialize_frame(frame: "Frame", jpeg_quality: int = 95) -> Dict[str, Any]:
-    """Serialize frame for ZMQ transmission.
-
-    Args:
-        frame: Frame to serialize.
-        jpeg_quality: JPEG compression quality (0-100).
-
-    Returns:
-        JSON-serializable dict containing frame data.
-    """
-    import cv2
-
-    # Encode as JPEG for efficient transmission
-    _, jpeg_data = cv2.imencode(
-        '.jpg', frame.data,
-        [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality]
-    )
-
-    return {
-        "frame_id": frame.frame_id,
-        "t_src_ns": frame.t_src_ns,
-        "width": frame.width,
-        "height": frame.height,
-        "data_b64": base64.b64encode(jpeg_data.tobytes()).decode('ascii'),
-    }
-
-
-def _deserialize_observation(data: Optional[Dict[str, Any]]) -> Optional[Observation]:
-    """Deserialize observation from ZMQ message."""
-    return deserialize_observation(data)
-
-
-def _serialize_observation_for_deps(obs: Optional[Observation]) -> Optional[Dict[str, Any]]:
-    """Serialize an Observation for deps transmission via ZMQ."""
-    return serialize_observation(obs)
 
 
 class VenvWorker(BaseWorker):
@@ -378,8 +333,7 @@ class VenvWorker(BaseWorker):
         self._jpeg_quality = jpeg_quality
 
         self._process: Optional[subprocess.Popen] = None
-        self._zmq_context: Optional[Any] = None  # zmq.Context
-        self._socket: Optional[Any] = None  # zmq.Socket
+        self._rpc_client: Optional[Any] = None  # ZMQRPCClient
         self._ipc_address: str = ""
         self._ipc_file: Optional[str] = None
         self._running = False
@@ -390,7 +344,7 @@ class VenvWorker(BaseWorker):
 
     def _should_use_zmq(self) -> bool:
         """Determine if ZMQ should be used."""
-        if not _check_zmq_available():
+        if not check_zmq_available():
             logger.warning("pyzmq not available, falling back to inline execution")
             return False
 
@@ -426,20 +380,12 @@ class VenvWorker(BaseWorker):
             self._running = True
             return
 
-        import zmq
-
-        # Create ZMQ context and socket
-        self._zmq_context = zmq.Context()
-        self._socket = self._zmq_context.socket(zmq.REQ)
-        self._socket.setsockopt(zmq.RCVTIMEO, int(self._timeout_sec * 1000))
-        self._socket.setsockopt(zmq.SNDTIMEO, int(self._timeout_sec * 1000))
+        from visualbase.ipc import ZMQRPCClient
 
         # Generate unique IPC address
-        self._ipc_file = tempfile.mktemp(
-            prefix=f"visualpath-worker-{os.getpid()}-",
-            suffix=".sock"
+        self._ipc_address, self._ipc_file = generate_ipc_address(
+            prefix="visualpath-worker"
         )
-        self._ipc_address = f"ipc://{self._ipc_file}"
 
         # Start subprocess
         venv_python = os.path.join(self._venv_path, "bin", "python")
@@ -466,37 +412,42 @@ class VenvWorker(BaseWorker):
         # Give subprocess time to start and bind
         time.sleep(0.1)
 
-        # Connect to the subprocess
+        # Create RPC client and connect
+        self._rpc_client = ZMQRPCClient(
+            send_timeout_ms=int(self._timeout_sec * 1000),
+            recv_timeout_ms=int(self._timeout_sec * 1000),
+        )
         try:
-            self._socket.connect(self._ipc_address)
-        except zmq.ZMQError as e:
+            self._rpc_client.connect(self._ipc_address)
+        except Exception as e:
             self._terminate_process()
             self._cleanup_zmq()
             raise RuntimeError(f"Failed to connect to worker: {e}") from e
 
         # Perform handshake with timeout
         try:
-            # Temporarily set shorter timeout for handshake
-            self._socket.setsockopt(zmq.RCVTIMEO, int(self._handshake_timeout_sec * 1000))
+            self._rpc_client.send(json.dumps({"type": "ping"}).encode())
+            raw = self._rpc_client.recv(
+                timeout_ms=int(self._handshake_timeout_sec * 1000)
+            )
 
-            self._socket.send_json({"type": "ping"})
-            response = self._socket.recv_json()
+            if raw is None:
+                raise RuntimeError(
+                    f"Worker handshake timed out after {self._handshake_timeout_sec}s"
+                )
+
+            response = json.loads(raw)
 
             if response.get("type") != "pong":
                 raise RuntimeError(f"Unexpected handshake response: {response}")
 
             logger.info(f"Worker handshake successful, analyzer: {response.get('analyzer')}")
 
-            # Restore normal timeout
-            self._socket.setsockopt(zmq.RCVTIMEO, int(self._timeout_sec * 1000))
-
-        except zmq.Again:
+        except RuntimeError:
             self._terminate_process()
             self._cleanup_zmq()
-            raise RuntimeError(
-                f"Worker handshake timed out after {self._handshake_timeout_sec}s"
-            )
-        except zmq.ZMQError as e:
+            raise
+        except Exception as e:
             self._terminate_process()
             self._cleanup_zmq()
             raise RuntimeError(f"Worker handshake failed: {e}") from e
@@ -515,12 +466,10 @@ class VenvWorker(BaseWorker):
             return
 
         # Send shutdown signal
-        if self._socket is not None:
+        if self._rpc_client is not None and self._rpc_client.is_connected:
             try:
-                import zmq
-                self._socket.setsockopt(zmq.RCVTIMEO, 5000)  # 5 second timeout for shutdown
-                self._socket.send_json({"type": "shutdown"})
-                self._socket.recv_json()
+                self._rpc_client.send(json.dumps({"type": "shutdown"}).encode())
+                self._rpc_client.recv(timeout_ms=5000)
             except Exception as e:
                 logger.warning(f"Error during shutdown signal: {e}")
 
@@ -544,20 +493,13 @@ class VenvWorker(BaseWorker):
                 self._process = None
 
     def _cleanup_zmq(self) -> None:
-        """Clean up ZMQ resources."""
-        if self._socket is not None:
+        """Clean up RPC client and IPC resources."""
+        if self._rpc_client is not None:
             try:
-                self._socket.close(linger=0)
+                self._rpc_client.close()
             except Exception:
                 pass
-            self._socket = None
-
-        if self._zmq_context is not None:
-            try:
-                self._zmq_context.term()
-            except Exception:
-                pass
-            self._zmq_context = None
+            self._rpc_client = None
 
         # Remove IPC socket file
         if self._ipc_file and os.path.exists(self._ipc_file):
@@ -589,11 +531,9 @@ class VenvWorker(BaseWorker):
         if self._inline is not None:
             return self._inline.process(frame, deps)
 
-        import zmq
-
         try:
             # Serialize and send frame
-            frame_data = _serialize_frame(frame, self._jpeg_quality)
+            frame_data = encode_frame(frame, self._jpeg_quality)
             message: Dict[str, Any] = {
                 "type": "analyze",
                 "frame": frame_data,
@@ -601,15 +541,24 @@ class VenvWorker(BaseWorker):
             # Include deps if provided
             if deps:
                 message["deps"] = {
-                    name: _serialize_observation_for_deps(obs)
+                    name: serialize_observation(obs)
                     for name, obs in deps.items()
                 }
-            self._socket.send_json(message)
+            self._rpc_client.send(json.dumps(message).encode())
 
             # Receive response
-            response = self._socket.recv_json()
+            raw = self._rpc_client.recv()
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+            if raw is None:
+                return WorkerResult(
+                    observation=None,
+                    error=f"Worker timeout after {self._timeout_sec}s",
+                    timing_ms=elapsed_ms,
+                )
+
+            response = json.loads(raw)
 
             if "error" in response:
                 return WorkerResult(
@@ -618,19 +567,12 @@ class VenvWorker(BaseWorker):
                     timing_ms=elapsed_ms,
                 )
 
-            observation = _deserialize_observation(response.get("observation"))
+            observation = deserialize_observation(response.get("observation"))
             return WorkerResult(
                 observation=observation,
                 timing_ms=elapsed_ms,
             )
 
-        except zmq.Again:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
-            return WorkerResult(
-                observation=None,
-                error=f"Worker timeout after {self._timeout_sec}s",
-                timing_ms=elapsed_ms,
-            )
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             return WorkerResult(

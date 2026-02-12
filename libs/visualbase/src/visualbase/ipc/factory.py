@@ -25,6 +25,8 @@ from visualbase.ipc.interfaces import (
     VideoWriter,
     MessageReceiver,
     MessageSender,
+    RPCServer,
+    RPCClient,
 )
 from visualbase.ipc.fifo import FIFOVideoReader, FIFOVideoWriter
 from visualbase.ipc.uds import UDSServer, UDSClient
@@ -38,6 +40,10 @@ try:
         ZMQVideoSubscriber,
         ZMQMessagePublisher,
         ZMQMessageSubscriber,
+    )
+    from visualbase.ipc.zmq_rpc import (
+        ZMQRPCServer,
+        ZMQRPCClient,
     )
     HAS_ZMQ = True
 except ImportError:
@@ -78,12 +84,18 @@ class TransportFactory:
         "uds": UDSClient,
     }
 
+    # Registry of RPC transport implementations
+    _rpc_servers: Dict[str, type] = {}
+    _rpc_clients: Dict[str, type] = {}
+
     # Register ZMQ transports if available
     if HAS_ZMQ:
         _video_readers["zmq"] = ZMQVideoSubscriber
         _video_writers["zmq"] = ZMQVideoPublisher
         _message_receivers["zmq"] = ZMQMessageSubscriber
         _message_senders["zmq"] = ZMQMessagePublisher
+        _rpc_servers["zmq"] = ZMQRPCServer
+        _rpc_clients["zmq"] = ZMQRPCClient
 
     @classmethod
     def create_video_reader(
@@ -263,4 +275,82 @@ class TransportFactory:
         return {
             "receivers": list(cls._message_receivers.keys()),
             "senders": list(cls._message_senders.keys()),
+        }
+
+    # ----- RPC transport methods -----
+
+    @classmethod
+    def create_rpc_server(
+        cls,
+        transport_type: str,
+        **kwargs: Any,
+    ) -> RPCServer:
+        """Create an RPC server instance.
+
+        Args:
+            transport_type: Transport type (e.g., "zmq").
+            **kwargs: Additional arguments for the specific transport.
+
+        Returns:
+            RPCServer instance.
+
+        Raises:
+            ValueError: If transport type is not supported.
+        """
+        impl_class = cls._rpc_servers.get(transport_type)
+        if impl_class is None:
+            raise ValueError(
+                f"Unknown RPC server transport: {transport_type}. "
+                f"Supported: {list(cls._rpc_servers.keys())}"
+            )
+        return impl_class(**kwargs)
+
+    @classmethod
+    def create_rpc_client(
+        cls,
+        transport_type: str,
+        **kwargs: Any,
+    ) -> RPCClient:
+        """Create an RPC client instance.
+
+        Args:
+            transport_type: Transport type (e.g., "zmq").
+            **kwargs: Additional arguments for the specific transport.
+
+        Returns:
+            RPCClient instance.
+
+        Raises:
+            ValueError: If transport type is not supported.
+        """
+        impl_class = cls._rpc_clients.get(transport_type)
+        if impl_class is None:
+            raise ValueError(
+                f"Unknown RPC client transport: {transport_type}. "
+                f"Supported: {list(cls._rpc_clients.keys())}"
+            )
+        return impl_class(**kwargs)
+
+    @classmethod
+    def register_rpc_server(cls, name: str, impl_class: type) -> None:
+        """Register a custom RPC server implementation."""
+        cls._rpc_servers[name] = impl_class
+        logger.info(f"Registered RPC server: {name}")
+
+    @classmethod
+    def register_rpc_client(cls, name: str, impl_class: type) -> None:
+        """Register a custom RPC client implementation."""
+        cls._rpc_clients[name] = impl_class
+        logger.info(f"Registered RPC client: {name}")
+
+    @classmethod
+    def list_rpc_transports(cls) -> Dict[str, list]:
+        """List available RPC transport types.
+
+        Returns:
+            Dict with "servers" and "clients" keys listing available types.
+        """
+        return {
+            "servers": list(cls._rpc_servers.keys()),
+            "clients": list(cls._rpc_clients.keys()),
         }

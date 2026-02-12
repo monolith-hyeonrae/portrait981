@@ -42,7 +42,7 @@
 | 패키지 | 설명 | 의존성 |
 |--------|------|--------|
 | `visualpath` | core + flow + simple backend + api | visualbase |
-| `visualpath-isolation` | Worker/IPC + observability | visualpath |
+| `visualpath-isolation` | Worker/IPC + observability | visualpath, **visualbase.ipc** |
 | `visualpath-pathway` | Pathway 스트리밍 백엔드 | visualpath, visualpath-isolation |
 | `visualpath-cli` | CLI + config | visualpath, visualpath-isolation |
 

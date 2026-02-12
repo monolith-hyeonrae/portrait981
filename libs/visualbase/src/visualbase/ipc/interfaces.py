@@ -261,3 +261,131 @@ class MessageSender(ABC):
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.disconnect()
+
+
+class RPCServer(ABC):
+    """Abstract interface for RPC server (REP side).
+
+    Used for synchronous request-reply communication between processes.
+    The server binds to an address, receives requests, and sends responses.
+
+    Example:
+        >>> server = ZMQRPCServer()
+        >>> server.bind("ipc:///tmp/worker.sock")
+        >>> while True:
+        ...     data = server.recv()
+        ...     if data is None:
+        ...         break
+        ...     response = process(data)
+        ...     server.send(response)
+        >>> server.close()
+    """
+
+    @abstractmethod
+    def bind(self, address: str) -> None:
+        """Bind the server to an address.
+
+        Args:
+            address: Address to bind to (e.g., "ipc:///tmp/worker.sock").
+        """
+        ...
+
+    @abstractmethod
+    def recv(self, timeout_ms: Optional[int] = None) -> Optional[bytes]:
+        """Receive a request.
+
+        Args:
+            timeout_ms: Receive timeout in milliseconds. None for blocking.
+
+        Returns:
+            Request data as bytes, or None on timeout.
+        """
+        ...
+
+    @abstractmethod
+    def send(self, data: bytes) -> None:
+        """Send a response.
+
+        Args:
+            data: Response data as bytes.
+        """
+        ...
+
+    @abstractmethod
+    def close(self) -> None:
+        """Close the server and release resources."""
+        ...
+
+    @property
+    @abstractmethod
+    def is_bound(self) -> bool:
+        """Check if the server is bound."""
+        ...
+
+    def __enter__(self) -> "RPCServer":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
+
+
+class RPCClient(ABC):
+    """Abstract interface for RPC client (REQ side).
+
+    Used for synchronous request-reply communication between processes.
+    The client connects to a server, sends requests, and receives responses.
+
+    Example:
+        >>> client = ZMQRPCClient()
+        >>> client.connect("ipc:///tmp/worker.sock")
+        >>> client.send(b'{"type": "ping"}')
+        >>> response = client.recv()
+        >>> client.close()
+    """
+
+    @abstractmethod
+    def connect(self, address: str) -> None:
+        """Connect to an RPC server.
+
+        Args:
+            address: Address to connect to (e.g., "ipc:///tmp/worker.sock").
+        """
+        ...
+
+    @abstractmethod
+    def send(self, data: bytes) -> None:
+        """Send a request.
+
+        Args:
+            data: Request data as bytes.
+        """
+        ...
+
+    @abstractmethod
+    def recv(self, timeout_ms: Optional[int] = None) -> Optional[bytes]:
+        """Receive a response.
+
+        Args:
+            timeout_ms: Receive timeout in milliseconds. None uses default.
+
+        Returns:
+            Response data as bytes, or None on timeout.
+        """
+        ...
+
+    @abstractmethod
+    def close(self) -> None:
+        """Close the client and release resources."""
+        ...
+
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """Check if the client is connected."""
+        ...
+
+    def __enter__(self) -> "RPCClient":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()
