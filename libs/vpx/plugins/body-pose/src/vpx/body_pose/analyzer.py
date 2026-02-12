@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional, Dict, List, TYPE_CHECKING
 from collections import deque
 import logging
@@ -63,9 +64,11 @@ class PoseAnalyzer(Module):
         wave_frequency_min: float = 1.5,
         wave_frequency_max: float = 5.0,
         wave_amplitude_threshold: float = 0.05,
+        models_dir: Optional[Path] = None,
     ):
         self._device = device
         self._pose_backend = pose_backend
+        self._models_dir = models_dir
         self._wave_window = wave_window_frames
         self._wave_freq_min = wave_frequency_min
         self._wave_freq_max = wave_frequency_max
@@ -109,7 +112,7 @@ class PoseAnalyzer(Module):
                 YOLOPoseBackend,
             )
 
-            self._pose_backend = YOLOPoseBackend()
+            self._pose_backend = YOLOPoseBackend(models_dir=self._models_dir)
 
         self._pose_backend.initialize(self._device)
         self._initialized = True

@@ -1,5 +1,6 @@
 """Pose estimation backend implementations."""
 
+from pathlib import Path
 from typing import List, Optional
 import logging
 
@@ -34,10 +35,12 @@ class YOLOPoseBackend:
         model_name: str = "yolov8m-pose.pt",
         conf_threshold: float = 0.5,
         iou_threshold: float = 0.7,
+        models_dir: Optional[Path] = None,
     ):
         self._model_name = model_name
         self._conf_threshold = conf_threshold
         self._iou_threshold = iou_threshold
+        self._models_dir = models_dir
         self._model: Optional[object] = None
         self._initialized = False
 
@@ -49,7 +52,20 @@ class YOLOPoseBackend:
         try:
             from ultralytics import YOLO
 
-            self._model = YOLO(self._model_name)
+            if self._models_dir is not None:
+                # ultralytics downloads bare filenames to CWD.
+                # 1) Set weights_dir so fallback download goes to models_dir
+                # 2) Pass absolute path so YOLO never checks CWD
+                self._models_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    from ultralytics.utils import SETTINGS
+                    SETTINGS["weights_dir"] = str(self._models_dir)
+                except Exception:
+                    pass
+                model_path = str(self._models_dir / self._model_name)
+            else:
+                model_path = self._model_name
+            self._model = YOLO(model_path)
 
             # Set device (YOLO accepts device string or int)
             if device.startswith("cuda"):

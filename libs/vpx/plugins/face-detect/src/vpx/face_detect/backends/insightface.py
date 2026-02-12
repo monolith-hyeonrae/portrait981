@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+from pathlib import Path
 from typing import List, Optional
 import logging
 
@@ -35,10 +36,12 @@ class InsightFaceSCRFD:
         model_name: str = "buffalo_l",
         det_size: tuple[int, int] = (640, 640),
         det_thresh: float = 0.5,
+        models_dir: Optional[Path] = None,
     ):
         self._model_name = model_name
         self._det_size = det_size
         self._det_thresh = det_thresh
+        self._models_dir = models_dir
         self._app: Optional[object] = None
         self._initialized = False
         self._device = "cpu"
@@ -83,11 +86,11 @@ class InsightFaceSCRFD:
             self._device = device
 
             # [5] redirect_stdout — find model, set det-size, Applied providers
+            fa_kwargs = dict(name=self._model_name, providers=providers)
+            if self._models_dir is not None:
+                fa_kwargs["root"] = str(self._models_dir / "insightface")
             with contextlib.redirect_stdout(io.StringIO()):
-                self._app = FaceAnalysis(
-                    name=self._model_name,
-                    providers=providers,
-                )
+                self._app = FaceAnalysis(**fa_kwargs)
                 self._app.prepare(ctx_id=ctx_id, det_size=self._det_size)
             self._initialized = True
             logger.info(f"InsightFace SCRFD initialized (provider={self._actual_provider})")
@@ -111,9 +114,17 @@ class InsightFaceSCRFD:
         (batch=1 fixed). This method loads the model, changes the batch
         dimension to dynamic, and creates a new InferenceSession that
         accepts ``[N, 3, H, W]`` inputs for true GPU batch inference.
+
+        Key fix: SCRFD's detection heads use
+        ``Conv [N,C,H,W] → Transpose perm=[2,3,0,1] → [H,W,N,C] → Reshape [-1,feat]``
+        which interleaves batch data by spatial position when N > 1.
+        We change the Transpose perm to ``[0,2,3,1]`` so the output
+        is ``[N,H,W,C]``, keeping the batch dimension first and
+        producing per-image contiguous blocks after Reshape.
         """
         try:
             import onnx
+            from onnx import numpy_helper
             import onnxruntime as ort
 
             scrfd = self._app.det_model
@@ -143,6 +154,59 @@ class InsightFaceSCRFD:
                 shape = out.type.tensor_type.shape
                 if shape and len(shape.dim) >= 1:
                     shape.dim[0].dim_param = "batch"
+
+            # Collect Reshape data-input names to identify upstream Transpose nodes
+            reshape_data_inputs = set()
+            for node in model.graph.node:
+                if node.op_type == "Reshape" and len(node.input) >= 1:
+                    reshape_data_inputs.add(node.input[0])
+
+            # Fix Transpose nodes feeding into Reshape.
+            # SCRFD detection heads: Conv→Transpose(perm=[2,3,0,1])→Reshape
+            # perm=[2,3,0,1] maps [N,C,H,W]→[H,W,N,C], interleaving
+            # batch data by spatial position. Change to [0,2,3,1] so
+            # output is [N,H,W,C] — batch-first, per-image contiguous.
+            # For batch=1 these produce identical results.
+            transpose_fixed = 0
+            for node in model.graph.node:
+                if node.op_type != "Transpose":
+                    continue
+                if not any(o in reshape_data_inputs for o in node.output):
+                    continue
+                for attr in node.attribute:
+                    if attr.name == "perm" and list(attr.ints) == [2, 3, 0, 1]:
+                        attr.ints[:] = [0, 2, 3, 1]
+                        transpose_fixed += 1
+
+            # Fix Reshape nodes with hardcoded batch=1 (for models using
+            # [1, -1, feat] pattern instead of [-1, feat]).
+            init_map = {init.name: init for init in model.graph.initializer}
+            reshape_fixed = 0
+            for node in model.graph.node:
+                if node.op_type == "Reshape" and len(node.input) >= 2:
+                    shape_name = node.input[1]
+                    if shape_name not in init_map:
+                        continue
+                    shape_tensor = init_map[shape_name]
+                    shape_data = numpy_helper.to_array(shape_tensor).copy()
+                    if (len(shape_data) >= 2
+                            and shape_data[0] == 1
+                            and shape_data[1] == -1):
+                        shape_data[0] = 0
+                        new_tensor = numpy_helper.from_array(
+                            shape_data, name=shape_tensor.name,
+                        )
+                        shape_tensor.CopyFrom(new_tensor)
+                        reshape_fixed += 1
+
+            # Clear stale intermediate shape info (computed for batch=1)
+            del model.graph.value_info[:]
+
+            if transpose_fixed > 0 or reshape_fixed > 0:
+                logger.debug(
+                    "Batch model fix: %d Transpose, %d Reshape nodes patched",
+                    transpose_fixed, reshape_fixed,
+                )
 
             model_bytes = model.SerializeToString()
 

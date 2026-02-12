@@ -18,13 +18,20 @@ HAND_LANDMARKER_MODEL_URL = (
 )
 
 
-def _get_model_path() -> Path:
-    """Get path to hand landmarker model, downloading if necessary."""
-    # Store in user's cache directory
-    cache_dir = Path.home() / ".cache" / "facemoment" / "models"
-    cache_dir.mkdir(parents=True, exist_ok=True)
+def _get_model_path(models_dir: Optional[Path] = None) -> Path:
+    """Get path to hand landmarker model, downloading if necessary.
 
-    model_path = cache_dir / "hand_landmarker.task"
+    Args:
+        models_dir: Directory to store the model. Falls back to
+            ``~/.cache/facemoment/models`` when *None*.
+    """
+    if models_dir is not None:
+        target_dir = models_dir
+    else:
+        target_dir = Path.home() / ".cache" / "facemoment" / "models"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = target_dir / "hand_landmarker.task"
 
     if not model_path.exists():
         logger.info(f"Downloading hand landmarker model to {model_path}...")
@@ -66,10 +73,12 @@ class MediaPipeHandsBackend:
         max_num_hands: int = 2,
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
+        models_dir: Optional[Path] = None,
     ):
         self._max_num_hands = max_num_hands
         self._min_detection_confidence = min_detection_confidence
         self._min_tracking_confidence = min_tracking_confidence
+        self._models_dir = models_dir
         self._landmarker: Optional[object] = None
         self._initialized = False
 
@@ -88,7 +97,7 @@ class MediaPipeHandsBackend:
             from mediapipe.tasks.python import vision
 
             # Get model path (downloads if necessary)
-            model_path = _get_model_path()
+            model_path = _get_model_path(self._models_dir)
 
             # Create options
             base_options = python.BaseOptions(model_asset_path=str(model_path))

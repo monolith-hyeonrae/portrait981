@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Dict, List
 import logging
 
@@ -48,6 +49,7 @@ class FaceDetectionAnalyzer(Module):
         track_faces: bool = True,
         iou_threshold: float = 0.5,
         roi: Optional[tuple[float, float, float, float]] = None,
+        models_dir: Optional[Path] = None,
     ):
         self._device = device
         self._track_faces = track_faces
@@ -55,6 +57,7 @@ class FaceDetectionAnalyzer(Module):
         self._roi = roi if roi is not None else (0.3, 0.1, 0.7, 0.6)
         self._initialized = False
         self._face_backend = face_backend
+        self._models_dir = models_dir
 
         # Tracking state
         self._next_face_id = 0
@@ -91,7 +94,7 @@ class FaceDetectionAnalyzer(Module):
             from vpx.face_detect.backends.insightface import (
                 InsightFaceSCRFD,
             )
-            self._face_backend = InsightFaceSCRFD()
+            self._face_backend = InsightFaceSCRFD(models_dir=self._models_dir)
 
         self._face_backend.initialize(self._device)
         self._initialized = True

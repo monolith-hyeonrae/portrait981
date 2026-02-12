@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional, List, Dict, TYPE_CHECKING
 import logging
 
@@ -61,9 +62,11 @@ class GestureAnalyzer(Module):
         hand_backend: Optional[HandLandmarkBackend] = None,
         device: str = "cpu",
         min_gesture_confidence: float = 0.6,
+        models_dir: Optional[Path] = None,
     ):
         self._device = device
         self._hand_backend = hand_backend
+        self._models_dir = models_dir
         self._min_gesture_confidence = min_gesture_confidence
         self._initialized = False
 
@@ -98,7 +101,7 @@ class GestureAnalyzer(Module):
                 MediaPipeHandsBackend,
             )
 
-            self._hand_backend = MediaPipeHandsBackend()
+            self._hand_backend = MediaPipeHandsBackend(models_dir=self._models_dir)
 
         self._hand_backend.initialize(self._device)
         self._initialized = True

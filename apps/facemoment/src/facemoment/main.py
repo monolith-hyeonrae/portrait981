@@ -50,6 +50,7 @@ class FacemomentApp(vp.App):
 
     def configure_modules(self, modules):
         from facemoment.algorithm.analyzers.highlight import HighlightFusion
+        from vpx.sdk.paths import get_models_dir
 
         names = list(modules) if modules else [
             "face.detect", "face.expression", "body.pose", "hand.gesture",
@@ -59,6 +60,13 @@ class FacemomentApp(vp.App):
             names.append("face.classify")
 
         resolved = super().configure_modules(names)
+
+        # Inject centralized models directory into analyzers
+        models_dir = get_models_dir()
+        for module in resolved:
+            if hasattr(module, "_models_dir"):
+                module._models_dir = models_dir
+
         resolved.append(HighlightFusion(
             cooldown_sec=self._cooldown, main_only=self._main_only,
         ))

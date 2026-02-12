@@ -369,6 +369,148 @@ class TestDecodeSingleOutputLayout:
         assert any(len(s) > 0 for s in s1)
 
 
+class TestSetupBatchSessionTransposeFix:
+    """Tests for _setup_batch_session fixing Transpose→Reshape pattern."""
+
+    def _build_scrfd_like_model(self):
+        """Build a minimal ONNX model that mimics SCRFD's detection head.
+
+        Conv [1,3,4,4] → [1,2,4,4] → Transpose perm=[2,3,0,1] → [4,4,1,2]
+        → Reshape [-1,1] → [32,1]
+
+        With batch=2 and WITHOUT fix:
+            [2,2,4,4] → Transpose [4,4,2,2] → Reshape [-1,1] → [64,1]
+            Data interleaved by spatial position (not per-image).
+        WITH fix (perm=[0,2,3,1]):
+            [2,2,4,4] → Transpose [2,4,4,2] → Reshape [-1,1] → [64,1]
+            Data grouped per-image: first 32 = img0, next 32 = img1.
+        """
+        import onnx
+        from onnx import TensorProto, numpy_helper, helper
+
+        X = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 4, 4])
+        Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [32, 1])
+
+        conv_w = numpy_helper.from_array(
+            np.ones((2, 3, 1, 1), dtype=np.float32), name="conv_w",
+        )
+        conv_node = helper.make_node("Conv", ["input", "conv_w"], ["conv_out"])
+
+        transpose_node = helper.make_node(
+            "Transpose", ["conv_out"], ["transposed"],
+            perm=[2, 3, 0, 1],
+        )
+
+        reshape_shape = numpy_helper.from_array(
+            np.array([-1, 1], dtype=np.int64), name="reshape_shape",
+        )
+        reshape_node = helper.make_node(
+            "Reshape", ["transposed", "reshape_shape"], ["output"],
+        )
+
+        graph = helper.make_graph(
+            [conv_node, transpose_node, reshape_node], "test_scrfd",
+            [X], [Y], [conv_w, reshape_shape],
+        )
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+    def test_transpose_perm_fixed_for_batch(self):
+        """Transpose perm=[2,3,0,1] feeding Reshape is changed to [0,2,3,1]."""
+        import onnx
+        import tempfile, os
+        from unittest.mock import MagicMock
+        from vpx.face_detect.backends.insightface import InsightFaceSCRFD
+
+        model = self._build_scrfd_like_model()
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as f:
+            onnx.save(model, f.name)
+            model_path = f.name
+
+        try:
+            backend = InsightFaceSCRFD()
+            backend._initialized = True
+            scrfd = MagicMock()
+            scrfd.model_file = model_path
+            scrfd.batched = False
+            scrfd.session.get_providers.return_value = ["CPUExecutionProvider"]
+            scrfd.output_names = ["output"]
+            app = MagicMock()
+            app.det_model = scrfd
+            backend._app = app
+
+            backend._setup_batch_session()
+            assert backend._batch_session is not None
+
+            # Create two different inputs
+            np.random.seed(123)
+            blob_a = np.random.randn(1, 3, 4, 4).astype(np.float32)
+            blob_b = np.random.randn(1, 3, 4, 4).astype(np.float32) + 5.0
+
+            # Run individually
+            out_a = backend._batch_session.run(None, {backend._batch_input_name: blob_a})[0]
+            out_b = backend._batch_session.run(None, {backend._batch_input_name: blob_b})[0]
+
+            # Run as batch
+            blob_ab = np.concatenate([blob_a, blob_b], axis=0)
+            out_batch = backend._batch_session.run(None, {backend._batch_input_name: blob_ab})[0]
+
+            anchors = 4 * 4 * 2  # H * W * num_filters = 32
+            assert out_batch.shape == (64, 1)
+
+            # With the fix, first 32 elements = img_a, next 32 = img_b
+            np.testing.assert_allclose(out_batch[:anchors], out_a, atol=1e-5)
+            np.testing.assert_allclose(out_batch[anchors:], out_b, atol=1e-5)
+        finally:
+            os.unlink(model_path)
+
+    def test_transpose_not_feeding_reshape_not_modified(self):
+        """Transpose nodes that don't feed into Reshape are left unchanged."""
+        import onnx
+        from onnx import TensorProto, numpy_helper, helper
+        import tempfile, os
+        from unittest.mock import MagicMock
+        from vpx.face_detect.backends.insightface import InsightFaceSCRFD
+
+        # Transpose [2,3,0,1] NOT followed by Reshape — should not be modified
+        X = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 2, 3, 4])
+        Y = helper.make_tensor_value_info("output", TensorProto.FLOAT, [3, 4, 1, 2])
+
+        transpose_node = helper.make_node(
+            "Transpose", ["input"], ["output"], perm=[2, 3, 0, 1],
+        )
+        graph = helper.make_graph(
+            [transpose_node], "test_no_fix", [X], [Y],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as f:
+            onnx.save(model, f.name)
+            model_path = f.name
+
+        try:
+            backend = InsightFaceSCRFD()
+            backend._initialized = True
+            scrfd = MagicMock()
+            scrfd.model_file = model_path
+            scrfd.batched = False
+            scrfd.session.get_providers.return_value = ["CPUExecutionProvider"]
+            scrfd.output_names = ["output"]
+            app = MagicMock()
+            app.det_model = scrfd
+            backend._app = app
+
+            backend._setup_batch_session()
+            assert backend._batch_session is not None
+
+            # With batch=1, output should still be [3,4,1,2] (original perm)
+            inp = np.arange(24, dtype=np.float32).reshape(1, 2, 3, 4)
+            result = backend._batch_session.run(None, {backend._batch_input_name: inp})[0]
+            expected = inp.transpose(2, 3, 0, 1)
+            np.testing.assert_array_equal(result, expected)
+        finally:
+            os.unlink(model_path)
+
+
 class TestDetectBatchSanityFallback:
     """Tests for detect_batch all-empty sanity check."""
 

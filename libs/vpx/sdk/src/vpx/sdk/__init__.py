@@ -19,6 +19,9 @@ from visualpath.core.error_policy import ErrorPolicy
 from visualpath.core.compat import check_compatibility, CompatibilityReport
 from visualpath.core.graph import toposort_modules
 
+# Model path utilities
+from vpx.sdk.paths import get_models_dir
+
 # Declarative visualization marks
 from vpx.sdk.marks import (
     DrawStyle,
@@ -48,6 +51,8 @@ __all__ = [
     "CompatibilityReport",
     # Graph utilities
     "toposort_modules",
+    # Model paths
+    "get_models_dir",
     # Visualization marks
     "DrawStyle",
     "Mark",
