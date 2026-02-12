@@ -16,7 +16,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "facemoment",
+    "momentscan",
     "visualbase",
     "visualpath",
     "visualpath-cli",
@@ -33,7 +33,7 @@ members = [
 overrides = [{ name = "onnxruntime", marker = "sys_platform == 'never'" }]
 
 [manifest.dependency-groups]
-dev = [{ name = "facemoment", extras = ["local", "dev"], editable = "apps/facemoment" }]
+dev = [{ name = "momentscan", extras = ["local", "dev"], editable = "apps/momentscan" }]
 
 [[package]]
 name = "absl-py"
@@ -1061,66 +1061,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/cc/28/c14e053b6762b1044
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/ea/53f2148663b321f21b5a606bd5f191517cf40b7072c0497d3c92c4a13b1e/executing-2.2.1-py2.py3-none-any.whl", hash = "sha256:760643d3452b4d777d295bb167ccc74c64a81df23fb5e08eff250c425a4b2017", size = 28317, upload-time = "2025-09-01T09:48:08.5Z" },
 ]
-
-[[package]]
-name = "facemoment"
-version = "0.1.0"
-source = { editable = "apps/facemoment" }
-dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "opencv-python" },
-    { name = "visualbase" },
-    { name = "visualpath", extra = ["isolation"] },
-    { name = "vpx-sdk" },
-]
-
-[package.optional-dependencies]
-body-pose = [
-    { name = "vpx-body-pose" },
-]
-dev = [
-    { name = "pytest" },
-]
-face-detect = [
-    { name = "vpx-face-detect" },
-]
-face-expression = [
-    { name = "vpx-face-expression" },
-]
-hand-gesture = [
-    { name = "vpx-hand-gesture" },
-]
-local = [
-    { name = "pathway" },
-    { name = "pyqt6" },
-    { name = "pyzmq" },
-    { name = "supervision" },
-    { name = "vpx-body-pose" },
-    { name = "vpx-face-detect" },
-    { name = "vpx-face-expression" },
-    { name = "vpx-hand-gesture" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "facemoment", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture"], marker = "extra == 'local'", editable = "apps/facemoment" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "opencv-python", specifier = ">=4.8.0" },
-    { name = "pathway", marker = "extra == 'local'", specifier = ">=0.8.0" },
-    { name = "pyqt6", marker = "extra == 'local'", specifier = ">=6.10.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
-    { name = "pyzmq", marker = "extra == 'local'", specifier = ">=25.0.0" },
-    { name = "supervision", marker = "extra == 'local'", specifier = ">=0.19.0" },
-    { name = "visualbase", editable = "libs/visualbase" },
-    { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
-    { name = "vpx-body-pose", marker = "extra == 'body-pose'", editable = "libs/vpx/plugins/body-pose" },
-    { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/plugins/face-detect" },
-    { name = "vpx-face-expression", marker = "extra == 'face-expression'", editable = "libs/vpx/plugins/face-expression" },
-    { name = "vpx-hand-gesture", marker = "extra == 'hand-gesture'", editable = "libs/vpx/plugins/hand-gesture" },
-    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
-]
-provides-extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "local", "dev"]
 
 [[package]]
 name = "fastapi"
@@ -2443,6 +2383,66 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/84/44/f4d18446eacb20ea11e82f133ea8f86e2bf2891785b67d9da8d0ab0ef525/ml_dtypes-0.5.4-cp314-cp314t-win_amd64.whl", hash = "sha256:4381fe2f2452a2d7589689693d3162e876b3ddb0a832cde7a414f8e1adf7eab1", size = 236612, upload-time = "2025-11-17T22:32:22.579Z" },
     { url = "https://files.pythonhosted.org/packages/ad/3f/3d42e9a78fe5edf792a83c074b13b9b770092a4fbf3462872f4303135f09/ml_dtypes-0.5.4-cp314-cp314t-win_arm64.whl", hash = "sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d", size = 168825, upload-time = "2025-11-17T22:32:23.766Z" },
 ]
+
+[[package]]
+name = "momentscan"
+version = "0.1.0"
+source = { editable = "apps/momentscan" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python" },
+    { name = "visualbase" },
+    { name = "visualpath", extra = ["isolation"] },
+    { name = "vpx-sdk" },
+]
+
+[package.optional-dependencies]
+body-pose = [
+    { name = "vpx-body-pose" },
+]
+dev = [
+    { name = "pytest" },
+]
+face-detect = [
+    { name = "vpx-face-detect" },
+]
+face-expression = [
+    { name = "vpx-face-expression" },
+]
+hand-gesture = [
+    { name = "vpx-hand-gesture" },
+]
+local = [
+    { name = "pathway" },
+    { name = "pyqt6" },
+    { name = "pyzmq" },
+    { name = "supervision" },
+    { name = "vpx-body-pose" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-face-expression" },
+    { name = "vpx-hand-gesture" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "momentscan", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture"], marker = "extra == 'local'", editable = "apps/momentscan" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "opencv-python", specifier = ">=4.8.0" },
+    { name = "pathway", marker = "extra == 'local'", specifier = ">=0.8.0" },
+    { name = "pyqt6", marker = "extra == 'local'", specifier = ">=6.10.2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "pyzmq", marker = "extra == 'local'", specifier = ">=25.0.0" },
+    { name = "supervision", marker = "extra == 'local'", specifier = ">=0.19.0" },
+    { name = "visualbase", editable = "libs/visualbase" },
+    { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
+    { name = "vpx-body-pose", marker = "extra == 'body-pose'", editable = "libs/vpx/plugins/body-pose" },
+    { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/plugins/face-detect" },
+    { name = "vpx-face-expression", marker = "extra == 'face-expression'", editable = "libs/vpx/plugins/face-expression" },
+    { name = "vpx-hand-gesture", marker = "extra == 'hand-gesture'", editable = "libs/vpx/plugins/hand-gesture" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+]
+provides-extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "local", "dev"]
 
 [[package]]
 name = "mpmath"

@@ -23,7 +23,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │  981파크 특화 레이어 (앱)                                │
 │  ┌─────────────┐  ┌──────────────────┐  ┌───────────┐  │
-│  │ facemoment  │→ │ appearance-vault │→ │ reportrait│  │
+│  │ momentscan  │→ │ appearance-vault │→ │ reportrait│  │
 │  │ (분석 앱)   │  │ (저장)           │  │ (AI 변환) │  │
 │  └─────────────┘  └──────────────────┘  └───────────┘  │
 │                              │                          │
@@ -50,7 +50,7 @@
 | `vpx-face-expression` | 범용 플러그인 | - | HSEmotion | ✅ 완료 |
 | `vpx-body-pose` | 범용 플러그인 | - | YOLO-Pose | ✅ 완료 |
 | `vpx-hand-gesture` | 범용 플러그인 | - | MediaPipe Hands | ✅ 완료 |
-| `facemoment` | 981파크 앱 | `facemoment` | 얼굴/장면 분석, 하이라이트 | ✅ 완료 (327 tests) |
+| `momentscan` | 981파크 앱 | `momentscan` | 얼굴/장면 분석, 하이라이트 | ✅ 완료 (327 tests) |
 | `appearance-vault` | 981파크 앱 | `vault` | member_id별 저장/검색 | ⬜ 예정 |
 | `reportrait` | 981파크 앱 | `reportrait` | I2I/I2V AI 재해석 | ⬜ 예정 |
 | `portrait981` | 981파크 앱 | `p981` | 전체 파이프라인 통합 | ⬜ 예정 |
@@ -76,7 +76,7 @@ portrait981/                        ← repo root (uv workspace)
 │           ├── body-pose/          # YOLO-Pose
 │           └── hand-gesture/       # MediaPipe Hands
 ├── apps/
-│   └── facemoment/                 # 얼굴/장면 분석 앱
+│   └── momentscan/                 # 얼굴/장면 분석 앱
 ├── docs/
 │   ├── index.md                    # 문서 인덱스
 │   ├── architecture.md             # 아키텍처
@@ -101,15 +101,15 @@ portrait981/                        ← repo root (uv workspace)
 |-------|--------|------|------|
 | 1 | visualbase | FileSource, Frame, Sampler | ✅ |
 | 2 | visualbase | FileBuffer, Clipper, Trigger | ✅ |
-| 3 | facemoment | MomentDetector 스켈레톤 | ✅ |
-| 4 | facemoment | FaceExtractor, PoseExtractor, QualityExtractor | ✅ |
-| 5 | facemoment | HighlightFusion, 클립 추출 파이프라인 | ✅ |
-| 6 | facemoment | HSEmotionBackend, benchmark CLI | ✅ |
+| 3 | momentscan | MomentDetector 스켈레톤 | ✅ |
+| 4 | momentscan | FaceExtractor, PoseExtractor, QualityExtractor | ✅ |
+| 5 | momentscan | HighlightFusion, 클립 추출 파이프라인 | ✅ |
+| 6 | momentscan | HSEmotionBackend, benchmark CLI | ✅ |
 | 7 | visualbase | CameraSource, RTSPSource, RingBuffer, CLI | ✅ |
 
 ### Phase 7.5: 패키지 Rename 및 GitHub 업로드 ✅ 완료
 
-- ✅ portrait981-moment → facemoment rename
+- ✅ portrait981-moment → momentscan rename
 - ✅ 테스트 검증
 - ✅ Git 초기화 완료
 
@@ -118,9 +118,9 @@ portrait981/                        ← repo root (uv workspace)
 | 단계 | 패키지 | 내용 | 상태 |
 |------|--------|------|------|
 | 8.0 | visualbase | IPC 인터페이스 추상화 (interfaces.py, factory.py) | ✅ |
-| 8.1 | facemoment | ExtractorProcess를 인터페이스 의존으로 변경 | ✅ |
-| 8.2 | facemoment | FusionProcess를 인터페이스 의존으로 변경 | ✅ |
-| 8.3 | facemoment | ExtractorOrchestrator 구현 (스레드 병렬) | ✅ |
+| 8.1 | momentscan | ExtractorProcess를 인터페이스 의존으로 변경 | ✅ |
+| 8.2 | momentscan | FusionProcess를 인터페이스 의존으로 변경 | ✅ |
+| 8.3 | momentscan | ExtractorOrchestrator 구현 (스레드 병렬) | ✅ |
 | 8.4 | visualbase | IngestProcess 정리 | ⬜ 리팩토링 필요 |
 | 8.5 | both | CLI 확장 및 통합 테스트 | ⬜ 예정 |
 | 8.6 | visualbase | ZeroMQ Transport | ✅ |
@@ -132,14 +132,14 @@ portrait981/                        ← repo root (uv workspace)
 
 | 단계 | 패키지 | 내용 | 상태 |
 |------|--------|------|------|
-| 9.0 | facemoment | camera_gaze / passenger_interaction 트리거 | ✅ |
-| 9.0 | facemoment | GestureExtractor (V사인, 엄지척) | ✅ |
-| 9.0 | facemoment | CLI --gokart 플래그 | ✅ |
-| 10 | facemoment | Observability 시스템 | ✅ |
-| 11 | facemoment | 의존성 분리 (Worker별 venv) | ✅ |
+| 9.0 | momentscan | camera_gaze / passenger_interaction 트리거 | ✅ |
+| 9.0 | momentscan | GestureExtractor (V사인, 엄지척) | ✅ |
+| 9.0 | momentscan | CLI --gokart 플래그 | ✅ |
+| 10 | momentscan | Observability 시스템 | ✅ |
+| 11 | momentscan | 의존성 분리 (Worker별 venv) | ✅ |
 | 12 | visualpath | 플랫폼 로직 분리 (범용) | ✅ |
 | 13 | visualpath | IPC 프로세스 이동 | ✅ |
-| 14 | facemoment | PipelineOrchestrator (독립 앱) | ✅ |
+| 14 | momentscan | PipelineOrchestrator (독립 앱) | ✅ |
 
 ### Phase 15: 모노레포 구조화 + Analyzer 독립화 ✅ 완료 (2026-02-07 ~ 02-09)
 
@@ -191,16 +191,16 @@ Module boundary 설계 및 vpx 인프라 패키지 추가.
   - 다른 프로젝트에서 재사용 가능
   - 비즈니스 로직 없음
   - on_trigger 콜백만 제공 (Action 처리 안 함)
-- **특화 레이어**: facemoment, appearance-vault, reportrait, portrait981
+- **특화 레이어**: momentscan, appearance-vault, reportrait, portrait981
   - 981파크 비즈니스 로직 포함
   - on_trigger → 클립 저장 등 Action 처리
 
 ### 패키지 의존 방향
 ```
-visualpath → vpx-sdk → vpx-* → facemoment (app)
+visualpath → vpx-sdk → vpx-* → momentscan (app)
 ```
-- Analyzer는 `vpx-sdk`에 의존, `facemoment`에 의존하지 않음
-- facemoment는 `vpx-*`를 optional extras로 참조
+- Analyzer는 `vpx-sdk`에 의존, `momentscan`에 의존하지 않음
+- momentscan는 `vpx-*`를 optional extras로 참조
 
 ### Analyzer 이름 규칙
 `domain.action` 점표기법 사용. 패키지명도 일치:
@@ -209,11 +209,11 @@ visualpath → vpx-sdk → vpx-* → facemoment (app)
 |----------|--------|--------|
 | `face.detect` | vpx-face-detect | `vpx.face_detect` |
 | `face.expression` | vpx-face-expression | `vpx.face_expression` |
-| `face.classify` | facemoment core | `facemoment.algorithm.analyzers.face_classifier` |
+| `face.classify` | momentscan core | `momentscan.algorithm.analyzers.face_classifier` |
 | `body.pose` | vpx-body-pose | `vpx.body_pose` |
 | `hand.gesture` | vpx-hand-gesture | `vpx.hand_gesture` |
-| `frame.quality` | facemoment core | `facemoment.algorithm.analyzers.quality` |
-| `mock.dummy` | facemoment core | `facemoment.algorithm.analyzers.dummy` |
+| `frame.quality` | momentscan core | `momentscan.algorithm.analyzers.quality` |
+| `mock.dummy` | momentscan core | `momentscan.algorithm.analyzers.dummy` |
 
 ### IPC 방식
 - FIFO/UDS 기본 지원
@@ -221,12 +221,12 @@ visualpath → vpx-sdk → vpx-* → facemoment (app)
 - 인터페이스 추상화로 교체 가능
 
 ### 실행 경로
-- 단일 실행 경로: `fm.run()` → `build_graph(isolation_config)` → `Backend.execute()`
+- 단일 실행 경로: `ms.run()` → `build_graph(isolation_config)` → `Backend.execute()`
 - `WorkerBackend`이 isolated 모듈을 `WorkerModule`로 래핑 후 `SimpleBackend`에 위임
-- `FacemomentPipeline`, `PipelineOrchestrator`는 deprecated (unified path로 위임)
+- `MomentscanPipeline`, `PipelineOrchestrator`는 deprecated (unified path로 위임)
 
 ### Fanout 위치
-- Library 모드: facemoment 내부 스레드 병렬
+- Library 모드: momentscan 내부 스레드 병렬
 - 독립 프로세스 모드: visualbase가 FIFO×N 분배
 
 ---
@@ -242,7 +242,7 @@ visualpath → vpx-sdk → vpx-* → facemoment (app)
 | visualpath-cli | `libs/visualpath/cli/tests/` | 45 |
 | vpx-sdk | `libs/vpx/sdk/tests/` | 43 |
 | vpx-runner | `libs/vpx/runner/tests/` | 55 |
-| facemoment | `apps/facemoment/tests/` | 326 |
+| momentscan | `apps/momentscan/tests/` | 326 |
 | **합계** | | **1,150** |
 
 ---
@@ -263,11 +263,11 @@ uv run pytest libs/visualpath/pathway/tests/ -v
 uv run pytest libs/visualpath/cli/tests/ -v
 uv run pytest libs/vpx/sdk/tests/ -v
 uv run pytest libs/vpx/runner/tests/ -v
-uv run pytest apps/facemoment/tests/ -v
+uv run pytest apps/momentscan/tests/ -v
 
 # E2E 테스트
-uv run facemoment process video.mp4 -o ./clips --fps 10
+uv run momentscan process video.mp4 -o ./clips --fps 10
 
 # GR차량 모드 테스트
-uv run facemoment process video.mp4 --gokart -o ./clips
+uv run momentscan process video.mp4 --gokart -o ./clips
 ```

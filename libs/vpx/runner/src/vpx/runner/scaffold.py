@@ -1,4 +1,4 @@
-"""Scaffold a new vpx module (plugin or facemoment-internal).
+"""Scaffold a new vpx module (plugin or momentscan-internal).
 
 Usage from CLI:
     vpx new face.landmark
@@ -136,7 +136,7 @@ __all__ = [{all_str}]
 '''
 
 
-def _tpl_init_internal(names: dict, app_python: str = "facemoment") -> str:
+def _tpl_init_internal(names: dict, app_python: str = "momentscan") -> str:
     pkg = f'{app_python}.algorithm.analyzers.{names["python_module"]}'
     return f'''\
 from {pkg}.analyzer import {names["class_name"]}
@@ -208,7 +208,7 @@ class {names["class_name"]}(Module):
 '''
 
 
-def _tpl_analyzer_internal(names: dict, depends: List[str], app_python: str = "facemoment") -> str:
+def _tpl_analyzer_internal(names: dict, depends: List[str], app_python: str = "momentscan") -> str:
     depends_attr = ""
     if depends:
         deps_str = ", ".join(f'"{d}"' for d in depends)
@@ -456,7 +456,7 @@ def scaffold_internal(
     depends: Optional[List[str]] = None,
     dry_run: bool = False,
     repo_root: Optional[Path] = None,
-    app_name: str = "facemoment",
+    app_name: str = "momentscan",
 ) -> List[Path]:
     """Scaffold an app-internal analyzer sub-package.
 
@@ -465,7 +465,7 @@ def scaffold_internal(
         depends: Dependency module names.
         dry_run: Print file list without creating anything.
         repo_root: Repository root override.
-        app_name: Target app name (default: 'facemoment').
+        app_name: Target app name (default: 'momentscan').
 
     Returns list of created (or would-be-created) file paths.
     """

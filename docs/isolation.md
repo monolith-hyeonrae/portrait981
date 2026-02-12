@@ -1,6 +1,6 @@
 # ML 의존성 충돌과 프로세스 격리
 
-> facemoment 개발 과정에서 발견된 두 가지 실제 충돌 문제와,
+> momentscan 개발 과정에서 발견된 두 가지 실제 충돌 문제와,
 > visualpath의 격리 메커니즘으로 해결한 과정을 기록합니다.
 
 ## 목차
@@ -16,7 +16,7 @@
 
 ### 배경
 
-facemoment의 얼굴 분석은 두 단계로 구성됩니다:
+momentscan의 얼굴 분석은 두 단계로 구성됩니다:
 
 | 단계 | 라이브러리 | onnxruntime 의존 |
 |------|-----------|-----------------|
@@ -89,7 +89,7 @@ extractors:
 ```
 
 ```python
-# facemoment 코드에서는 격리를 의식할 필요 없음
+# momentscan 코드에서는 격리를 의식할 필요 없음
 class ExpressionExtractor(BaseExtractor):
     depends = ["face_detect"]
 
@@ -286,7 +286,7 @@ pyzmq 없음 → torch 먼저 초기화 (순서 워크어라운드)
 
 ## 3. 두 문제의 비교
 
-facemoment에서 발견된 두 충돌은 서로 다른 계층에서 발생하며, 서로 다른 격리 수준으로 해결됩니다:
+momentscan에서 발견된 두 충돌은 서로 다른 계층에서 발생하며, 서로 다른 격리 수준으로 해결됩니다:
 
 ```
 충돌 계층                해결에 필요한 격리
@@ -343,7 +343,7 @@ VenvWorker       pip 패키지 충돌 (사례 1)             높음 (별도 venv
 각 분석 앱이 독자적으로 격리를 구현해야 합니다:
 
 ```
-facemoment:  자체 subprocess 관리, ZMQ 통신, 직렬화, venv 관리...
+momentscan:  자체 subprocess 관리, ZMQ 통신, 직렬화, venv 관리...
 plugin-ocr:  또 자체 subprocess 관리, ZMQ 통신, 직렬화...
 plugin-scene: 또 자체 subprocess 관리...
 ```
@@ -371,7 +371,7 @@ visualpath (플랫폼)
 
 ### 앱 코드는 격리를 모름
 
-facemoment의 extractor 코드는 자신이 어떤 격리 수준에서 실행되는지 알 필요가 없습니다:
+momentscan의 extractor 코드는 자신이 어떤 격리 수준에서 실행되는지 알 필요가 없습니다:
 
 ```python
 class PoseExtractor(BaseExtractor):

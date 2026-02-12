@@ -27,9 +27,9 @@
 
 | 모듈 | 제공 | 사용처 |
 |------|------|--------|
-| `Frame` | 비디오 프레임 + 타임스탬프 | visualpath, facemoment |
+| `Frame` | 비디오 프레임 + 타임스탬프 | visualpath, momentscan |
 | `RingBuffer` | 메모리 효율적 버퍼링 | 클립 추출 |
-| `Clipper` | 프레임 범위 추출 | facemoment Action |
+| `Clipper` | 프레임 범위 추출 | momentscan Action |
 | `Trigger` | 이벤트 신호 타입 | visualpath Fusion |
 | `IPC` | 프로세스 간 통신 | 분산 처리 |
 
@@ -99,4 +99,4 @@ uv run pytest libs/visualbase/tests/ -v            # 182 tests
 ## 관련 패키지
 
 - **visualpath**: visualbase를 기반으로 분석 프레임워크 제공
-- **facemoment**: visualbase + visualpath를 사용하는 앱
+- **momentscan**: visualbase + visualpath를 사용하는 앱

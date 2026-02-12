@@ -23,12 +23,12 @@ def _get_model_path(models_dir: Optional[Path] = None) -> Path:
 
     Args:
         models_dir: Directory to store the model. Falls back to
-            ``~/.cache/facemoment/models`` when *None*.
+            ``~/.cache/momentscan/models`` when *None*.
     """
     if models_dir is not None:
         target_dir = models_dir
     else:
-        target_dir = Path.home() / ".cache" / "facemoment" / "models"
+        target_dir = Path.home() / ".cache" / "momentscan" / "models"
     target_dir.mkdir(parents=True, exist_ok=True)
 
     model_path = target_dir / "hand_landmarker.task"

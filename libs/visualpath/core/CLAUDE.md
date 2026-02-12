@@ -34,7 +34,7 @@
 │  └────────────┘  └─────────────────┘  └─────────────┘  │
 └─────────────────────────────────────────────────────────┘
                               │
-                    앱에서 사용 (facemoment 등)
+                    앱에서 사용 (momentscan 등)
 ```
 
 ### 패키지 분리 구조
@@ -225,7 +225,7 @@ def run_pipeline(source, on_trigger: Callable[[Trigger], None]):
         if result.should_trigger:
             on_trigger(result.metadata["trigger"])  # 앱에서 처리
 
-# 앱(facemoment)에서 Action 정의
+# 앱(momentscan)에서 Action 정의
 def handle_trigger(trigger):
     clip = clipper.extract(trigger.frame_id)
     save_clip(clip)
@@ -241,8 +241,8 @@ uv run pytest ../visualpath-isolation/tests/ -v                 # isolation (135
 uv run pytest ../visualpath-pathway/tests/ -v                 # pathway (80 tests)
 uv run pytest ../visualpath-cli/tests/ -v                     # cli (45 tests)
 
-# facemoment 통합 테스트
-cd ~/repo/monolith/facemoment && uv run pytest tests/ -v     # 329 tests
+# momentscan 통합 테스트
+cd ~/repo/monolith/momentscan && uv run pytest tests/ -v     # 329 tests
 ```
 
 ## 의존성
@@ -268,7 +268,7 @@ uv pip install -e . -e ../visualpath-isolation -e ../visualpath-pathway -e ../vi
 ## 관련 패키지
 
 - **visualbase**: 미디어 I/O 기반
-- **facemoment**: visualpath를 사용하는 981파크 특화 앱
+- **momentscan**: visualpath를 사용하는 981파크 특화 앱
 
 ---
 

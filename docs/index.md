@@ -14,7 +14,7 @@
 
 | 문서 | 설명 |
 |------|------|
-| [algorithms.md](algorithms.md) | facemoment 하이라이트 감지 알고리즘 (표정 급변, 품질 게이트, 프레임 스코어링 등 9종) |
+| [algorithms.md](algorithms.md) | momentscan 하이라이트 감지 알고리즘 (표정 급변, 품질 게이트, 프레임 스코어링 등 9종) |
 
 ## 프로젝트 관리
 
@@ -39,4 +39,4 @@
 |--------|-----------|
 | portrait981 (root) | [CLAUDE.md](../CLAUDE.md) |
 | visualpath core | [libs/visualpath/core/CLAUDE.md](../libs/visualpath/core/CLAUDE.md) |
-| facemoment | [apps/facemoment/CLAUDE.md](../apps/facemoment/CLAUDE.md) |
+| momentscan | [apps/momentscan/CLAUDE.md](../apps/momentscan/CLAUDE.md) |

@@ -999,8 +999,8 @@ class TestGroupByDependencyLevel:
         levels = _group_by_dependency_level([])
         assert levels == []
 
-    def test_facemoment_typical_layout(self):
-        """Typical facemoment layout: 4 independent + 2 dependent + 1 final."""
+    def test_momentscan_typical_layout(self):
+        """Typical momentscan layout: 4 independent + 2 dependent + 1 final."""
         from visualpath.backends.pathway.operators import (
             _toposort_modules,
             _group_by_dependency_level,

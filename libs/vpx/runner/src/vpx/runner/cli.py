@@ -72,8 +72,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     new_p.add_argument(
         "--app",
-        default="facemoment",
-        help="Target app for --internal modules (default: facemoment)",
+        default="momentscan",
+        help="Target app for --internal modules (default: momentscan)",
     )
     new_p.add_argument(
         "--depends",

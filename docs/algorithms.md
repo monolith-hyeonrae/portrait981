@@ -1,6 +1,6 @@
 # 문제와 해결책
 
-FaceMoment에서 하이라이트 순간을 감지하기 위해 사용하는 알고리즘과 기술을 설명합니다.
+MomentScan에서 하이라이트 순간을 감지하기 위해 사용하는 알고리즘과 기술을 설명합니다.
 
 ## 목차
 
@@ -687,10 +687,10 @@ def select_around_triggers(scored_frames, trigger_times_ns,
 ### 사용 예시
 
 ```python
-from facemoment.algorithm.analyzers.frame_scoring import (
+from momentscan.algorithm.analyzers.frame_scoring import (
     FrameScorer, ScoringConfig,
 )
-from facemoment.algorithm.frame_selector import (
+from momentscan.algorithm.frame_selector import (
     FrameSelector, ScoredFrame, SelectionConfig,
 )
 

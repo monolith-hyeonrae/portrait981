@@ -61,7 +61,7 @@ class InsightFaceSCRFD:
             from insightface.app import FaceAnalysis
             import onnxruntime as ort
 
-            # [5] stdout 억제 — see facemoment/cli/utils.py module docstring
+            # [5] stdout 억제 — see momentscan/cli/utils.py module docstring
             ort.set_default_logger_severity(3)  # ONNX Python 로거 ERROR only
 
             # Check available ONNX providers

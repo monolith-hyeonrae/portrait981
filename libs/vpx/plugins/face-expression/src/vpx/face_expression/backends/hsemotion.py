@@ -72,7 +72,7 @@ class HSEmotionBackend:
         try:
             from hsemotion_onnx.facial_emotions import HSEmotionRecognizer
 
-            # [5] redirect_stdout — see facemoment/cli/utils.py module docstring
+            # [5] redirect_stdout — see momentscan/cli/utils.py module docstring
             with contextlib.redirect_stdout(io.StringIO()):
                 self._model = HSEmotionRecognizer(model_name=self._model_name)
             self._initialized = True

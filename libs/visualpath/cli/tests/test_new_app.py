@@ -16,7 +16,7 @@ members = [
     "libs/vpx/plugins/face-detect",
     "libs/vpx/plugins/hand-gesture",
     "libs/vpx/sdk",
-    "apps/facemoment",
+    "apps/momentscan",
 ]
 """
 
@@ -135,10 +135,10 @@ class TestAppWorkspaceRegistration:
         content = (repo_with_apps / "pyproject.toml").read_text()
 
         assert '"apps/reportrait"' in content
-        # Should be after existing apps/facemoment
+        # Should be after existing apps/momentscan
         lines = content.splitlines()
         app_lines = [l.strip().strip('",') for l in lines if '"apps/' in l]
-        assert app_lines.index("apps/reportrait") > app_lines.index("apps/facemoment")
+        assert app_lines.index("apps/reportrait") > app_lines.index("apps/momentscan")
 
     def test_idempotent_registration(self, repo_with_apps):
         scaffold_app("reportrait", repo_root=repo_with_apps)

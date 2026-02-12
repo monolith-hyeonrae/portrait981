@@ -35,7 +35,7 @@
           ┌────────────────┼────────────────┐
           ▼                ▼                ▼
     ┌──────────┐    ┌──────────┐    ┌──────────┐
-    │ vpx-*    │    │facemoment│    │ 앱/플러그 │
+    │ vpx-*    │    │momentscan│    │ 앱/플러그 │
     │ plugins  │    │  (앱)    │    │  인 확장  │
     │  - face  │    │  - CLI   │    │          │
     │  - pose  │    │  - 스코링│    │          │
@@ -51,7 +51,7 @@
 | **Platform** | visualpath (4패키지) | FlowGraph, Module, 실행 백엔드, Worker 격리 | visualbase |
 | **SDK** | vpx-sdk | Module SDK, 공유 타입/프로토콜, 테스트 하네스 | visualpath |
 | **Plugin** | vpx-face-detect 등 | ML 분석 모듈 구현 | vpx-sdk, ML libs |
-| **App** | facemoment 등 | 비즈니스 로직, CLI, 클립 추출 | visualpath, vpx-* |
+| **App** | momentscan 등 | 비즈니스 로직, CLI, 클립 추출 | visualpath, vpx-* |
 
 ---
 

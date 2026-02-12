@@ -15,7 +15,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │  981파크 특화 레이어                                     │
 │  ┌─────────────┐  ┌──────────────────┐  ┌───────────┐  │
-│  │ facemoment  │→ │ appearance-vault │→ │ reportrait│  │
+│  │ momentscan  │→ │ appearance-vault │→ │ reportrait│  │
 │  │ (분석 앱)   │  │ (저장)           │  │ (AI 변환) │  │
 │  └─────────────┘  └──────────────────┘  └───────────┘  │
 │                              │                          │
@@ -34,7 +34,7 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-face-expression  (HSEmotion, onnxruntime CPU)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
-      → facemoment (core: CLI, analyzers, monitoring)
+      → momentscan (core: CLI, analyzers, monitoring)
       → portrait981 (통합 오케스트레이터, 미구현)
 ```
 
@@ -59,7 +59,7 @@ portrait981/                    ← repo root
 │           ├── body-pose/      # YOLO-Pose
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
-│   └── facemoment/             # 얼굴/장면 분석 core
+│   └── momentscan/             # 얼굴/장면 분석 core
 ├── docs/
 │   ├── ROADMAP.md
 │   └── planning/
@@ -84,7 +84,7 @@ portrait981/                    ← repo root
 | vpx-hand-gesture | `libs/vpx/plugins/hand-gesture/` | 제스처 감지 |
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
 | vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
-| facemoment | `apps/facemoment/` | 얼굴/장면 분석 core |
+| momentscan | `apps/momentscan/` | 얼굴/장면 분석 core |
 
 ## Namespace Package 패턴
 
@@ -93,10 +93,10 @@ portrait981/                    ← repo root
 **`vpx` namespace** (4개 analyzer + sdk + runner + viz 패키지):
 - 각 `libs/vpx/*/src/vpx/__init__.py`에 `pkgutil.extend_path` 사용
 
-**`facemoment` namespace** (core 패키지):
-- `facemoment/__init__.py`
-- `facemoment/algorithm/__init__.py`
-- `facemoment/algorithm/analyzers/__init__.py` (vpx에서 re-import)
+**`momentscan` namespace** (core 패키지):
+- `momentscan/__init__.py`
+- `momentscan/algorithm/__init__.py`
+- `momentscan/algorithm/analyzers/__init__.py` (vpx에서 re-import)
 
 ## Import 경로
 
@@ -115,11 +115,11 @@ from vpx.face_expression import ExpressionAnalyzer
 from vpx.body_pose import PoseAnalyzer
 from vpx.hand_gesture import GestureAnalyzer
 
-# facemoment-specific (vpx 플러그인 구조)
-from facemoment.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
-from facemoment.algorithm.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
-from facemoment.algorithm.analyzers.quality import QualityAnalyzer
-from facemoment.algorithm.analyzers.quality import QualityOutput
+# momentscan-specific (vpx 플러그인 구조)
+from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
+from momentscan.algorithm.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
+from momentscan.algorithm.analyzers.quality import QualityAnalyzer
+from momentscan.algorithm.analyzers.quality import QualityOutput
 
 # DummyAnalyzer (visualpath core, 테스트 전용)
 from visualpath.core import DummyAnalyzer
@@ -130,7 +130,7 @@ from visualpath.core import DummyAnalyzer
 ```bash
 cd /home/hyeonrae/repo/monolith/portrait981
 uv sync --all-packages --all-extras   # 전체 workspace 동기화
-uv run pytest apps/facemoment/tests/ -v    # facemoment 테스트
+uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트
 ```
 
 ## vpx CLI
@@ -147,7 +147,7 @@ vpx run face.detect,face.expression --input video.mp4 --fps 5
 vpx new face.landmark                          # vpx 플러그인 생성
 vpx new face.landmark --depends face.detect    # 의존 모듈 지정
 vpx new face.landmark --no-backend             # backends/ 생략
-vpx new scene.transition --internal            # facemoment 내부 모듈
+vpx new scene.transition --internal            # momentscan 내부 모듈
 vpx new face.landmark --dry-run                # 미리보기
 ```
 

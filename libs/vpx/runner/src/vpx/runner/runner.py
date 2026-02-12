@@ -1,7 +1,7 @@
 """LiteRunner - Lightweight analyzer execution engine.
 
 Runs vpx modules on a video source without requiring the full
-facemoment pipeline. Handles dependency resolution, topological
+momentscan pipeline. Handles dependency resolution, topological
 sorting, and lifecycle management.
 
 Example:

@@ -34,7 +34,7 @@ class WorkerBackend(ExecutionBackend):
     The wrapped graph is then executed by SimpleBackend.
 
     This allows the single execution path:
-        fm.run() → build_graph(isolation) → WorkerBackend.execute()
+        ms.run() → build_graph(isolation) → WorkerBackend.execute()
 
     Example:
         >>> from visualpath.backends.worker import WorkerBackend

@@ -96,8 +96,8 @@ class TestScaffoldInternalDryRun:
     def test_dry_run_does_not_create_files(self, repo):
         scaffold_internal("scene.transition", dry_run=True, repo_root=repo)
         pkg_dir = (
-            repo / "apps" / "facemoment" / "src"
-            / "facemoment" / "algorithm" / "analyzers" / "scene_transition"
+            repo / "apps" / "momentscan" / "src"
+            / "momentscan" / "algorithm" / "analyzers" / "scene_transition"
         )
         assert not pkg_dir.exists()
 
@@ -108,7 +108,7 @@ class TestScaffoldInternalDryRun:
         # Paths should point to the custom app
         path_strs = [str(p) for p in paths]
         assert any("apps/reportrait" in s for s in path_strs)
-        assert not any("apps/facemoment" in s for s in path_strs)
+        assert not any("apps/momentscan" in s for s in path_strs)
 
 
 class TestScaffoldPluginCreatesFiles:
@@ -231,27 +231,27 @@ class TestScaffoldInternalCreatesFiles:
         scaffold_internal("scene.transition", repo_root=repo)
 
         content = (
-            repo / "apps" / "facemoment" / "src"
-            / "facemoment" / "algorithm" / "analyzers" / "scene_transition"
+            repo / "apps" / "momentscan" / "src"
+            / "momentscan" / "algorithm" / "analyzers" / "scene_transition"
             / "__init__.py"
         ).read_text()
 
         assert "SceneTransitionAnalyzer" in content
         assert "SceneTransitionOutput" in content
-        assert "facemoment.algorithm.analyzers.scene_transition" in content
+        assert "momentscan.algorithm.analyzers.scene_transition" in content
 
     def test_internal_analyzer_uses_app_import_path(self, repo):
         """Internal module analyzer.py should use app import path, not vpx.*."""
         scaffold_internal("scene.transition", repo_root=repo)
 
         content = (
-            repo / "apps" / "facemoment" / "src"
-            / "facemoment" / "algorithm" / "analyzers" / "scene_transition"
+            repo / "apps" / "momentscan" / "src"
+            / "momentscan" / "algorithm" / "analyzers" / "scene_transition"
             / "analyzer.py"
         ).read_text()
 
         # Should import from app path, NOT vpx path
-        assert "facemoment.algorithm.analyzers.scene_transition.output" in content
+        assert "momentscan.algorithm.analyzers.scene_transition.output" in content
         assert "vpx.scene_transition" not in content
 
     def test_internal_does_not_modify_workspace(self, repo):
@@ -294,7 +294,7 @@ class TestScaffoldInternalCustomApp:
         ).read_text()
 
         assert "reportrait.algorithm.analyzers.scene_transition" in content
-        assert "facemoment" not in content
+        assert "momentscan" not in content
 
     def test_custom_app_analyzer_import_path(self, repo):
         """Analyzer should import from app path, not vpx.*."""
@@ -309,7 +309,7 @@ class TestScaffoldInternalCustomApp:
 
         assert "reportrait.algorithm.analyzers.scene_transition.output" in content
         assert "vpx.scene_transition" not in content
-        assert "facemoment" not in content
+        assert "momentscan" not in content
 
     def test_hyphenated_app_name(self, repo):
         scaffold_internal(
@@ -464,7 +464,7 @@ class TestCLINewParser:
 
         parser = _build_parser()
         args = parser.parse_args(["new", "scene.transition", "--internal"])
-        assert args.app == "facemoment"
+        assert args.app == "momentscan"
 
     def test_parse_all_flags(self):
         from vpx.runner.cli import _build_parser

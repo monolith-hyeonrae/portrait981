@@ -12,7 +12,7 @@ members = [
     "libs/vpx/sdk",
     "libs/vpx/runner",
     "libs/vpx/viz",
-    "apps/facemoment",
+    "apps/momentscan",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.
@@ -20,11 +20,11 @@ members = [
 # so this override is unnecessary (package isolation resolves the conflict).
 [tool.uv]
 dev-dependencies = [
-    "facemoment[local,dev]",
+    "momentscan[local,dev]",
 ]
 override-dependencies = [
     "onnxruntime ; sys_platform == 'never'",
 ]
 
 [tool.uv.sources]
-facemoment = { workspace = true }
+momentscan = { workspace = true }
