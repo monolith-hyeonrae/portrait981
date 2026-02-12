@@ -102,7 +102,8 @@ def run_debug(args):
         graph = WorkerBackend()._wrap_isolated_modules(graph)
 
     # Initialize graph (starts worker processes → PIDs available)
-    executor = GraphExecutor(graph)
+    batch_size = getattr(args, 'batch_size', 1)
+    executor = GraphExecutor(graph, batch_size=batch_size)
     executor.initialize()
 
     # --- Print header (after init so we have PIDs) ---
@@ -126,7 +127,8 @@ def run_debug(args):
     print()
     print(f"{BOLD}{'Debug':<10}{RESET}{args.path}")
     print(f"{_}{DIM}{source_frames} frames · {source_fps:.1f} fps · {ITALIC}{analyzer_label}{RESET}")
-    print(f"{_}{DIM}backend: {backend} · window: {'on' if show_window else 'off'} · ROI: {roi_pct}{RESET}")
+    batch_label = f" · batch: {batch_size}" if batch_size > 1 else ""
+    print(f"{_}{DIM}backend: {backend} · window: {'on' if show_window else 'off'} · ROI: {roi_pct}{batch_label}{RESET}")
     print()
 
     # --- Analyzer table ---
@@ -189,11 +191,37 @@ def run_debug(args):
     try:
         vb, source, stream = create_video_stream(args.path, fps=int(args.fps))
         try:
-            for frame in stream:
-                frame_count += 1
-                terminal_results = executor.process(frame)
-                if not handler(frame, terminal_results):
-                    break
+            if batch_size <= 1:
+                # Frame-by-frame (original path)
+                for frame in stream:
+                    frame_count += 1
+                    terminal_results = executor.process(frame)
+                    if not handler(frame, terminal_results):
+                        break
+            else:
+                # Batch collection
+                batch_frames = []
+                stopped = False
+                for frame in stream:
+                    frame_count += 1
+                    batch_frames.append(frame)
+
+                    if len(batch_frames) >= batch_size:
+                        batch_results = executor.process_batch(batch_frames)
+                        for bf, br in zip(batch_frames, batch_results):
+                            if not handler(bf, br):
+                                stopped = True
+                                break
+                        batch_frames = []
+                        if stopped:
+                            break
+
+                # Flush remaining
+                if batch_frames and not stopped:
+                    batch_results = executor.process_batch(batch_frames)
+                    for bf, br in zip(batch_frames, batch_results):
+                        if not handler(bf, br):
+                            break
         finally:
             vb.disconnect()
 

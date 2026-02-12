@@ -9,13 +9,13 @@ SimpleInterpreter to interpret each node's spec. The executor handles:
 This is a convenience wrapper around FlowGraph + SimpleInterpreter.
 """
 
-from collections import deque
+from collections import defaultdict, deque
 from typing import Any, Callable, List, Optional, TYPE_CHECKING
 
 from visualpath.flow.node import FlowData
 from visualpath.flow.graph import FlowGraph
 from visualpath.backends.simple.interpreter import SimpleInterpreter, DebugHook
-from visualpath.flow.specs import SourceSpec
+from visualpath.flow.specs import SourceSpec, ModuleSpec
 
 if TYPE_CHECKING:
     from visualbase import Frame
@@ -23,6 +23,15 @@ if TYPE_CHECKING:
 
 class GraphExecutor:
     """Executes a FlowGraph using SimpleInterpreter.
+
+    Args:
+        graph: FlowGraph to execute.
+        on_trigger: Optional trigger callback.
+        batch_size: Number of frames to process together in batch mode.
+            When > 1, modules with Capability.BATCHING receive frames via
+            process_batch() for GPU batch inference optimization.
+        debug: Print debug events to stdout.
+        debug_hook: Custom debug event callback.
 
     Example:
         >>> executor = GraphExecutor(graph)
@@ -40,6 +49,7 @@ class GraphExecutor:
         self,
         graph: FlowGraph,
         on_trigger: Optional[Callable[[FlowData], None]] = None,
+        batch_size: int = 1,
         debug: bool = False,
         debug_hook: Optional[DebugHook] = None,
     ):
@@ -47,6 +57,7 @@ class GraphExecutor:
         self._interpreter = SimpleInterpreter(debug=debug, debug_hook=debug_hook)
         self._initialized = False
         self._debug = debug
+        self._batch_size = max(1, batch_size)
 
         if on_trigger is not None:
             self._graph.on_trigger(on_trigger)
@@ -170,5 +181,121 @@ class GraphExecutor:
         return terminal_results
 
     def process_batch(self, frames: List["Frame"]) -> List[List[FlowData]]:
-        """Process multiple frames through the graph."""
-        return [self.process(frame) for frame in frames]
+        """Process multiple frames through the graph with batch optimization.
+
+        When batch_size > 1, groups frames at ModuleSpec nodes and uses
+        batch dispatch for modules with Capability.BATCHING. Non-module
+        nodes (source, filter, sampler) are processed individually.
+
+        Args:
+            frames: List of frames to process.
+
+        Returns:
+            List of terminal FlowData lists, one per input frame.
+        """
+        if self._batch_size <= 1 or len(frames) <= 1:
+            return [self.process(frame) for frame in frames]
+
+        if not self._initialized:
+            raise RuntimeError(
+                "Executor not initialized. Use context manager or call initialize()."
+            )
+
+        entry_name = self._graph.entry_node
+        if entry_name is None:
+            return [[] for _ in frames]
+
+        entry_node = self._graph.nodes[entry_name]
+        spec = entry_node.spec
+
+        # Create FlowData for each frame
+        initial_datas: List[FlowData] = []
+        for frame in frames:
+            if isinstance(spec, SourceSpec):
+                data = FlowData(
+                    frame=frame,
+                    path_id=spec.default_path_id,
+                    timestamp_ns=getattr(frame, "t_src_ns", 0),
+                )
+            else:
+                data = FlowData(
+                    frame=frame,
+                    timestamp_ns=getattr(frame, "t_src_ns", 0),
+                )
+            initial_datas.append(data)
+
+        return self._process_batch_bfs(initial_datas)
+
+    def _process_batch_bfs(
+        self, initial_datas: List[FlowData]
+    ) -> List[List[FlowData]]:
+        """BFS through the graph processing batches of FlowData.
+
+        At ModuleSpec nodes, all frames are processed together using
+        batch dispatch. At other nodes, frames are processed individually.
+
+        Args:
+            initial_datas: List of initial FlowData items.
+
+        Returns:
+            List of terminal FlowData lists, one per input data.
+        """
+        n = len(initial_datas)
+        terminal_nodes = set(self._graph.get_terminal_nodes())
+
+        # Track results per original frame index
+        terminal_results: List[List[FlowData]] = [[] for _ in range(n)]
+
+        # Map each FlowData back to its original frame index
+        # Queue items: (node_name, list of (frame_idx, FlowData))
+        entry_name = self._graph.entry_node
+        assert entry_name is not None
+
+        queue: deque[tuple[str, List[tuple[int, FlowData]]]] = deque()
+        queue.append((
+            entry_name,
+            [(i, d) for i, d in enumerate(initial_datas)],
+        ))
+
+        while queue:
+            node_name, indexed_datas = queue.popleft()
+            node = self._graph.nodes[node_name]
+
+            # Batch dispatch for ModuleSpec nodes
+            if isinstance(node.spec, ModuleSpec) and len(indexed_datas) > 1:
+                outputs_per_frame = (
+                    self._interpreter.interpret_modules_batch(
+                        node, node.spec, [d for _, d in indexed_datas]
+                    )
+                )
+            else:
+                # Individual dispatch for other node types
+                outputs_per_frame = [
+                    self._interpreter.interpret(node, d)
+                    for _, d in indexed_datas
+                ]
+
+            # Route outputs to successors, grouping by successor node
+            successor_groups: dict[str, List[tuple[int, FlowData]]] = defaultdict(list)
+
+            for (frame_idx, _), outputs in zip(indexed_datas, outputs_per_frame):
+                for output_data in outputs:
+                    successors = self._graph.get_successors(
+                        node_name, output_data.path_id
+                    )
+
+                    if not successors:
+                        terminal_results[frame_idx].append(output_data)
+                        if node_name in terminal_nodes:
+                            self._graph.fire_triggers(output_data)
+                    else:
+                        for successor in successors:
+                            successor_groups[successor].append(
+                                (frame_idx, output_data)
+                            )
+
+            # Enqueue successor groups
+            for successor, group in successor_groups.items():
+                queue.append((successor, group))
+
+        return terminal_results

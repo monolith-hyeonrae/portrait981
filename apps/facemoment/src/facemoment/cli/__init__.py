@@ -4,12 +4,6 @@ import sys
 import argparse
 import logging
 
-from facemoment.cli.utils import suppress_thirdparty_noise, configure_log_levels, StderrFilter
-
-# Apply third-party noise suppression early
-suppress_thirdparty_noise()
-StderrFilter().install()
-
 
 def _add_distributed_args(parser):
     """Add --distributed, --venv-* args to a parser."""
@@ -64,7 +58,7 @@ Examples:
         description="Display analyzers, backends, triggers, and pipeline structure.",
     )
     info_parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "-v", "--verbose", action="store_true",
         help="Show detailed info including device capabilities",
     )
     info_parser.add_argument(
@@ -113,8 +107,17 @@ Examples:
              "Default: inline (same analyzers/fusion as pathway, smooth visualization)"
     )
     debug_parser.add_argument(
+        "--batch-size", type=int, default=1, metavar="N",
+        help="Batch size for GPU module processing (default: 1). "
+             "When > 1, modules with BATCHING capability use process_batch() for optimization."
+    )
+    debug_parser.add_argument(
         "--report", type=str, metavar="PATH",
         help="Generate HTML debug report after session (e.g. --report report.html)"
+    )
+    debug_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Enable verbose logging (show all third-party and internal messages)"
     )
 
     # process command
@@ -139,12 +142,20 @@ Examples:
         "--roi", type=str, metavar="X1,Y1,X2,Y2",
         help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"
     )
+    proc_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Enable verbose logging (show all third-party and internal messages)"
+    )
 
     args = parser.parse_args()
+
+    from facemoment.cli.utils import suppress_thirdparty_noise, configure_log_levels, StderrFilter
 
     if getattr(args, "verbose", False):
         logging.basicConfig(level=logging.DEBUG)
     else:
+        suppress_thirdparty_noise()
+        StderrFilter().install()
         logging.basicConfig(level=logging.INFO)
         configure_log_levels()
 

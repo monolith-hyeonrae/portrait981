@@ -514,17 +514,141 @@ class SimpleInterpreter:
         deps: Dict[str, Any],
     ) -> Any:
         """Prepare deps and call a single module."""
-        module_deps = None
+        module_deps = self._build_module_deps(module, deps)
+        return self._call_module(module, frame, module_deps)
+
+    def _build_module_deps(
+        self,
+        module: Any,
+        deps: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Build the deps dict for a module from the global deps map."""
         all_dep_names = list(getattr(module, 'depends', [])) + list(
             getattr(module, 'optional_depends', [])
         )
-        if all_dep_names:
-            module_deps = {
-                name: deps[name]
-                for name in all_dep_names
-                if name in deps
+        if not all_dep_names:
+            return None
+        return {
+            name: deps[name]
+            for name in all_dep_names
+            if name in deps
+        }
+
+    def _dispatch_module_batch(
+        self,
+        module: Any,
+        frames: List[Any],
+        deps_per_frame: List[Dict[str, Any]],
+    ) -> List[Any]:
+        """Dispatch a batch of frames to a module.
+
+        If the module declares Capability.BATCHING, calls process_batch().
+        Otherwise falls back to sequential process() calls.
+
+        Args:
+            module: Module to call.
+            frames: List of frames.
+            deps_per_frame: Per-frame deps dicts (same length as frames).
+
+        Returns:
+            List of observations (same length as frames).
+        """
+        from visualpath.core.capabilities import Capability
+
+        caps = getattr(module, 'capabilities', None)
+        has_batching = (
+            caps is not None
+            and Capability.BATCHING in caps.flags
+            and hasattr(module, 'process_batch')
+        )
+
+        if has_batching:
+            deps_list = [
+                self._build_module_deps(module, d) for d in deps_per_frame
+            ]
+            return module.process_batch(frames, deps_list)
+
+        # Sequential fallback
+        results = []
+        for frame, deps in zip(frames, deps_per_frame):
+            module_deps = self._build_module_deps(module, deps)
+            results.append(self._call_module(module, frame, module_deps))
+        return results
+
+    def interpret_modules_batch(
+        self,
+        node: FlowNode,
+        spec: "ModuleSpec",
+        datas: List[FlowData],
+    ) -> List[List[FlowData]]:
+        """Process a batch of FlowData items through a ModuleSpec node.
+
+        Uses batch dispatch for modules with Capability.BATCHING.
+        Modules without BATCHING are called sequentially per frame.
+
+        Args:
+            node: The FlowNode containing the ModuleSpec.
+            spec: The ModuleSpec with modules to run.
+            datas: List of FlowData items (one per frame).
+
+        Returns:
+            List of output FlowData lists, one per input FlowData.
+        """
+        from visualpath.core.observation import Observation
+
+        n = len(datas)
+        frames = [d.frame for d in datas]
+
+        # Per-frame tracking
+        per_frame_deps: List[Dict[str, Any]] = []
+        per_frame_observations: List[list] = []
+        per_frame_results: List[list] = []
+
+        for data in datas:
+            deps: Dict[str, Any] = {
+                obs.source: obs for obs in data.observations
             }
-        return self._call_module(module, frame, module_deps)
+            for result in data.results:
+                if hasattr(result, 'source') and result.source:
+                    deps[result.source] = result
+            per_frame_deps.append(deps)
+            per_frame_observations.append([])
+            per_frame_results.append([])
+
+        # Skip frames with no frame data
+        valid_mask = [d.frame is not None for d in datas]
+        if not any(valid_mask):
+            return [[data] for data in datas]
+
+        # Process modules by dependency level
+        levels = self._level_sort_modules(spec.modules)
+
+        for level in levels:
+            for module in level:
+                batch_outputs = self._dispatch_module_batch(
+                    module, frames, per_frame_deps
+                )
+                for i, output in enumerate(batch_outputs):
+                    if output is not None:
+                        per_frame_observations[i].append(output)
+                        per_frame_deps[i][module.name] = output
+                        if output.should_trigger:
+                            per_frame_results[i].append(output)
+
+        # Build output FlowData for each frame
+        all_outputs: List[List[FlowData]] = []
+        for i, data in enumerate(datas):
+            if not valid_mask[i]:
+                all_outputs.append([data])
+            else:
+                result = data.clone(
+                    observations=list(data.observations) + per_frame_observations[i],
+                    results=list(data.results) + per_frame_results[i],
+                    path_id=node.name,
+                )
+                all_outputs.append([result])
+
+        return all_outputs
 
     def _call_module(
         self,

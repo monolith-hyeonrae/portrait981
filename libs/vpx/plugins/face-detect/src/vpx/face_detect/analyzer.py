@@ -70,9 +70,10 @@ class FaceDetectionAnalyzer(Module):
     @property
     def capabilities(self) -> ModuleCapabilities:
         return ModuleCapabilities(
-            flags=Capability.STATEFUL | Capability.GPU,
+            flags=Capability.STATEFUL | Capability.GPU | Capability.BATCHING,
             gpu_memory_mb=512,
             init_time_sec=3.0,
+            max_batch_size=8,
             resource_groups=frozenset({"onnxruntime"}),
             required_extras=frozenset({"vpx-face-detect"}),
         )
@@ -287,6 +288,80 @@ class FaceDetectionAnalyzer(Module):
             metadata={"_metrics": _metrics},
             timing=timing,
         )
+
+    def process_batch(
+        self,
+        frames: List["Frame"],
+        deps_list: List[Optional[Dict[str, Observation]]],
+    ) -> List[Optional[Observation]]:
+        """Process a batch of frames with GPU batch detection.
+
+        Step 1: Batch detection (stateless GPU inference).
+        Step 2: Per-frame sequential post-processing (stateful tracking).
+
+        Args:
+            frames: List of frames to process.
+            deps_list: Corresponding deps for each frame.
+
+        Returns:
+            List of Observations, same length as frames.
+        """
+        if self._face_backend is None:
+            raise RuntimeError("Analyzer not initialized")
+
+        # Step 1: GPU batch detection (stateless)
+        images = [f.data for f in frames]
+        batch_faces = self._face_backend.detect_batch(images)
+
+        # Step 2: Per-frame sequential post-processing (stateful tracking)
+        results: List[Optional[Observation]] = []
+        for frame, detected_faces in zip(frames, batch_faces):
+            h, w = frame.data.shape[:2]
+
+            if not detected_faces:
+                results.append(Observation(
+                    source=self.name,
+                    frame_id=frame.frame_id,
+                    t_ns=frame.t_src_ns,
+                    signals={"face_count": 0},
+                    data=FaceDetectOutput(
+                        faces=[], detected_faces=[], image_size=(w, h)
+                    ),
+                    metadata={"_metrics": {"detection_count": 0}},
+                ))
+                continue
+
+            face_ids = self._assign_face_ids(detected_faces)
+            face_observations, prev_faces_update = self._filter_and_convert(
+                detected_faces, face_ids, (w, h)
+            )
+            self._prev_faces = prev_faces_update
+
+            avg_conf = (
+                sum(f.confidence for f in face_observations) / len(face_observations)
+                if face_observations
+                else 0.0
+            )
+            _metrics = {
+                "detection_count": len(detected_faces),
+                "avg_confidence": round(avg_conf, 4),
+                "tracking_active": len(self._prev_faces),
+            }
+
+            results.append(Observation(
+                source=self.name,
+                frame_id=frame.frame_id,
+                t_ns=frame.t_src_ns,
+                signals={"face_count": len(face_observations)},
+                data=FaceDetectOutput(
+                    faces=face_observations,
+                    detected_faces=detected_faces,
+                    image_size=(w, h),
+                ),
+                metadata={"_metrics": _metrics},
+            ))
+
+        return results
 
     def annotate(self, obs):
         """Return BBoxMark for each detected face."""

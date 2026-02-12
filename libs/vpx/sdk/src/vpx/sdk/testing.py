@@ -268,6 +268,68 @@ class PluginTestHarness:
         return report
 
 
+    def assert_batch_correctness(
+        self,
+        module: "Module",
+        batch_size: int = 4,
+    ) -> None:
+        """Verify process_batch() results match sequential process() calls.
+
+        Runs the module in both modes and compares: source, frame_id,
+        and signal keys/values. Timing data is excluded from comparison
+        since it varies between runs.
+
+        This is most useful for stateless modules. Stateful modules
+        (with tracking, etc.) may produce different results due to
+        state accumulation order.
+
+        Args:
+            module: Module instance to test. Must be initialized.
+            batch_size: Number of frames to test with.
+
+        Raises:
+            AssertionError: If batch results don't match sequential.
+        """
+        frames = FakeFrame.sequence(batch_size)
+        deps_list = [None] * batch_size
+
+        # Sequential
+        sequential = [module.process(f, d) for f, d in zip(frames, deps_list)]
+
+        # Reset module state for fair comparison
+        module.reset()
+
+        # Batch
+        batch = module.process_batch(frames, deps_list)
+
+        assert len(batch) == len(sequential), (
+            f"Batch length {len(batch)} != sequential length {len(sequential)}"
+        )
+
+        for i, (s, b) in enumerate(zip(sequential, batch)):
+            if s is None and b is None:
+                continue
+            assert (s is None) == (b is None), (
+                f"Frame {i}: sequential={s is None}, batch={b is None}"
+            )
+            if s is not None and b is not None:
+                assert s.source == b.source, (
+                    f"Frame {i}: source mismatch: {s.source!r} vs {b.source!r}"
+                )
+                assert s.frame_id == b.frame_id, (
+                    f"Frame {i}: frame_id mismatch: {s.frame_id} vs {b.frame_id}"
+                )
+                # Compare signal keys and values
+                for key in s.signals:
+                    assert key in b.signals, (
+                        f"Frame {i}: signal '{key}' missing in batch result"
+                    )
+                    assert s.signals[key] == b.signals[key], (
+                        f"Frame {i}: signal '{key}' mismatch: "
+                        f"{s.signals[key]} vs {b.signals[key]}"
+                    )
+
+
 __all__ = [
     "FakeFrame",
     "assert_valid_observation",

@@ -239,6 +239,25 @@ class Module(ABC):
         """
         return []
 
+    def process_batch(
+        self,
+        frames: list["Frame"],
+        deps_list: list[DepsContext],
+    ) -> list[Optional["Observation"]]:
+        """Process a batch of frames.
+
+        Default implementation calls process() sequentially.
+        Override for GPU batch inference optimization.
+
+        Args:
+            frames: List of frames to process (length <= max_batch_size).
+            deps_list: Corresponding deps for each frame. Same length as frames.
+
+        Returns:
+            List of Observations, same length as frames. None for failed frames.
+        """
+        return [self.process(f, d) for f, d in zip(frames, deps_list)]
+
     def reset(self) -> None:
         """Reset module state.
 

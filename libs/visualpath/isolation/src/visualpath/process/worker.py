@@ -110,6 +110,40 @@ def run_worker(analyzer_name: str, ipc_address: str) -> int:
                     }).encode())
                 continue
 
+            if msg_type == "analyze_batch":
+                # Process batch of frames
+                try:
+                    frames = [decode_frame(f) for f in message["frames"]]
+                    deps_list = []
+                    for deps_data in message.get("deps_list", []):
+                        if deps_data:
+                            deps = {}
+                            for name, obs_data in deps_data.items():
+                                if obs_data is not None:
+                                    deps[name] = deserialize_observation(obs_data)
+                            deps_list.append(deps)
+                        else:
+                            deps_list.append(None)
+
+                    # Pad deps_list if shorter than frames
+                    while len(deps_list) < len(frames):
+                        deps_list.append(None)
+
+                    observations = analyzer.process_batch(frames, deps_list)
+
+                    server.send(json.dumps({
+                        "observations": [
+                            serialize_observation(obs) for obs in observations
+                        ],
+                    }).encode())
+                except Exception as e:
+                    logger.error(f"Batch analysis error: {e}")
+                    server.send(json.dumps({
+                        "error": str(e),
+                        "traceback": traceback.format_exc(),
+                    }).encode())
+                continue
+
             # Unknown message type
             logger.warning(f"Unknown message type: {msg_type}")
             server.send(json.dumps({"error": f"Unknown message type: {msg_type}"}).encode())

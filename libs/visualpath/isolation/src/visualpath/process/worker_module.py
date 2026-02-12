@@ -24,7 +24,7 @@ Example:
 import logging
 from typing import Dict, List, Optional, TYPE_CHECKING
 
-from visualpath.core.module import Module
+from visualpath.core.module import Module, DepsContext
 
 if TYPE_CHECKING:
     from visualbase import Frame
@@ -109,6 +109,36 @@ class WorkerModule(Module):
             return None
 
         return result.observation
+
+    def process_batch(
+        self,
+        frames: list["Frame"],
+        deps_list: list[DepsContext],
+    ) -> list[Optional["Observation"]]:
+        """Process a batch of frames via the worker.
+
+        Delegates to worker.process_batch() for IPC-level batching.
+
+        Args:
+            frames: List of frames to process.
+            deps_list: Corresponding dependency observations.
+
+        Returns:
+            List of Observations, same length as frames.
+        """
+        batch_results = self._worker.process_batch(frames, deps_list)
+
+        observations: list[Optional["Observation"]] = []
+        for result in batch_results:
+            if result.error:
+                logger.warning(
+                    "WorkerModule '%s' batch error: %s", self._name, result.error
+                )
+                observations.append(None)
+            else:
+                observations.append(result.observation)
+
+        return observations
 
     @property
     def runtime_info(self):

@@ -21,8 +21,11 @@ class SimpleBackend(ExecutionBackend):
     GraphExecutor. It is the default backend for local video processing
     and development/debugging.
 
-    For complex scheduling, sampling, or branching, construct a FlowGraph
-    with the appropriate nodes (SamplerNode, RateLimiterNode, JoinNode, etc.).
+    Args:
+        batch_size: Number of frames to collect before batch processing.
+            When > 1, modules with Capability.BATCHING receive frames via
+            process_batch() for GPU batch inference optimization.
+            Default 1 (frame-by-frame, backward compatible).
 
     Examples:
         >>> from visualpath.flow.graph import FlowGraph
@@ -31,15 +34,13 @@ class SimpleBackend(ExecutionBackend):
         >>> result = backend.execute(frames, graph)
         >>> print(result.triggers)
 
-        >>> # With FlowGraphBuilder for complex pipelines
-        >>> from visualpath.flow import FlowGraphBuilder
-        >>> graph = (FlowGraphBuilder()
-        ...     .source("frames")
-        ...     .sample(every_nth=3)
-        ...     .path("main", analyzers=[face_ext], fusion=smile_fusion)
-        ...     .build())
+        >>> # With batch processing for GPU modules
+        >>> backend = SimpleBackend(batch_size=8)
         >>> result = backend.execute(frames, graph)
     """
+
+    def __init__(self, batch_size: int = 1):
+        self._batch_size = max(1, batch_size)
 
     def execute(
         self,
@@ -67,30 +68,75 @@ class SimpleBackend(ExecutionBackend):
         """
         from visualpath.backends.simple.executor import GraphExecutor
 
-        triggers = []
+        triggers: list = []
         frame_count = 0
 
-        executor = GraphExecutor(graph)
+        executor = GraphExecutor(graph, batch_size=self._batch_size)
 
         with executor:
-            for frame in frames:
-                frame_count += 1
-                terminal_results = executor.process(frame)
+            if self._batch_size <= 1:
+                # Frame-by-frame (original path)
+                for frame in frames:
+                    frame_count += 1
+                    terminal_results = executor.process(frame)
+                    self._collect_triggers(terminal_results, triggers)
+                    if on_frame is not None:
+                        if not on_frame(frame, terminal_results):
+                            break
+            else:
+                # Batch collection
+                batch: list = []
+                stopped = False
+                for frame in frames:
+                    frame_count += 1
+                    batch.append(frame)
 
-                # Collect triggers directly from terminal results
-                for data in terminal_results:
-                    for result in data.results:
-                        if result.should_trigger and result.trigger:
-                            triggers.append(result.trigger)
+                    if len(batch) >= self._batch_size:
+                        stopped = self._flush_batch(
+                            executor, batch, triggers, on_frame
+                        )
+                        batch = []
+                        if stopped:
+                            break
 
-                if on_frame is not None:
-                    if not on_frame(frame, terminal_results):
-                        break
+                # Flush remaining frames
+                if batch and not stopped:
+                    self._flush_batch(executor, batch, triggers, on_frame)
 
         return PipelineResult(
             triggers=triggers,
             frame_count=frame_count,
         )
+
+    @staticmethod
+    def _collect_triggers(
+        terminal_results: list,
+        triggers: list,
+    ) -> None:
+        """Collect triggers from terminal FlowData results."""
+        for data in terminal_results:
+            for result in data.results:
+                if result.should_trigger and result.trigger:
+                    triggers.append(result.trigger)
+
+    @staticmethod
+    def _flush_batch(
+        executor: "GraphExecutor",
+        batch: list,
+        triggers: list,
+        on_frame,
+    ) -> bool:
+        """Process a batch of frames and collect triggers.
+
+        Returns True if on_frame callback requested stop.
+        """
+        batch_results = executor.process_batch(batch)
+        for frame, terminal_results in zip(batch, batch_results):
+            SimpleBackend._collect_triggers(terminal_results, triggers)
+            if on_frame is not None:
+                if not on_frame(frame, terminal_results):
+                    return True
+        return False
 
 
 __all__ = ["SimpleBackend"]

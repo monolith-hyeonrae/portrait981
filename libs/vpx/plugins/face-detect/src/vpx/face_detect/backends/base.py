@@ -41,6 +41,20 @@ class FaceDetectionBackend(Protocol):
         """Detect faces in an image."""
         ...
 
+    def detect_batch(self, images: List[np.ndarray]) -> List[List[DetectedFace]]:
+        """Detect faces in a batch of images.
+
+        Default implementation calls detect() sequentially.
+        Override for GPU batch inference optimization.
+
+        Args:
+            images: List of BGR images as numpy arrays (H, W, 3).
+
+        Returns:
+            List of detection results, one per image.
+        """
+        ...
+
     def cleanup(self) -> None:
         """Release resources and unload models."""
         ...

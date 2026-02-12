@@ -117,6 +117,28 @@ class BaseWorker(ABC):
         """
         ...
 
+    def process_batch(
+        self,
+        frames: list["Frame"],
+        deps_list: list[Optional[Dict[str, Observation]]],
+    ) -> list[WorkerResult]:
+        """Process a batch of frames and return results.
+
+        Default implementation calls process() sequentially.
+        Override for IPC-level batch optimization.
+
+        Args:
+            frames: List of frames to process.
+            deps_list: Corresponding deps for each frame.
+
+        Returns:
+            List of WorkerResult, same length as frames.
+        """
+        return [
+            self.process(frame, deps)
+            for frame, deps in zip(frames, deps_list)
+        ]
+
     @property
     @abstractmethod
     def is_running(self) -> bool:
@@ -581,6 +603,97 @@ class VenvWorker(BaseWorker):
                 timing_ms=elapsed_ms,
             )
 
+    def process_batch(
+        self,
+        frames: list["Frame"],
+        deps_list: list[Optional[Dict[str, Observation]]],
+    ) -> list[WorkerResult]:
+        """Send a batch of frames to subprocess and receive observations.
+
+        Uses a single IPC round-trip with the ``analyze_batch`` message type
+        for reduced overhead. Falls back to sequential if inline.
+
+        Args:
+            frames: List of frames to process.
+            deps_list: Corresponding deps for each frame.
+
+        Returns:
+            List of WorkerResult, same length as frames.
+        """
+        start_time = time.perf_counter()
+
+        if not self._running:
+            return [
+                WorkerResult(observation=None, error="Worker not running", timing_ms=0.0)
+                for _ in frames
+            ]
+
+        if self._inline is not None:
+            return [
+                self._inline.process(f, d) for f, d in zip(frames, deps_list)
+            ]
+
+        try:
+            # Serialize batch message
+            serialized_frames = [encode_frame(f, self._jpeg_quality) for f in frames]
+            serialized_deps = []
+            for deps in deps_list:
+                if deps:
+                    serialized_deps.append({
+                        name: serialize_observation(obs)
+                        for name, obs in deps.items()
+                    })
+                else:
+                    serialized_deps.append(None)
+
+            message: Dict[str, Any] = {
+                "type": "analyze_batch",
+                "frames": serialized_frames,
+                "deps_list": serialized_deps,
+            }
+            self._rpc_client.send(json.dumps(message).encode())
+
+            # Receive batch response
+            raw = self._rpc_client.recv()
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+            if raw is None:
+                return [
+                    WorkerResult(
+                        observation=None,
+                        error=f"Worker timeout after {self._timeout_sec}s",
+                        timing_ms=elapsed_ms,
+                    )
+                    for _ in frames
+                ]
+
+            response = json.loads(raw)
+
+            if "error" in response:
+                return [
+                    WorkerResult(
+                        observation=None,
+                        error=response["error"],
+                        timing_ms=elapsed_ms,
+                    )
+                    for _ in frames
+                ]
+
+            observations_data = response.get("observations", [])
+            results = []
+            per_frame_ms = elapsed_ms / max(len(frames), 1)
+            for obs_data in observations_data:
+                obs = deserialize_observation(obs_data)
+                results.append(WorkerResult(observation=obs, timing_ms=per_frame_ms))
+            return results
+
+        except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            return [
+                WorkerResult(observation=None, error=str(e), timing_ms=elapsed_ms)
+                for _ in frames
+            ]
+
     @property
     def is_running(self) -> bool:
         """Check if the worker is running."""
@@ -677,6 +790,14 @@ class ProcessWorker(BaseWorker):
     def process(self, frame: "Frame", deps: Optional[Dict[str, Observation]] = None) -> WorkerResult:
         """Process a frame in the worker process."""
         return self._delegate.process(frame, deps)
+
+    def process_batch(
+        self,
+        frames: list["Frame"],
+        deps_list: list[Optional[Dict[str, Observation]]],
+    ) -> list[WorkerResult]:
+        """Process a batch of frames in the worker process."""
+        return self._delegate.process_batch(frames, deps_list)
 
     @property
     def is_running(self) -> bool:

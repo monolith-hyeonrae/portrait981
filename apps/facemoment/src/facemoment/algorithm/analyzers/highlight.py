@@ -1006,8 +1006,9 @@ class HighlightFusion(Module):
                 signals={"should_trigger": False, "trigger_score": 0.0, "trigger_reason": ""},
             )
 
-        # Get main observation (prefer "face.detect" or "face.expression")
-        observation = deps.get("face.detect") or deps.get("face.expression")
+        # Prefer face.expression (superset: detection data + expression signals).
+        # Fall back to face.detect (detection data only, no expression signals).
+        observation = deps.get("face.expression") or deps.get("face.detect")
         if observation is None:
             # Try any observation with faces
             for obs in deps.values():
