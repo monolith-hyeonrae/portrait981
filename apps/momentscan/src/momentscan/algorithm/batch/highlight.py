@@ -106,6 +106,9 @@ class BatchHighlightEngine:
             "final_scores": final_scores,
             "smoothed": smoothed,
             "peaks": peaks,
+            "deltas": deltas,
+            "arrays": arrays,
+            "normed": normed,
         }
 
         return result
@@ -199,6 +202,9 @@ class BatchHighlightEngine:
             elif r.brightness > 0 and not (cfg.gate_exposure_min <= r.brightness <= cfg.gate_exposure_max):
                 # brightness=0은 미측정 → 통과
                 mask[i] = False
+            elif r.eye_open_ratio > 0 and r.eye_open_ratio < cfg.gate_eye_open_min:
+                # eye_open_ratio=0은 미측정 → 통과
+                mask[i] = False
 
         return mask
 
@@ -248,7 +254,9 @@ class BatchHighlightEngine:
             return np.maximum(x, 0.0)
 
         impact = (
-            cfg.impact_mouth_open_weight * relu(normed["mouth_open_ratio"])
+            cfg.impact_smile_intensity_weight * relu(normed["smile_intensity"])
+            + cfg.impact_head_yaw_delta_weight * relu(normed["head_yaw"])
+            + cfg.impact_mouth_open_weight * relu(normed["mouth_open_ratio"])
             + cfg.impact_head_velocity_weight * relu(normed["head_velocity"])
             + cfg.impact_wrist_raise_weight * relu(normed["wrist_raise"])
             + cfg.impact_torso_rotation_weight * relu(normed["torso_rotation"])

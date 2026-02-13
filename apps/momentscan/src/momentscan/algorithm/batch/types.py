@@ -86,6 +86,7 @@ class HighlightConfig:
     # Quality gate thresholds (§6 Step 1)
     gate_face_confidence: float = 0.7
     gate_face_area_ratio: float = 0.01
+    gate_eye_open_min: float = 0.15  # 눈 감은 사진 필터링 (1 - neutral)
     gate_blur_min: float = 50.0  # Laplacian variance, TBD from data
     gate_exposure_min: float = 40.0
     gate_exposure_max: float = 220.0
@@ -96,12 +97,14 @@ class HighlightConfig:
     quality_frontalness_weight: float = 0.3
 
     # Impact score weights (§6 Step 3)
-    impact_mouth_open_weight: float = 0.30
-    impact_head_velocity_weight: float = 0.20
-    impact_wrist_raise_weight: float = 0.15
-    impact_torso_rotation_weight: float = 0.15
-    impact_face_size_change_weight: float = 0.10
-    impact_exposure_change_weight: float = 0.10
+    impact_smile_intensity_weight: float = 0.35
+    impact_head_yaw_delta_weight: float = 0.15
+    impact_mouth_open_weight: float = 0.12
+    impact_head_velocity_weight: float = 0.10
+    impact_wrist_raise_weight: float = 0.08
+    impact_torso_rotation_weight: float = 0.08
+    impact_face_size_change_weight: float = 0.06
+    impact_exposure_change_weight: float = 0.06
 
     # Delta computation
     delta_alpha: float = 0.1           # EMA baseline alpha (for temporal deltas)

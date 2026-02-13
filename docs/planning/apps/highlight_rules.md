@@ -21,12 +21,14 @@
 ### Output
 
 ```
-output/{video_id}/highlight_rules/
+output/{video_id}/highlight/
 ├── windows.json          # 하이라이트 구간 목록
-├── timeseries.csv        # 프레임별 feature 덤프 (비교/디버그용)
+├── timeseries.csv        # 프레임별 feature + scoring 덤프
+├── score_curve.png       # 시간축 점수 그래프 + peak 마커
+├── report.html           # Plotly 인터랙티브 리포트
 └── frames/               # 구간별 best frame 1-3장
-    ├── window_001_f1234.jpg
-    └── window_001_f1234_meta.json
+    ├── w1_peak_35150ms.jpg
+    └── w1_best_35200ms.jpg
 ```
 
 ### windows.json schema
@@ -40,7 +42,7 @@ output/{video_id}/highlight_rules/
     "peak_ms": 35150,
     "score": 0.83,
     "reason": {
-      "mouth_open_delta": 0.9,
+      "mouth_open_ratio": 0.9,
       "head_velocity": 0.6,
       "wrist_raise": 0.7
     },
@@ -48,8 +50,7 @@ output/{video_id}/highlight_rules/
       {
         "frame_idx": 1234,
         "timestamp_ms": 35150,
-        "frame_score": 0.91,
-        "path": "frames/window_001_f1234.jpg"
+        "frame_score": 0.91
       }
     ]
   }
@@ -58,86 +59,102 @@ output/{video_id}/highlight_rules/
 
 ## 3. 파이프라인
 
+`field_mapping.py`의 `PIPELINE_FIELD_MAPPINGS`이 feature → scoring role 매핑의 single source of truth.
+highlight.py와 info.py가 같은 레지스트리를 읽어 일관성을 보장한다.
+
 ```
 Video
   │ decode (visualbase)
   ▼
-Face detect + Body pose (vpx plugins)
+Face detect + Expression + Body pose (vpx plugins)
   │
   ▼
-Numeric Feature Extraction
-  │ face features + pose features + quality features
+Numeric Feature Extraction (extract.py → FrameRecord)
+  │ field_mapping.py가 모듈 출력 → record 필드 매핑 정의
   ▼
-Per-video Signal Normalization
-  │ z-score (MAD) 또는 percentile
+Temporal Delta (EMA baseline) + Derived Fields
+  │ PIPELINE_DELTA_SPECS, PIPELINE_DERIVED_FIELDS
+  ▼
+Per-video Signal Normalization (MAD z-score)
+  │
   ▼
 QualityGate (hard filter)
-  │ blur, exposure, occlusion_by_hand → 불통과 시 score=0
+  │ face_detected, face_confidence, blur_score, brightness
+  │ 미측정(=0) → 통과 (blur, brightness)
   ▼
 Scoring: quality_score × impact_score
   │ gate 통과 프레임만 최종 점수 산출
   ▼
-Temporal Smoothing + Peak Detection
-  │ EMA/median filter → local maxima
+Temporal Smoothing (EMA) + Peak Detection
+  │ scipy.signal.find_peaks
   ▼
 Window Generation + Best Frame Selection
-  │ peak ± 1.0s, frame quality scoring
+  │ peak ± 1.0s, final_scores 상위 N개
   ▼
-Export (windows.json + timeseries.csv + frames/)
+Export (windows.json + timeseries.csv + score_curve.png + report.html + frames/)
 ```
 
 ## 4. Feature 정의
 
-### A. Face 기반
+모든 필드는 `field_mapping.py`의 `PIPELINE_FIELD_MAPPINGS`에 선언.
+`scoring_role`과 `rationale`이 각 필드의 역할과 비즈니스 의사결정 이유를 기술한다.
 
-| Feature | 소스 | 설명 |
-|---------|------|------|
-| `face_bbox_area` | vpx-face-detect | 프레임 대비 얼굴 크기 비율 |
-| `face_center_distance` | vpx-face-detect | 프레임 중앙까지 거리 (정규화) |
-| `mouth_open_ratio` | vpx-face-expression 또는 landmark | 입 벌림 정도 |
-| `eye_open_ratio` | vpx-face-expression 또는 landmark | 눈 뜸 정도 |
-| `head_yaw` / `pitch` / `roll` | vpx-face-detect (5-point) | 머리 각도 |
-| `head_velocity` | delta(yaw, pitch) / dt | 머리 회전 속도 (deg/sec) |
-
-### B. 상반신 포즈
-
-| Feature | 소스 | 설명 |
-|---------|------|------|
-| `wrist_raise` | vpx-body-pose | wrist_y - shoulder_y (정규화) |
-| `elbow_angle_change` | vpx-body-pose | 팔꿈치 각도 변화율 |
-| `torso_rotation` | vpx-body-pose | 어깨 라인 회전 |
-| `hand_near_face` | vpx-body-pose | wrist와 nose 사이 거리 (정규화). 얼굴 가림 감지용 |
-
-### C. 프레임 품질 (gate + quality score)
-
-| Feature | 계산 | 용도 |
-|---------|------|------|
-| `blur` | Laplacian variance | **gate + quality_score** — impact에는 미포함 |
-| `exposure` | gray mean + percentile | gate + delta만 impact에 반영 |
-| `occlusion_by_hand` | `hand_near_face < τ` | **gate** — 손이 얼굴 가리면 차단 |
+| record_field | 소스 | scoring_role | rationale |
+|---|---|---|---|
+| `face_detected` | face.detect | gate | 얼굴이 없는 프레임은 인물 사진으로 사용 불가 |
+| `face_confidence` | face.detect | gate | 오검출된 얼굴로 선별하면 의미 없는 사진이 뽑힘. 0.7 이상만 신뢰 |
+| `face_area_ratio` | face.detect | quality | 얼굴이 너무 작으면 인쇄/SNS 사진으로 부적합. 화면의 1% 이상 |
+| `face_center_distance` | face.detect | info | 프레임 중심 거리 참고용. 현재 scoring 미사용 |
+| `head_yaw` | face.detect | quality | 정면에 가까운 사진이 고객 만족도 높음. 45도 이상 옆모습은 감점 |
+| `head_pitch` | face.detect | info | 상하 회전 참고. head_velocity 파생 필드의 소스 |
+| `head_roll` | face.detect | info | 머리 기울기 참고. 현재 scoring 미사용 |
+| `mouth_open_ratio` | face.expression | impact | 환호/놀람 등 감정 표현이 큰 순간이 라이드 하이라이트 |
+| `eye_open_ratio` | face.expression | gate | 눈 감은 사진은 인물 사진으로 부적합. 0.15 미만이면 탈락 |
+| `smile_intensity` | face.expression | impact | 미소 피크는 감정적으로 좋은 순간. 평소 무표정/부정 표정 대비 미소 급등이 특히 의미 있음 |
+| `wrist_raise` | body.pose | impact | 손을 올리는 동작은 라이드 즐기는 대표적 제스처 |
+| `torso_rotation` | body.pose | impact | 상체 움직임이 큰 순간 = 활발한 반응 구간 |
+| `hand_near_face` | body.pose | info | 손으로 얼굴 가리는 순간 감지용. 향후 gate 추가 후보 |
+| `elbow_angle_change` | body.pose | info | 팔 동작 크기. wrist_raise와 중복도 높아 현재 미사용 |
+| `blur_score` | frame.quality | quality | 모션블러가 심한 프레임은 사진 품질 열화. Laplacian 50 미만 탈락 |
+| `brightness` | frame.quality | gate | 너무 밝거나 너무 어두우면 후보정으로도 복구 어려움. 40-220 범위만 통과 |
+| `contrast` | frame.quality | info | 대비 정보. 현재 brightness와 blur로 충분하여 미사용 |
+| `main_face_confidence` | face.classify | info | 주탑승자 분류 신뢰도 참고용 |
+| `frame_score` | frame.scoring | info | 종합 프레임 점수 참고용 |
 
 ### D. Temporal Delta (핵심)
 
-모든 feature에 대해:
+delta 대상 필드 (`PIPELINE_DELTA_SPECS`):
 ```python
 delta(t) = |feature(t) - EMA(feature, alpha=0.1)|
 ```
 
+대상: `mouth_open_ratio`, `smile_intensity`, `head_yaw`, `head_pitch`, `wrist_raise`, `torso_rotation`, `face_area_ratio`, `brightness`
+
 **절대값이 아닌 변화량**이 score의 주 입력.
+
+### E. 파생 필드 (PIPELINE_DERIVED_FIELDS)
+
+| 필드명 | 소스 | 계산 |
+|---|---|---|
+| `head_velocity` | head_yaw, head_pitch | `sqrt(delta_yaw^2 + delta_pitch^2) / dt` (deg/sec) |
+| `frontalness` | head_yaw | `1 - |yaw| / max_yaw`, clamped [0, 1] |
 
 ## 5. 정규화 (Per-video, 필수)
 
-절대 threshold 금지. 비디오마다 정규화:
+절대 threshold 금지. 비디오마다 정규화.
+
+현재 구현: **MAD 기반 z-score**
 
 ```python
-# 방법 1: MAD 기반 z-score
 z = (feature - median(feature)) / MAD(feature)
-
-# 방법 2: Percentile 정규화
-z = (feature - p50) / (p95 - p50)
+# MAD = Median Absolute Deviation = median(|x - median(x)|)
+# MAD < 1e-8 이면 z = 0 (상수 신호)
 ```
 
-MAD = Median Absolute Deviation = `median(|x - median(x)|)`
+대안 (미사용): Percentile 정규화
+```python
+z = (feature - p50) / (p95 - p50)
+```
 
 ## 6. Scoring: Gate × Impact (곱 구조)
 
@@ -148,14 +165,16 @@ quality만 좋으면 "사진은 괜찮은데 임팩트 없는 장면"이 뽑힌�
 ### Step 1: QualityGate (hard filter)
 
 gate를 통과하지 못하면 해당 프레임의 최종 점수는 0.
+미측정 값(=0)은 통과 처리 (blur_score, brightness, eye_open_ratio).
 
 ```python
 quality_gate(t) = (
-    face_confidence(t) >= 0.7
+    face_detected(t)
+    and face_confidence(t) >= 0.7
     and face_area_ratio(t) >= 0.01
-    and blur(t) >= tau_blur          # 높을수록 선명
-    and 40 <= exposure_mean(t) <= 220
-    and not occlusion_by_hand(t)     # 손 제스처로 인한 얼굴 가림 체크
+    and (blur_score(t) == 0 or blur_score(t) >= 50)        # 미측정 → 통과
+    and (brightness(t) == 0 or 40 <= brightness(t) <= 220)  # 미측정 → 통과
+    and (eye_open_ratio(t) == 0 or eye_open_ratio(t) >= 0.15)  # 미측정 → 통과
 )
 ```
 
@@ -166,26 +185,32 @@ gate 통과 프레임에 대해 연속적 품질 점수를 계산.
 
 ```python
 quality_score(t) = (
-    0.4 * blur_norm(t) +             # 선명도 (per-video 정규화)
-    0.3 * face_size_norm(t) +         # 얼굴 크기
+    0.4 * blur_norm(t) +             # 선명도 (per-video min-max 정규화)
+    0.3 * face_size_norm(t) +         # 얼굴 크기 (per-video min-max 정규화)
     0.3 * frontalness(t)              # 정면 근접도 (1 - |yaw|/45)
 )
 ```
 
 ### Step 3: Impact Score (감정/동작 변화)
 
+MAD z-score 정규화된 delta에 **ReLU** 적용 후 가중합. 평균 이상 변화만 기여한다.
+
 ```python
+relu = lambda x: max(x, 0)
+
 impact(t) = (
-    0.30 * mouth_open_delta(t) +
-    0.20 * head_velocity(t) +
-    0.15 * wrist_raise(t) +
-    0.15 * torso_rotation(t) +
-    0.10 * face_size_change(t) +
-    0.10 * exposure_change(t)
+    0.35 * relu(normed_smile_intensity(t)) +
+    0.15 * relu(normed_head_yaw_delta(t)) +
+    0.12 * relu(normed_mouth_open_ratio(t)) +
+    0.10 * relu(normed_head_velocity(t)) +
+    0.08 * relu(normed_wrist_raise(t)) +
+    0.08 * relu(normed_torso_rotation(t)) +
+    0.06 * relu(normed_face_area_ratio(t)) +
+    0.06 * relu(normed_brightness(t))
 )
 ```
 
-가중치는 초기값이며 데이터 기반 튜닝 대상.
+가중치는 초기값이며 데이터 기반 튜닝 대상. 합계 = 1.00.
 
 ### Step 4: 최종 점수
 
@@ -200,25 +225,24 @@ final_score(t) = quality_score(t) * impact(t) if quality_gate(t) else 0
 ### Smoothing
 
 ```python
-# EMA (추천)
 smoothed(t) = alpha * raw(t) + (1 - alpha) * smoothed(t-1)
-# alpha = 0.2~0.3
-
-# 또는 median filter
-smoothed = medfilt(raw, kernel_size=5~9)
+# alpha = 0.25
 ```
 
-수치 signal의 spike noise 제거 필수.
+EMA로 spike noise 제거.
 
 ### Peak Detection
 
 ```python
 from scipy.signal import find_peaks
 
-peaks, properties = find_peaks(
-    smoothed_impact,
+positive_scores = smoothed[smoothed > 0]
+prominence = np.percentile(positive_scores, 90)  # per-video 상대적
+
+peaks, _ = find_peaks(
+    smoothed,
     distance=int(2.5 * fps),          # 최소 2.5초 간격
-    prominence=np.percentile(smoothed_impact, 90),  # per-video 상대적
+    prominence=prominence,
 )
 ```
 
@@ -231,26 +255,22 @@ for peak in peaks:
 
 ## 8. Best Frame Selection
 
-구간 내 프레임 중 가장 사진으로 적합한 1-3장:
+구간 내 프레임 중 `final_scores` 상위 N개 (기본 3장) 선택.
+`final_scores > 0`인 프레임만 대상.
 
 ```python
-frame_score = (
-    0.4 * face_size_norm +
-    0.3 * eye_open_ratio +
-    0.3 * (1.0 / blur)
-)
+window_scores = final_scores[start_idx:end_idx + 1]
+window_indices = np.argsort(window_scores)[::-1][:best_frame_count]
+# final_scores <= 0인 프레임 제외
 ```
-
-Hard gate 적용 후 frame_score 상위 선택.
 
 ## 9. Explainability Log (필수)
 
 `timeseries.csv`:
 
 ```csv
-frame_idx,timestamp_ms,mouth_open,eye_open,head_yaw,head_pitch,head_velocity,wrist_raise,torso_rotation,blur,exposure,impact_score
-0,0.0,0.12,0.85,3.2,-1.1,5.3,0.0,0.02,180.5,128.3,0.15
-1,100.0,0.15,0.83,4.1,-0.8,9.0,0.0,0.03,175.2,130.1,0.22
+frame_idx,timestamp_ms,gate_pass,quality_score,impact_score,final_score,smoothed_score,is_peak,face_detected,face_confidence,face_area_ratio,head_yaw,head_pitch,mouth_open_ratio,eye_open_ratio,smile_intensity,wrist_raise,torso_rotation,blur_score,brightness
+0,0.0,1,0.6543,0.1523,0.0997,0.0997,0,1,0.920,0.0400,3.2,-1.1,0.120,0.850,0.300,0.000,0.020,180.5,128.3
 ...
 ```
 
@@ -264,7 +284,7 @@ frame_idx,timestamp_ms,mouth_open,eye_open,head_yaw,head_pitch,head_velocity,wri
 |------|------|------|
 | 표정 검출 불안정 | 조명 변화, 그림자, 모션블러 | intensity 절대값 대신 **상대 변화(delta)**만 사용. 이미 §4.D로 반영 |
 | 헤드포즈 노이즈 | ride 중 지속적 흔들림 | raw yaw/pitch를 impact에 직접 쓰지 않음. **head_velocity(변화율)**와 **정면 근접도(gate/quality)**로만 활용 |
-| 손 올림 = 얼굴 가림 | wrist_raise와 occlusion 동시 발생 | `hand_near_face` gate로 **얼굴 가림 시 차단**. wrist_raise가 높아도 사진이 망하면 제외 |
+| 손 올림 = 얼굴 가림 | wrist_raise와 occlusion 동시 발생 | `hand_near_face`는 info로 기록. 향후 gate 추가 후보 |
 | blur가 가장 치명적 | 카메라/탑승객 모두 움직임 | blur 나쁘면 impact 무관하게 무조건 제외 (hard gate). quality_score에도 blur 반영 |
 
 ## 11. Phase 2 (highlight_vector)와의 연결
@@ -308,7 +328,7 @@ Phase 1과 Phase 2는 **즉시 통합하지 않고 병렬 비교** 후 단계적
 | 패키지 | 용도 |
 |--------|------|
 | vpx-face-detect | 얼굴 검출, 추적, head pose |
-| vpx-face-expression | 표정 proxy (mouth_open, eye_open) |
+| vpx-face-expression | 표정 proxy (mouth_open, eye_open, smile_intensity) |
 | vpx-body-pose | 상반신 포즈 (wrist, elbow, torso) |
 | vpx-sdk | QualityGate, Observation 타입 |
 | visualbase | 비디오 디코딩 |
@@ -317,24 +337,24 @@ Phase 1과 Phase 2는 **즉시 통합하지 않고 병렬 비교** 후 단계적
 
 ### Phase 1: Feature 추출 파이프라인
 
-- [ ] 비디오 → 프레임 디코딩 (visualbase)
-- [ ] vpx 플러그인으로 face/pose 추출
-- [ ] numeric feature 계산 + timeseries.csv 출력
-- [ ] per-video 정규화 구현
+- [x] 비디오 → 프레임 디코딩 (visualbase)
+- [x] vpx 플러그인으로 face/pose 추출
+- [x] numeric feature 계산 + timeseries.csv 출력
+- [x] per-video 정규화 구현
 
 ### Phase 2: Scoring + Peak Detection
 
-- [ ] composite impact score 계산
-- [ ] temporal smoothing (EMA)
-- [ ] peak detection (scipy.signal.find_peaks)
-- [ ] window 생성
+- [x] composite impact score 계산
+- [x] temporal smoothing (EMA)
+- [x] peak detection (scipy.signal.find_peaks)
+- [x] window 생성
 
 ### Phase 3: Frame Selection + Export
 
-- [ ] window 내 best frame selection
-- [ ] QualityGate 적용 (shared contracts)
-- [ ] windows.json + frames/ 출력
-- [ ] explainability reason 생성
+- [x] window 내 best frame selection
+- [x] QualityGate 적용
+- [x] windows.json + frames/ + report.html + score_curve.png 출력
+- [x] explainability reason 생성
 
 ### Phase 4: 평가 + 튜닝
 
