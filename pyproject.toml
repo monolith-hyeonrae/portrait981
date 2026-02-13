@@ -9,10 +9,12 @@ members = [
     "libs/vpx/plugins/face-expression",
     "libs/vpx/plugins/body-pose",
     "libs/vpx/plugins/hand-gesture",
+    "libs/vpx/plugins/vision-embed",
     "libs/vpx/sdk",
     "libs/vpx/runner",
     "libs/vpx/viz",
     "apps/momentscan",
+    "apps/momentbank",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.

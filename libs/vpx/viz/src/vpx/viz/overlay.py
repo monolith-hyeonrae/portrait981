@@ -96,3 +96,42 @@ class TextOverlay:
             y += self.line_height
 
         return frame
+
+
+class MarkOverlay:
+    """Overlay that renders annotate() marks + text signals.
+
+    Combines TextOverlay (signal text) with mark rendering from
+    a module's annotate() method.
+
+    Args:
+        module: Analyzer module with an ``annotate(obs)`` method.
+        y_offset: Starting Y position for text signals.
+    """
+
+    def __init__(self, module: Any, y_offset: int = 30):
+        self._module = module
+        self._text = TextOverlay(y_offset=y_offset)
+
+    @property
+    def line_height(self) -> int:
+        return self._text.line_height
+
+    def draw(self, frame: np.ndarray, obs: Any) -> np.ndarray:
+        """Draw marks from annotate() then text signals."""
+        from vpx.viz.renderer import render_marks
+
+        # Render declarative marks (bbox, keypoints, bars, labels)
+        marks = []
+        if hasattr(self._module, "annotate"):
+            try:
+                marks = self._module.annotate(obs)
+            except Exception:
+                pass
+
+        if marks:
+            frame = render_marks(frame, marks)
+
+        # Also draw text signals
+        frame = self._text.draw(frame, obs)
+        return frame

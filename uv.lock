@@ -16,6 +16,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "momentbank",
     "momentscan",
     "visualbase",
     "visualpath",
@@ -28,6 +29,7 @@ members = [
     "vpx-hand-gesture",
     "vpx-runner",
     "vpx-sdk",
+    "vpx-vision-embed",
     "vpx-viz",
 ]
 overrides = [{ name = "onnxruntime", marker = "sys_platform != 'linux'" }]
@@ -2383,6 +2385,27 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/84/44/f4d18446eacb20ea11e82f133ea8f86e2bf2891785b67d9da8d0ab0ef525/ml_dtypes-0.5.4-cp314-cp314t-win_amd64.whl", hash = "sha256:4381fe2f2452a2d7589689693d3162e876b3ddb0a832cde7a414f8e1adf7eab1", size = 236612, upload-time = "2025-11-17T22:32:22.579Z" },
     { url = "https://files.pythonhosted.org/packages/ad/3f/3d42e9a78fe5edf792a83c074b13b9b770092a4fbf3462872f4303135f09/ml_dtypes-0.5.4-cp314-cp314t-win_arm64.whl", hash = "sha256:11942cbf2cf92157db91e5022633c0d9474d4dfd813a909383bd23ce828a4b7d", size = 168825, upload-time = "2025-11-17T22:32:23.766Z" },
 ]
+
+[[package]]
+name = "momentbank"
+version = "0.1.0"
+source = { editable = "apps/momentbank" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "momentscan"
@@ -5794,6 +5817,25 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "visualpath", editable = "libs/visualpath/core" }]
+
+[[package]]
+name = "vpx-vision-embed"
+version = "0.1.0"
+source = { editable = "libs/vpx/plugins/vision-embed" }
+dependencies = [
+    { name = "torch" },
+    { name = "torchvision" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "torch", specifier = ">=2.0" },
+    { name = "torchvision", specifier = ">=0.15" },
+    { name = "vpx-face-detect", editable = "libs/vpx/plugins/face-detect" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+]
 
 [[package]]
 name = "vpx-viz"

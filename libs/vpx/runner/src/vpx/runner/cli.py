@@ -163,21 +163,37 @@ def _text_observation_callback(name: str, obs) -> None:
     print(f"  [{name}] frame={frame_id} {sig_str}")
 
 
+def _build_overlays(runner):
+    """Build MarkOverlay dict from resolved modules."""
+    from vpx.viz import MarkOverlay
+    overlays = {}
+    y_offset = 30
+    for name, mod in runner.modules.items():
+        overlays[name] = MarkOverlay(mod, y_offset=y_offset)
+        # Stack y_offset so text doesn't overlap
+        signals_count = 2  # estimate: module header + ~1 signal
+        y_offset += overlays[name].line_height * (1 + signals_count)
+    return overlays
+
+
 def _run_live(analyzer_names, source, args):
     """Run with live display visualization."""
     from vpx.viz import FrameDisplay
     from vpx.runner.runner import LiteRunner
 
-    display = FrameDisplay(title="vpx")
+    runner = LiteRunner(analyzer_names)
+    runner.resolve()
+    overlays = _build_overlays(runner)
+
+    display = FrameDisplay(title="vpx", overlays=overlays)
 
     def on_frame(frame, observations):
         cont = display.update(frame, observations)
         if not cont:
             raise _StopIteration()
 
-    runner = LiteRunner(analyzer_names, on_frame=on_frame)
     try:
-        result = runner.run(source, fps=args.fps, max_frames=args.max_frames)
+        result = runner.run(source, fps=args.fps, max_frames=args.max_frames, on_frame=on_frame)
     except _StopIteration:
         pass
     finally:
@@ -194,6 +210,10 @@ def _run_save(analyzer_names, source, args):
         print("--output / -o is required with --viz=save", file=sys.stderr)
         sys.exit(1)
 
+    runner = LiteRunner(analyzer_names)
+    runner.resolve()
+    overlays = _build_overlays(runner)
+
     saver = None
 
     def on_frame(frame, observations):
@@ -204,12 +224,11 @@ def _run_save(analyzer_names, source, args):
             data = frame if isinstance(frame, np.ndarray) else frame.data
             h, w = data.shape[:2]
             fps = getattr(source, "fps", 30.0) if not isinstance(source, (str, int)) else 30.0
-            saver = VideoSaver(output_path, fps=fps, width=w, height=h)
+            saver = VideoSaver(output_path, fps=fps, width=w, height=h, overlays=overlays)
         saver.update(frame, observations)
 
-    runner = LiteRunner(analyzer_names, on_frame=on_frame)
     try:
-        result = runner.run(source, fps=args.fps, max_frames=args.max_frames)
+        result = runner.run(source, fps=args.fps, max_frames=args.max_frames, on_frame=on_frame)
     finally:
         if saver:
             saver.close()

@@ -70,6 +70,25 @@ class LiteRunner:
         self._analyzer_specs = analyzers
         self._on_observation = on_observation
         self._on_frame = on_frame
+        self._resolved_modules: Optional[List[Any]] = None
+
+    def resolve(self) -> "LiteRunner":
+        """Pre-resolve analyzers so modules are available before run().
+
+        Returns self for chaining: ``runner.resolve().modules``
+        """
+        self._resolved_modules = toposort_modules(self._resolve_analyzers())
+        return self
+
+    @property
+    def modules(self) -> Dict[str, Any]:
+        """Resolved module instances keyed by name.
+
+        Call resolve() or run() first.
+        """
+        if self._resolved_modules is None:
+            return {}
+        return {m.name: m for m in self._resolved_modules}
 
     def run(
         self,
@@ -95,8 +114,12 @@ class LiteRunner:
         obs_cb = on_observation or self._on_observation
         frame_cb = on_frame or self._on_frame
 
-        modules = self._resolve_analyzers()
-        sorted_modules = toposort_modules(modules)
+        if self._resolved_modules is not None:
+            sorted_modules = self._resolved_modules
+        else:
+            modules = self._resolve_analyzers()
+            sorted_modules = toposort_modules(modules)
+            self._resolved_modules = sorted_modules
         module_names = [m.name for m in sorted_modules]
 
         result = RunResult(module_names=module_names)
