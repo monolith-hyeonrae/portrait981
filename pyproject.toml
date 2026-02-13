@@ -18,12 +18,13 @@ members = [
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.
 # In production VenvWorker, each analyzer package installs in its own venv,
 # so this override is unnecessary (package isolation resolves the conflict).
+# macOS: onnxruntime allowed (CoreML EP for Apple Silicon acceleration)
 [tool.uv]
 dev-dependencies = [
     "momentscan[local,dev]",
 ]
 override-dependencies = [
-    "onnxruntime ; sys_platform == 'never'",
+    "onnxruntime ; sys_platform != 'linux'",
 ]
 
 [tool.uv.sources]

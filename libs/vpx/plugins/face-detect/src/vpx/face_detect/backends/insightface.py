@@ -74,10 +74,21 @@ class InsightFaceSCRFD:
                 if "CUDAExecutionProvider" in available_providers:
                     providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
                     self._actual_provider = "CUDA"
+                elif "CoreMLExecutionProvider" in available_providers:
+                    # CUDA requested but unavailable, try CoreML (macOS)
+                    ctx_id = 0
+                    providers = ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+                    self._actual_provider = "CoreML"
+                    logger.info("CUDA unavailable, using CoreML acceleration")
                 else:
                     providers = ["CPUExecutionProvider"]
                     self._actual_provider = "CPU (CUDA unavailable)"
                     logger.warning("CUDAExecutionProvider not available, falling back to CPU")
+            elif "CoreMLExecutionProvider" in available_providers:
+                # macOS: Apple Silicon Neural Engine / GPU acceleration
+                ctx_id = 0
+                providers = ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+                self._actual_provider = "CoreML"
             else:
                 ctx_id = -1
                 providers = ["CPUExecutionProvider"]

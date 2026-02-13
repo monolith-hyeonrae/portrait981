@@ -6,7 +6,8 @@ requires-python = ">=3.10"
 dependencies = [
     "vpx-sdk",
     "insightface>=0.7.3",
-    "onnxruntime-gpu>=1.16.0",
+    "onnxruntime-gpu>=1.16.0 ; sys_platform == 'linux'",
+    "onnxruntime>=1.16.0 ; sys_platform == 'darwin'",
     "ml-dtypes>=0.5.0",
 ]
 
