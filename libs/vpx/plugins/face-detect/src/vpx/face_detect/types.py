@@ -1,7 +1,9 @@
 """Face detection domain types."""
 
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, Optional
+
+import numpy as np
 
 
 @dataclass
@@ -33,6 +35,7 @@ class FaceObservation:
     center_distance: float = 0.0
     expression: float = 0.0
     signals: Dict[str, float] = field(default_factory=dict)
+    embedding: Optional[np.ndarray] = None  # ArcFace 512D (L2-normalized)
 
 
 __all__ = ["FaceObservation"]

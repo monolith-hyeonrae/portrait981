@@ -296,6 +296,17 @@ class InsightFaceSCRFD:
             if hasattr(face, "kps") and face.kps is not None:
                 landmarks = face.kps.astype(np.float32)
 
+            # Extract ArcFace embedding (already computed by buffalo_l get())
+            embedding = None
+            raw_emb = getattr(face, "normed_embedding", None)
+            if raw_emb is None:
+                raw_emb = getattr(face, "embedding", None)
+            if raw_emb is not None:
+                emb = np.asarray(raw_emb, dtype=np.float32)
+                norm = np.linalg.norm(emb)
+                if norm > 1e-8:
+                    embedding = emb / norm
+
             results.append(
                 DetectedFace(
                     bbox=(x, y, w, h),
@@ -304,6 +315,7 @@ class InsightFaceSCRFD:
                     yaw=yaw,
                     pitch=pitch,
                     roll=roll,
+                    embedding=embedding,
                 )
             )
 

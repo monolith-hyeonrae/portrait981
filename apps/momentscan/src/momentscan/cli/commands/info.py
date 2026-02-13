@@ -155,10 +155,14 @@ def _print_scoring_section():
           f"bright \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}]")
     print(f"  Quality score   blur: {cfg.quality_blur_weight:.2f}  "
           f"face_size: {cfg.quality_face_size_weight:.2f}  "
-          f"frontalness: {cfg.quality_frontalness_weight:.2f}")
-    print(f"  Impact score    mouth: {cfg.impact_mouth_open_weight:.2f}  "
-          f"head_vel: {cfg.impact_head_velocity_weight:.2f}  "
-          f"wrist: {cfg.impact_wrist_raise_weight:.2f}  "
+          f"face_recog: {cfg.quality_face_recog_weight:.2f}  "
+          f"{DIM}(fallback frontalness: {cfg.quality_frontalness_weight:.2f}){RESET}")
+    print(f"  Impact score    embed_face: {cfg.impact_embed_face_weight:.2f}  "
+          f"smile: {cfg.impact_smile_intensity_weight:.2f}  "
+          f"yaw: {cfg.impact_head_yaw_delta_weight:.2f}  "
+          f"mouth: {cfg.impact_mouth_open_weight:.2f}  "
+          f"head_vel: {cfg.impact_head_velocity_weight:.2f}")
+    print(f"                  wrist: {cfg.impact_wrist_raise_weight:.2f}  "
           f"torso: {cfg.impact_torso_rotation_weight:.2f}  "
           f"face_\u0394: {cfg.impact_face_size_change_weight:.2f}  "
           f"bright_\u0394: {cfg.impact_exposure_change_weight:.2f}")
@@ -213,13 +217,18 @@ def _print_scoring_detail():
 
     # Quality Score
     print(f"\n{BOLD}[Quality Score]{RESET}  = \u03a3(weight \u00d7 feature)")
-    print(f"  {cfg.quality_blur_weight:.2f}  blur_norm       {DIM}(min-max){RESET}")
-    print(f"  {cfg.quality_face_size_weight:.2f}  face_size_norm  {DIM}(min-max){RESET}")
-    print(f"  {cfg.quality_frontalness_weight:.2f}  frontalness     "
-          f"{DIM}(1 - |yaw|/{cfg.frontalness_max_yaw:.0f}, clamped){RESET}")
+    print(f"  {cfg.quality_blur_weight:.2f}  blur_norm         {DIM}(min-max){RESET}")
+    print(f"  {cfg.quality_face_size_weight:.2f}  face_size_norm    {DIM}(min-max){RESET}")
+    print(f"  {cfg.quality_face_recog_weight:.2f}  face_recog_quality  "
+          f"{DIM}(ArcFace anchor cosine sim){RESET}")
+    print(f"  {cfg.quality_frontalness_weight:.2f}  frontalness       "
+          f"{DIM}(fallback: 1 - |yaw|/{cfg.frontalness_max_yaw:.0f}, clamped){RESET}")
 
     # Impact Score
     print(f"\n{BOLD}[Impact Score]{RESET}  = \u03a3(weight \u00d7 ReLU(z-score delta))")
+    print(f"  {cfg.impact_embed_face_weight:.2f}  embed_delta_face  {DIM}(DINOv2 temporal){RESET}")
+    print(f"  {cfg.impact_smile_intensity_weight:.2f}  smile_intensity")
+    print(f"  {cfg.impact_head_yaw_delta_weight:.2f}  head_yaw")
     print(f"  {cfg.impact_mouth_open_weight:.2f}  mouth_open_ratio")
     print(f"  {cfg.impact_head_velocity_weight:.2f}  head_velocity")
     print(f"  {cfg.impact_wrist_raise_weight:.2f}  wrist_raise")

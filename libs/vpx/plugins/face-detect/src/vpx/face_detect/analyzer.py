@@ -216,6 +216,7 @@ class FaceDetectionAnalyzer(Module):
                 center_distance=center_distance,
                 expression=0.0,
                 signals={},
+                embedding=face.embedding,
             )
             face_observations.append(face_obs)
             prev_faces_update.append((face_id, face.bbox))

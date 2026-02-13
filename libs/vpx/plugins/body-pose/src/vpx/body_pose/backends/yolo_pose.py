@@ -68,15 +68,12 @@ class YOLOPoseBackend:
             model_path = str(models_dir / self._model_name)
             self._model = YOLO(model_path)
 
-            # Set device (YOLO accepts device string or int)
-            if device.startswith("cuda"):
-                device_id = device.split(":")[-1] if ":" in device else "0"
-                self._device = int(device_id)
-            else:
-                self._device = "cpu"
+            # Resolve device with platform-aware fallback
+            self._device, self._actual_provider = self._resolve_device(device)
 
             self._initialized = True
-            logger.info(f"YOLOv8-Pose initialized with model {self._model_name}")
+            logger.info("YOLOv8-Pose initialized with model %s (device=%s)",
+                        self._model_name, self._actual_provider)
 
         except ImportError:
             raise ImportError(
@@ -147,6 +144,36 @@ class YOLOPoseBackend:
                 )
 
         return poses
+
+    @staticmethod
+    def _resolve_device(device: str) -> tuple:
+        """Resolve requested device to an available one.
+
+        YOLO accepts: int (cuda device id), "cpu", "mps".
+        Falls back gracefully: cuda → mps (macOS) → cpu.
+
+        Returns:
+            (device_for_yolo, provider_name) tuple.
+        """
+        import torch
+
+        if device.startswith("cuda"):
+            if torch.cuda.is_available():
+                device_id = device.split(":")[-1] if ":" in device else "0"
+                return int(device_id), f"CUDA:{device_id}"
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                logger.info("CUDA unavailable, using MPS acceleration (macOS)")
+                return "mps", "MPS"
+            logger.warning("CUDA unavailable, falling back to CPU")
+            return "cpu", "CPU (CUDA unavailable)"
+
+        if device == "mps":
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                return "mps", "MPS"
+            logger.warning("MPS unavailable, falling back to CPU")
+            return "cpu", "CPU (MPS unavailable)"
+
+        return "cpu", "CPU"
 
     def cleanup(self) -> None:
         """Release YOLOv8-Pose resources."""

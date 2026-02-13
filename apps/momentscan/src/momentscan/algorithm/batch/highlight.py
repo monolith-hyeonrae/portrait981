@@ -60,9 +60,10 @@ class BatchHighlightEngine:
         logger.info("[2/7] Computing temporal deltas (EMA baseline)")
         deltas = self._compute_deltas(arrays)
 
-        # 3. Per-video 정규화 (MAD z-score)
-        logger.info("[3/7] Normalizing per-video (MAD z-score)")
+        # 3. Per-video 정규화 (MAD z-score → [0,1] rescale)
+        logger.info("[3/7] Normalizing per-video (MAD z-score + rescale)")
         normed = self._normalize(deltas)
+        normed = self._rescale_normed(normed)
 
         # 4. Quality gate (hard filter)
         gate_mask = self._apply_quality_gate(records)
@@ -127,7 +128,8 @@ class BatchHighlightEngine:
         for derived in PIPELINE_DERIVED_FIELDS:
             fields.update(derived.source_fields)
         # scoring에 필요하지만 delta/derived에 없는 추가 필드
-        fields.update(("blur_score", "eye_open_ratio", "face_confidence"))
+        fields.update(("blur_score", "eye_open_ratio", "face_confidence",
+                        "face_recog_quality", "embed_delta_face"))
 
         return {
             field: np.array([getattr(r, field) for r in records])
@@ -148,6 +150,10 @@ class BatchHighlightEngine:
             arr = arrays[spec.record_field]
             ema = self._compute_ema(arr, cfg.delta_alpha)
             deltas[spec.record_field] = np.abs(arr - ema)
+
+        # embed_delta_face is already a delta → pass-through (no "delta of delta")
+        if "embed_delta_face" in arrays:
+            deltas["embed_delta_face"] = arrays["embed_delta_face"]
 
         # Derived fields
         for derived in PIPELINE_DERIVED_FIELDS:
@@ -178,6 +184,26 @@ class BatchHighlightEngine:
             else:
                 normed[key] = np.zeros_like(arr)
         return normed
+
+    def _rescale_normed(self, normed: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+        """MAD z-score를 [0, 1] 범위로 재정규화.
+
+        MAD z-score는 feature별 레인지가 크게 달라 가중합에서 불균형을 초래.
+        (예: smile z_max=16 vs head_yaw z_max=5 → weight 무시하고 smile 지배)
+
+        Percentile capping으로 양수 z-score를 [0, 1]로 통일하여
+        weight가 실질적 기여도를 정확히 제어하도록 한다.
+        """
+        pct = self.config.normed_cap_percentile
+        rescaled = {}
+        for key, arr in normed.items():
+            pos = np.maximum(arr, 0.0)
+            cap = np.percentile(pos, pct)
+            if cap > 1e-8:
+                rescaled[key] = np.minimum(pos / cap, 1.0)
+            else:
+                rescaled[key] = np.zeros_like(arr)
+        return rescaled
 
     # ── Step 4: Quality gate ──
 
@@ -217,11 +243,13 @@ class BatchHighlightEngine:
     ) -> np.ndarray:
         """연속 품질 점수.
 
-        quality_score = 0.4 * blur_norm + 0.3 * face_size_norm + 0.3 * frontalness
+        ArcFace face_recog_quality 사용 시:
+          quality = blur * w_blur + face_size * w_size + face_recog * w_recog
+        ArcFace 없는 프레임은 frontalness fallback.
+
         highlight_rules.md §6 Step 2
         """
         cfg = self.config
-        n = len(arrays["blur_score"])
 
         # Per-video 정규화된 blur (높을수록 좋음 → 0~1 clamp)
         blur = arrays["blur_score"]
@@ -230,13 +258,24 @@ class BatchHighlightEngine:
         # Face size (face_area_ratio, 높을수록 좋음)
         face_size_normed = self._minmax_normalize(arrays["face_area_ratio"])
 
-        # Frontalness (1 - |yaw|/max_yaw, 정면에 가까울수록 1)
+        # ArcFace quality (already 0~1 range)
+        face_recog = arrays["face_recog_quality"]
+
+        # Frontalness fallback (1 - |yaw|/max_yaw, 정면에 가까울수록 1)
         frontalness = np.clip(1.0 - np.abs(arrays["head_yaw"]) / cfg.frontalness_max_yaw, 0.0, 1.0)
 
+        # Per-frame: use face_recog where available, frontalness as fallback
+        has_recog = face_recog > 0
+        face_quality = np.where(has_recog, face_recog, frontalness)
+        recog_weight = np.where(has_recog, cfg.quality_face_recog_weight, cfg.quality_frontalness_weight)
+
+        # Rebalance: blur + face_size weights must adjust with recog weight
+        total_other = cfg.quality_blur_weight + cfg.quality_face_size_weight
+        total = total_other + recog_weight
         quality = (
-            cfg.quality_blur_weight * blur_normed
-            + cfg.quality_face_size_weight * face_size_normed
-            + cfg.quality_frontalness_weight * frontalness
+            (cfg.quality_blur_weight / total) * blur_normed
+            + (cfg.quality_face_size_weight / total) * face_size_normed
+            + (recog_weight / total) * face_quality
         )
         return np.clip(quality, 0.0, 1.0)
 
@@ -263,6 +302,9 @@ class BatchHighlightEngine:
             + cfg.impact_face_size_change_weight * relu(normed["face_area_ratio"])
             + cfg.impact_exposure_change_weight * relu(normed["brightness"])
         )
+        # DINOv2 embed delta (if available in normed)
+        if "embed_delta_face" in normed:
+            impact = impact + cfg.impact_embed_face_weight * relu(normed["embed_delta_face"])
         return impact
 
     # ── Step 8: Smoothing ──

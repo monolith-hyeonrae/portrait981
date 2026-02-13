@@ -54,6 +54,11 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
                  rationale="상하 회전 참고. head_velocity 파생 필드의 소스"),
     FieldMapping("face.detect", "head_roll", "머리 기울기 (도)", "info",
                  rationale="머리 기울기 참고. 현재 scoring 미사용"),
+    FieldMapping("face.detect", "face_recog_quality", "ArcFace 인식 품질", "quality", "quality_face_recog_weight",
+                 rationale="ArcFace anchor 대비 cosine similarity. 정면/선명/가림없음을 통합적으로 평가"),
+    # vision.embed (1)
+    FieldMapping("vision.embed", "embed_delta_face", "얼굴 임베딩 변화량", "impact", "impact_embed_face_weight",
+                 rationale="DINOv2 temporal delta. 개별 감정 라벨 없이 전체 외형 변화를 holistic하게 포착"),
     # face.expression (3)
     FieldMapping("face.expression", "mouth_open_ratio", "비중립 표정 강도", "impact", "impact_mouth_open_weight",
                  rationale="환호/놀람 등 감정 표현이 큰 순간이 라이드 하이라이트"),

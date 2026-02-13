@@ -62,7 +62,7 @@ class MomentscanApp(vp.App):
 
         names = list(modules) if modules else [
             "face.detect", "face.expression", "body.pose", "hand.gesture",
-            "frame.quality", "frame.scoring",
+            "vision.embed", "frame.quality", "frame.scoring",
         ]
 
         if "face.detect" in names and "face.classify" not in names:
@@ -81,6 +81,11 @@ class MomentscanApp(vp.App):
     def setup(self):
         self._frame_records = []
         self._interrupted = False
+
+        # Reset extract module state for video-level isolation
+        from momentscan.algorithm.batch.extract import reset_extract_state
+        reset_extract_state()
+
         # SIGINT를 잡아서 graceful shutdown → after_run() 보장
         self._prev_sigint_handler = signal.getsignal(signal.SIGINT)
         signal.signal(signal.SIGINT, self._handle_sigint)

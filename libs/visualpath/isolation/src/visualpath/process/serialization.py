@@ -4,8 +4,11 @@ Provides JSON-safe serialization and Observation (de)serialization
 used by both the worker subprocess and the launcher (main process).
 """
 
+import base64
 import json
 from typing import Any, Dict, List, Optional
+
+import numpy as np
 
 from visualpath.core.observation import Observation
 
@@ -32,8 +35,17 @@ class _AttrDict(dict):
 
 
 def _wrap_value(value: Any) -> Any:
-    """Recursively wrap dicts as ``_AttrDict`` for attribute access."""
+    """Recursively wrap dicts as ``_AttrDict`` for attribute access.
+
+    Also restores numpy arrays from their ``{"__numpy__": True, ...}``
+    serialized form.
+    """
     if isinstance(value, dict):
+        if value.get("__numpy__"):
+            dtype = np.dtype(value["dtype"])
+            shape = tuple(value["shape"])
+            buf = base64.b64decode(value["data"])
+            return np.frombuffer(buf, dtype=dtype).reshape(shape).copy()
         return _AttrDict({k: _wrap_value(v) for k, v in value.items()})
     if isinstance(value, list):
         return [_wrap_value(item) for item in value]
@@ -47,8 +59,9 @@ def _wrap_value(value: Any) -> Any:
 def serialize_value(value: Any) -> Any:
     """Recursively serialize a value for JSON transmission.
 
-    Handles dataclasses, lists, tuples, dicts, and objects with __dict__.
-    Falls back to repr() or str() for unserializable types.
+    Handles numpy arrays, dataclasses, lists, tuples, dicts, and
+    objects with __dict__.  Falls back to repr() or str() for
+    unserializable types.
 
     Args:
         value: Any value to serialize.
@@ -58,6 +71,19 @@ def serialize_value(value: Any) -> Any:
     """
     if value is None:
         return None
+
+    # Handle numpy arrays (must come before json.dumps fast path)
+    if isinstance(value, np.ndarray):
+        return {
+            "__numpy__": True,
+            "dtype": str(value.dtype),
+            "shape": list(value.shape),
+            "data": base64.b64encode(value.tobytes()).decode("ascii"),
+        }
+
+    # Handle numpy scalars (e.g. np.float32)
+    if isinstance(value, (np.integer, np.floating, np.bool_)):
+        return value.item()
 
     # Fast path: already JSON-serializable
     try:

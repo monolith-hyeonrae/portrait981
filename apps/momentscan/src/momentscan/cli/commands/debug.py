@@ -361,7 +361,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
     """
     if 'all' in selected:
         return ['face.detect', 'face.expression', 'body.pose', 'hand.gesture',
-                'frame.quality', 'frame.scoring']
+                'vision.embed', 'frame.quality', 'frame.scoring']
 
     names = []
     for s in selected:
@@ -370,7 +370,8 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
         if s == 'face.detect' and 'face.expression' not in selected:
             names.append('face.expression')
 
-    return names if names else ['face.detect', 'face.expression', 'body.pose', 'hand.gesture']
+    return names if names else ['face.detect', 'face.expression', 'body.pose', 'hand.gesture',
+                                'vision.embed', 'frame.quality', 'frame.scoring']
 
 
 # ---------------------------------------------------------------------------
@@ -454,7 +455,7 @@ def _parse_analyzer_arg(arg: str) -> List[str]:
         return ['raw']
 
     parts = [p.strip().lower() for p in arg.split(',')]
-    valid = {'face.detect', 'body.pose', 'frame.quality', 'hand.gesture', 'all', 'raw', 'none'}
+    valid = {'face.detect', 'body.pose', 'frame.quality', 'hand.gesture', 'vision.embed', 'all', 'raw', 'none'}
     for p in parts:
         if p not in valid:
             print(f"Warning: Unknown analyzer '{p}', valid: {valid}")

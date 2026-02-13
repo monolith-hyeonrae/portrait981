@@ -39,6 +39,7 @@ _MODULE_PALETTES: Dict[str, List[str]] = {
     "face.expression": ["#d84315", "#e64a19", "#f4511e"],
     "body.pose": ["#00838f", "#0097a7", "#00acc1", "#00bcd4"],
     "hand.gesture": ["#6a1b9a", "#7b1fa2", "#8e24aa", "#9c27b0"],
+    "vision.embed": ["#ff6f00", "#ff8f00", "#ffa000"],
     "frame.quality": ["#1565c0", "#1976d2", "#1e88e5"],
     "face.classify": ["#f9a825"],
     "frame.scoring": ["#757575"],
@@ -49,6 +50,7 @@ _MODULE_LABELS: Dict[str, str] = {
     "face.expression": "Expression",
     "body.pose": "Body Pose",
     "hand.gesture": "Hand Gesture",
+    "vision.embed": "Vision Embed",
     "frame.quality": "Frame Quality",
     "face.classify": "Face Classifier",
     "frame.scoring": "Frame Scoring",
@@ -341,10 +343,12 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         float(np.clip(1.0 - abs(r.head_yaw) / cfg.frontalness_max_yaw, 0.0, 1.0))
         for r in records
     ]
+    data["face_recog_quality"] = [float(r.face_recog_quality) for r in records]
 
     # ── Normalized impact deltas (for hover panel) ──
     normed = ts.get("normed", {})
     for out_key, normed_key in (
+        ("normed_embed_delta_face", "embed_delta_face"),
         ("normed_smile_intensity", "smile_intensity"),
         ("normed_head_yaw", "head_yaw"),
         ("normed_mouth_open_ratio", "mouth_open_ratio"),
@@ -389,9 +393,11 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     data["cfg_quality_weights"] = {
         "blur": cfg.quality_blur_weight,
         "face_size": cfg.quality_face_size_weight,
+        "face_recog": cfg.quality_face_recog_weight,
         "frontalness": cfg.quality_frontalness_weight,
     }
     data["cfg_impact_weights"] = {
+        "embed_delta_face": cfg.impact_embed_face_weight,
         "smile_intensity": cfg.impact_smile_intensity_weight,
         "head_yaw": cfg.impact_head_yaw_delta_weight,
         "mouth_open_ratio": cfg.impact_mouth_open_weight,
@@ -995,15 +1001,21 @@ _JS_MAIN = r"""
 
     // Quality
     var qs = D.quality_scores[pi];
-    var blV = D.blur_normed[pi], fsV = D.face_size_normed[pi], frV = D.frontalness[pi];
+    var blV = D.blur_normed[pi], fsV = D.face_size_normed[pi];
+    var frqV = D.face_recog_quality[pi], frV = D.frontalness[pi];
     h += '\n<span class="section-label">\u2500\u2500 Quality: ' + fmtN(qs,3) + ' \u2500\u2500</span>\n';
-    h += '  blur_norm     ' + fmtN(qw.blur,1)       + ' \u00d7 ' + fmtN(blV,3) + ' = ' + fmtN(qw.blur*blV,3) + '\n';
-    h += '  face_size     ' + fmtN(qw.face_size,1)  + ' \u00d7 ' + fmtN(fsV,3) + ' = ' + fmtN(qw.face_size*fsV,3) + '\n';
-    h += '  frontalness   ' + fmtN(qw.frontalness,1)+ ' \u00d7 ' + fmtN(frV,3) + ' = ' + fmtN(qw.frontalness*frV,3) + '\n';
+    h += '  blur_norm     ' + fmtN(qw.blur,2)       + ' \u00d7 ' + fmtN(blV,3) + ' = ' + fmtN(qw.blur*blV,3) + '\n';
+    h += '  face_size     ' + fmtN(qw.face_size,2)  + ' \u00d7 ' + fmtN(fsV,3) + ' = ' + fmtN(qw.face_size*fsV,3) + '\n';
+    if (frqV > 0) {
+      h += '  face_recog    ' + fmtN(qw.face_recog,2) + ' \u00d7 ' + fmtN(frqV,3) + ' = ' + fmtN(qw.face_recog*frqV,3) + '\n';
+    } else {
+      h += '  frontalness   ' + fmtN(qw.frontalness,2)+ ' \u00d7 ' + fmtN(frV,3) + ' = ' + fmtN(qw.frontalness*frV,3) + ' <span style="color:#999">(fallback)</span>\n';
+    }
 
     // Impact
     var is_ = D.impact_scores[pi];
     var impF = [
+      ['embed_face\u0394 ', 'embed_delta_face', D.normed_embed_delta_face[pi]],
       ['smile       ', 'smile_intensity',  D.normed_smile_intensity[pi]],
       ['yaw_\u0394       ', 'head_yaw',         D.normed_head_yaw[pi]],
       ['mouth_open  ', 'mouth_open_ratio', D.normed_mouth_open_ratio[pi]],

@@ -17,6 +17,8 @@ from __future__ import annotations
 import math
 from typing import Any, List, Optional
 
+import numpy as np
+
 from momentscan.algorithm.batch.types import FrameRecord
 
 # COCO keypoint indices
@@ -27,6 +29,21 @@ _LEFT_ELBOW = 7
 _RIGHT_ELBOW = 8
 _LEFT_WRIST = 9
 _RIGHT_WRIST = 10
+
+# Module-level state for ArcFace anchor (quality)
+_anchor_embedding: Optional[np.ndarray] = None
+_anchor_confidence: float = 0.0
+
+# Module-level state for DINOv2 EMA (impact)
+_embed_ema_face: Optional[np.ndarray] = None
+
+
+def reset_extract_state() -> None:
+    """비디오 간 상태 격리를 위한 모듈 레벨 상태 리셋."""
+    global _anchor_embedding, _anchor_confidence, _embed_ema_face
+    _anchor_embedding = None
+    _anchor_confidence = 0.0
+    _embed_ema_face = None
 
 
 def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord]:
@@ -61,6 +78,7 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
     _extract_quality(record, obs_by_source.get("frame.quality"))
     _extract_face_classify(record, obs_by_source.get("face.classify"))
     _extract_frame_scoring(record, obs_by_source.get("frame.scoring"))
+    _extract_vision_embed(record, obs_by_source.get("vision.embed"))
 
     return record
 
@@ -78,6 +96,8 @@ def _get_main_face(obs: Any) -> Any:
 
 def _extract_face_detect(record: FrameRecord, obs: Any) -> None:
     """face.detect: FaceDetectOutput.faces에서 주 얼굴 수치 추출."""
+    global _anchor_embedding, _anchor_confidence
+
     if obs is None:
         return
 
@@ -92,6 +112,23 @@ def _extract_face_detect(record: FrameRecord, obs: Any) -> None:
     record.head_yaw = float(getattr(face, "yaw", 0.0))
     record.head_pitch = float(getattr(face, "pitch", 0.0))
     record.head_roll = float(getattr(face, "roll", 0.0))
+
+    # ArcFace embedding → quality signal
+    embedding = getattr(face, "embedding", None)
+    if embedding is not None:
+        emb = np.asarray(embedding, dtype=np.float32)
+        norm = np.linalg.norm(emb)
+        if norm > 1e-8:
+            emb = emb / norm
+            # Update anchor with highest-confidence face
+            face_conf = record.face_confidence
+            if face_conf > _anchor_confidence:
+                _anchor_embedding = emb
+                _anchor_confidence = face_conf
+            # Compute similarity to anchor
+            if _anchor_embedding is not None:
+                sim = float(np.dot(emb, _anchor_embedding))
+                record.face_recog_quality = max(0.0, sim)
 
 
 def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
@@ -245,3 +282,28 @@ def _extract_frame_scoring(record: FrameRecord, obs: Any) -> None:
 
     signals = getattr(obs, "signals", {}) or {}
     record.frame_score = float(signals.get("total_score", 0.0))
+
+
+def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
+    """vision.embed: DINOv2 face embedding에서 temporal delta 계산."""
+    global _embed_ema_face
+
+    if obs is None:
+        return
+
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+
+    e_face = getattr(data, "e_face", None)
+    if e_face is not None:
+        e_face = np.asarray(e_face, dtype=np.float32)
+        if _embed_ema_face is None:
+            _embed_ema_face = e_face.copy()
+        else:
+            delta = 1.0 - float(np.dot(e_face, _embed_ema_face))
+            record.embed_delta_face = max(0.0, delta)
+            _embed_ema_face = 0.1 * e_face + 0.9 * _embed_ema_face
+            norm = np.linalg.norm(_embed_ema_face)
+            if norm > 1e-8:
+                _embed_ema_face = _embed_ema_face / norm

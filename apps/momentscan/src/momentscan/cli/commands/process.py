@@ -56,7 +56,8 @@ def run_process(args):
     isolation_config = None
     if distributed:
         effective_names = analyzer_names or [
-            "face.detect", "face.expression", "body.pose", "hand.gesture"
+            "face.detect", "face.expression", "body.pose", "hand.gesture",
+            "vision.embed", "frame.quality", "frame.scoring",
         ]
         app = MomentscanApp()
         resolved = app.configure_modules(effective_names)
