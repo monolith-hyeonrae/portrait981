@@ -150,11 +150,11 @@ Examples:
     from momentscan.cli.utils import suppress_thirdparty_noise, configure_log_levels, StderrFilter
 
     if getattr(args, "verbose", False):
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(message)s", stream=sys.stdout)
     else:
         suppress_thirdparty_noise()
         StderrFilter().install()
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
         configure_log_levels()
 
     from momentscan.cli import commands

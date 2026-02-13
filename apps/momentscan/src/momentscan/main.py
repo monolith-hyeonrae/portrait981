@@ -121,17 +121,36 @@ class MomentscanApp(vp.App):
         record = extract_frame_record(frame, results)
         if record is not None:
             self._frame_records.append(record)
+
+        n = len(self._frame_records)
+        if n == 1:
+            logger.info("Frame collection started")
+        elif n % 100 == 0:
+            logger.info("Collected %d frame records", n)
+
         return True
 
     def after_run(self, result):
         """전체 비디오 기준 배치 분석을 수행한다."""
         from momentscan.algorithm.batch.highlight import BatchHighlightEngine
 
+        n = len(self._frame_records)
+        logger.info(
+            "Frame collection done — %d records (%.1fs). Starting batch analysis...",
+            n, result.duration_sec,
+        )
+
         engine = BatchHighlightEngine()
         highlight_result = engine.analyze(self._frame_records)
 
+        logger.info(
+            "Batch analysis complete — %d highlights detected",
+            len(highlight_result.windows),
+        )
+
         if self._output_dir:
             highlight_result.export(Path(self._output_dir))
+            logger.info("Results exported to %s", self._output_dir)
 
         return Result(
             highlights=highlight_result.windows,

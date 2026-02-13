@@ -172,10 +172,20 @@ def run_debug(args):
         backend_label=backend.upper(),
     )
 
-    # --- Frame loop ---
+    # --- Frame loop + batch analysis ---
     from momentscan.main import Result
+    from momentscan.algorithm.batch.extract import extract_frame_record
+    from momentscan.algorithm.batch.highlight import BatchHighlightEngine
 
     frame_count = 0
+    frame_records = []
+
+    def _collect_and_handle(frame, terminal_results):
+        """DebugFrameHandler에 전달하면서 FrameRecord도 축적."""
+        record = extract_frame_record(frame, terminal_results)
+        if record is not None:
+            frame_records.append(record)
+        return handler(frame, terminal_results)
 
     try:
         vb, source, stream = create_video_stream(args.path, fps=int(args.fps))
@@ -185,7 +195,7 @@ def run_debug(args):
                 for frame in stream:
                     frame_count += 1
                     terminal_results = executor.process(frame)
-                    if not handler(frame, terminal_results):
+                    if not _collect_and_handle(frame, terminal_results):
                         break
             else:
                 # Batch collection
@@ -198,7 +208,7 @@ def run_debug(args):
                     if len(batch_frames) >= batch_size:
                         batch_results = executor.process_batch(batch_frames)
                         for bf, br in zip(batch_frames, batch_results):
-                            if not handler(bf, br):
+                            if not _collect_and_handle(bf, br):
                                 stopped = True
                                 break
                         batch_frames = []
@@ -209,19 +219,69 @@ def run_debug(args):
                 if batch_frames and not stopped:
                     batch_results = executor.process_batch(batch_frames)
                     for bf, br in zip(batch_frames, batch_results):
-                        if not handler(bf, br):
+                        if not _collect_and_handle(bf, br):
                             break
         finally:
             vb.disconnect()
 
+        # --- Batch highlight analysis ---
         fps = int(args.fps)
+        duration_sec = frame_count / fps if frame_count > 0 else 0.0
+
+        print()
+        print(f"{BOLD}{'Batch':<10}{RESET}{DIM}Analyzing {len(frame_records)} frame records ({duration_sec:.1f}s){RESET}")
+
+        # 진단: 샘플 레코드 값 출력
+        if frame_records:
+            sample = frame_records[len(frame_records) // 2]  # 중간 프레임
+            face_pct = sum(1 for r in frame_records if r.face_detected) / len(frame_records) * 100
+            print(f"          {DIM}face_detected: {face_pct:.0f}% of frames{RESET}")
+            print(f"          {DIM}sample[{sample.frame_idx}]: conf={sample.face_confidence:.2f} area={sample.face_area_ratio:.3f} "
+                  f"blur={sample.blur_score:.0f} bright={sample.brightness:.0f} "
+                  f"yaw={sample.head_yaw:.1f} mouth={sample.mouth_open_ratio:.2f}{RESET}")
+
+        batch_engine = BatchHighlightEngine()
+        highlight_result = batch_engine.analyze(frame_records)
+
+        n_highlights = len(highlight_result.windows)
+        print(f"          {DIM}{n_highlights} highlights detected{RESET}")
+
+        if highlight_result.windows:
+            print()
+            print(f"{BOLD}{'Highlights':<10}{RESET}")
+            for w in highlight_result.windows:
+                reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
+                n_frames = len(w.selected_frames)
+                print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
+
         result = Result(
+            highlights=highlight_result.windows,
             frame_count=frame_count,
-            duration_sec=frame_count / fps if frame_count > 0 else 0.0,
+            duration_sec=duration_sec,
         )
         handler.print_summary(result)
     except KeyboardInterrupt:
-        print(f"\n{DIM}Interrupted{RESET}")
+        # Graceful: 중단되어도 축적된 프레임으로 배치 분석 실행
+        fps = int(args.fps)
+        duration_sec = frame_count / fps if frame_count > 0 else 0.0
+
+        print(f"\n{DIM}Interrupted — running batch analysis on {len(frame_records)} frames...{RESET}")
+
+        if len(frame_records) >= 3:
+            batch_engine = BatchHighlightEngine()
+            highlight_result = batch_engine.analyze(frame_records)
+            n_highlights = len(highlight_result.windows)
+            print(f"{DIM}{n_highlights} highlights detected{RESET}")
+
+            if highlight_result.windows:
+                print()
+                print(f"{BOLD}{'Highlights':<10}{RESET}")
+                for w in highlight_result.windows:
+                    reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
+                    n_frames = len(w.selected_frames)
+                    print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
+        else:
+            print(f"{DIM}Too few frames for batch analysis{RESET}")
     finally:
         executor.cleanup()
         handler.cleanup()
@@ -239,7 +299,8 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
         List of analyzer names for ms.run().
     """
     if 'all' in selected:
-        return ['face.detect', 'face.expression', 'body.pose', 'hand.gesture']
+        return ['face.detect', 'face.expression', 'body.pose', 'hand.gesture',
+                'frame.quality', 'frame.scoring']
 
     names = []
     for s in selected:

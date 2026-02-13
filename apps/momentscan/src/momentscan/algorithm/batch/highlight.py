@@ -42,22 +42,29 @@ class BatchHighlightEngine:
             HighlightResult with detected windows.
         """
         if len(records) < 3:
+            logger.info("Too few frames (%d) — skipping batch analysis", len(records))
             return HighlightResult(frame_count=len(records), config=self.config)
 
         cfg = self.config
         n = len(records)
+        logger.info("[1/7] Building feature arrays (%d frames, %d features)", n, 10)
 
         # 1. 수치 배열 구성
         arrays = self._build_arrays(records)
 
         # 2. Temporal delta 계산
+        logger.info("[2/7] Computing temporal deltas (EMA baseline)")
         deltas = self._compute_deltas(arrays)
 
         # 3. Per-video 정규화 (MAD z-score)
+        logger.info("[3/7] Normalizing per-video (MAD z-score)")
         normed = self._normalize(deltas)
 
         # 4. Quality gate (hard filter)
         gate_mask = self._apply_quality_gate(records)
+        gate_pass = int(gate_mask.sum())
+        logger.info("[4/7] Quality gate: %d/%d frames passed (%.0f%%)",
+                     gate_pass, n, 100.0 * gate_pass / n)
 
         # 5. Quality score (연속 품질)
         quality_scores = self._compute_quality_scores(arrays, normed)
@@ -67,12 +74,15 @@ class BatchHighlightEngine:
 
         # 7. Final score = quality × impact (gate 통과 프레임만)
         final_scores = np.where(gate_mask, quality_scores * impact_scores, 0.0)
+        logger.info("[5/7] Scoring complete (quality × impact)")
 
         # 8. Temporal smoothing (EMA)
         smoothed = self._smooth_ema(final_scores, alpha=cfg.smoothing_alpha)
+        logger.info("[6/7] Temporal smoothing (EMA α=%.2f)", cfg.smoothing_alpha)
 
         # 9. Peak detection
         peaks = self._detect_peaks(smoothed)
+        logger.info("[7/7] Peak detection: %d peaks found", len(peaks))
 
         # 10. Window 생성 + best frame 선택
         windows = self._generate_windows(peaks, records, final_scores, normed)
@@ -164,9 +174,11 @@ class BatchHighlightEngine:
                 mask[i] = False
             elif r.face_area_ratio < cfg.gate_face_area_ratio:
                 mask[i] = False
-            elif r.blur_score < cfg.gate_blur_min:
+            elif r.blur_score > 0 and r.blur_score < cfg.gate_blur_min:
+                # blur_score=0은 미측정 → 통과
                 mask[i] = False
-            elif not (cfg.gate_exposure_min <= r.brightness <= cfg.gate_exposure_max):
+            elif r.brightness > 0 and not (cfg.gate_exposure_min <= r.brightness <= cfg.gate_exposure_max):
+                # brightness=0은 미측정 → 통과
                 mask[i] = False
 
         return mask

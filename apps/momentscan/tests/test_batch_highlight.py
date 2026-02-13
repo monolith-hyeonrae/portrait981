@@ -220,30 +220,41 @@ class TestExtractFrameRecord:
     def test_empty_results(self):
         assert extract_frame_record(None, []) is None
 
-    def test_with_mock_observations(self):
-        """Mock FlowData + Observation으로 추출 테스트."""
+    def test_face_detect_from_data_object(self):
+        """face.detect: FaceDetectOutput.faces에서 주 얼굴 수치 추출."""
+
+        class MockFace:
+            def __init__(self, **kw):
+                self.confidence = kw.get("confidence", 0.0)
+                self.area_ratio = kw.get("area_ratio", 0.0)
+                self.center_distance = kw.get("center_distance", 0.0)
+                self.yaw = kw.get("yaw", 0.0)
+                self.pitch = kw.get("pitch", 0.0)
+                self.roll = kw.get("roll", 0.0)
+
+        class MockFaceOutput:
+            def __init__(self, faces):
+                self.faces = faces
 
         class MockObs:
-            def __init__(self, source, signals):
+            def __init__(self, source, *, signals=None, data=None):
                 self.source = source
-                self.signals = signals
+                self.signals = signals or {}
+                self.data = data
 
         class MockFlowData:
-            def __init__(self, results):
-                self.results = results
+            def __init__(self, observations):
+                self.observations = observations
 
         class MockFrame:
             frame_id = 42
-            t_src_ns = 4_200_000_000  # 4200ms in ns
+            t_src_ns = 4_200_000_000
 
+        face = MockFace(confidence=0.92, area_ratio=0.04, yaw=10.0, pitch=-5.0)
+        face_output = MockFaceOutput([face])
         flow_data = MockFlowData([
-            MockObs("face.detect", {
-                "face_count": 1,
-                "face_confidence": 0.92,
-                "face_area_ratio": 0.04,
-                "head_yaw": 10.0,
-            }),
-            MockObs("frame.quality", {
+            MockObs("face.detect", data=face_output),
+            MockObs("frame.quality", signals={
                 "blur_score": 150.0,
                 "brightness": 130.0,
                 "contrast": 45.0,
@@ -257,5 +268,137 @@ class TestExtractFrameRecord:
         assert record.timestamp_ms == 4200.0
         assert record.face_detected is True
         assert record.face_confidence == 0.92
+        assert record.face_area_ratio == 0.04
         assert record.head_yaw == 10.0
+        assert record.head_pitch == -5.0
         assert record.blur_score == 150.0
+
+    def test_face_expression_from_data_object(self):
+        """face.expression: FaceObservation.expression + per-face signals 추출."""
+
+        class MockFace:
+            def __init__(self, expression, signals):
+                self.expression = expression
+                self.signals = signals
+                self.area_ratio = 0.05
+
+        class MockExprOutput:
+            def __init__(self, faces):
+                self.faces = faces
+
+        class MockObs:
+            def __init__(self, source, *, signals=None, data=None):
+                self.source = source
+                self.signals = signals or {}
+                self.data = data
+
+        class MockFlowData:
+            def __init__(self, observations):
+                self.observations = observations
+
+        class MockFrame:
+            frame_id = 1
+            t_src_ns = 100_000_000
+
+        face = MockFace(expression=0.7, signals={"em_happy": 0.6, "em_neutral": 0.2})
+        expr_output = MockExprOutput([face])
+
+        flow_data = MockFlowData([
+            MockObs("face.expression", data=expr_output),
+        ])
+        record = extract_frame_record(MockFrame(), [flow_data])
+
+        assert record.mouth_open_ratio == 0.7
+        assert record.smile_intensity == 0.6
+        assert record.eye_open_ratio == pytest.approx(0.8)
+
+    def test_body_pose_from_keypoints(self):
+        """body.pose: PoseOutput.keypoints에서 wrist_raise 등 계산."""
+        import math
+
+        class MockPoseOutput:
+            def __init__(self, keypoints):
+                self.keypoints = keypoints
+
+        class MockObs:
+            def __init__(self, source, *, signals=None, data=None):
+                self.source = source
+                self.signals = signals or {}
+                self.data = data
+
+        class MockFlowData:
+            def __init__(self, observations):
+                self.observations = observations
+
+        class MockFrame:
+            frame_id = 1
+            t_src_ns = 100_000_000
+
+        # Keypoints: [x, y, confidence]
+        # 손목이 어깨보다 100px 위 (image height 480)
+        kpts = [[0] * 3] * 17
+        kpts[5] = [200, 200, 0.9]   # left shoulder
+        kpts[6] = [400, 200, 0.9]   # right shoulder
+        kpts[7] = [180, 170, 0.9]   # left elbow
+        kpts[8] = [420, 170, 0.9]   # right elbow
+        kpts[9] = [160, 100, 0.9]   # left wrist (100px above shoulder)
+        kpts[10] = [440, 200, 0.9]  # right wrist (same as shoulder)
+        kpts[0] = [300, 150, 0.9]   # nose
+
+        pose_output = MockPoseOutput([{
+            "keypoints": kpts,
+            "image_size": (640, 480),
+        }])
+        flow_data = MockFlowData([
+            MockObs("body.pose", data=pose_output),
+        ])
+        record = extract_frame_record(MockFrame(), [flow_data])
+
+        # wrist_raise: (200 - 100) / 480 ≈ 0.208
+        assert record.wrist_raise == pytest.approx(100.0 / 480.0, abs=0.01)
+        # hand_near_face: 왼쪽 손목이 코에 가까움
+        assert record.hand_near_face > 0.0
+        # torso_rotation: 어깨가 수평 → 약 0도
+        assert record.torso_rotation == pytest.approx(0.0, abs=1.0)
+
+    def test_selects_largest_face(self):
+        """여러 얼굴 중 area_ratio 최대인 주 얼굴을 선택한다."""
+
+        class MockFace:
+            def __init__(self, confidence, area_ratio, yaw=0.0):
+                self.confidence = confidence
+                self.area_ratio = area_ratio
+                self.center_distance = 0.0
+                self.yaw = yaw
+                self.pitch = 0.0
+                self.roll = 0.0
+
+        class MockFaceOutput:
+            def __init__(self, faces):
+                self.faces = faces
+
+        class MockObs:
+            def __init__(self, source, *, data=None):
+                self.source = source
+                self.signals = {}
+                self.data = data
+
+        class MockFlowData:
+            def __init__(self, observations):
+                self.observations = observations
+
+        class MockFrame:
+            frame_id = 1
+            t_src_ns = 0
+
+        small_face = MockFace(confidence=0.99, area_ratio=0.01, yaw=30.0)
+        big_face = MockFace(confidence=0.85, area_ratio=0.08, yaw=-5.0)
+        face_output = MockFaceOutput([small_face, big_face])
+
+        flow_data = MockFlowData([MockObs("face.detect", data=face_output)])
+        record = extract_frame_record(MockFrame(), [flow_data])
+
+        # 큰 얼굴이 선택됨
+        assert record.face_confidence == 0.85
+        assert record.face_area_ratio == 0.08
+        assert record.head_yaw == -5.0

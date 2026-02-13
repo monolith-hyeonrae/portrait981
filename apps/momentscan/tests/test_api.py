@@ -249,10 +249,11 @@ class TestMomentscanApp:
 
         mock_obs = Mock()
         mock_obs.source = "face.detect"
-        mock_obs.signals = {"face_count": 1, "face_confidence": 0.9}
+        mock_obs.signals = {"face_count": 1}
+        mock_obs.data = None  # no FaceDetectOutput → record with defaults
 
         mock_flow_data = Mock()
-        mock_flow_data.results = [mock_obs]
+        mock_flow_data.observations = [mock_obs]
 
         result = app.on_frame(frame, [mock_flow_data])
         assert result is True

@@ -60,7 +60,6 @@ class DebugFrameHandler:
         self._writer = None
         self._writer_initialized = False
         self.frame_count = 0
-        self.trigger_count = 0
 
         # Timing tracking
         self._target_fps = fps
@@ -90,30 +89,8 @@ class DebugFrameHandler:
         for obs in fd.observations:
             observations[obs.source] = obs
 
-        # Extract fusion/classifier
-        fusion_result = observations.get("highlight")
+        # Extract classifier
         classifier_obs = observations.get("face.classify")
-
-        # Derive gate/cooldown state from fusion observation metadata
-        is_gate_open = False
-        in_cooldown = False
-        if fusion_result is not None:
-            meta = getattr(fusion_result, "metadata", {}) or {}
-            state = meta.get("state", "")
-            if state == "cooldown":
-                in_cooldown = True
-            elif state == "gate_closed":
-                is_gate_open = False
-            elif state == "monitoring":
-                is_gate_open = meta.get("gate_open", False)
-            elif getattr(fusion_result, "should_trigger", False):
-                # Trigger fired — gate was open
-                is_gate_open = True
-
-        # Count triggers
-        for obs in fd.observations:
-            if getattr(obs, "should_trigger", False) and getattr(obs, "trigger", None):
-                self.trigger_count += 1
 
         # Frame scoring
         score_result = score_frame(self.scorer, observations)
@@ -130,9 +107,9 @@ class DebugFrameHandler:
             gesture_obs=observations.get("hand.gesture"),
             quality_obs=observations.get("frame.quality"),
             classifier_obs=classifier_obs,
-            fusion_result=fusion_result,
-            is_gate_open=is_gate_open,
-            in_cooldown=in_cooldown,
+            fusion_result=None,
+            is_gate_open=False,
+            in_cooldown=False,
             roi=self.roi,
             monitor_stats=monitor_stats,
             backend_label=self.backend_label,
@@ -260,9 +237,10 @@ class DebugFrameHandler:
     def print_summary(self, result) -> None:
         """Print session summary."""
         print()
+        highlights = getattr(result, "highlights", [])
         parts = [
             f"{result.frame_count} frames",
-            f"{len(result.triggers)} triggers",
+            f"{len(highlights)} highlights",
         ]
         if result.duration_sec > 0:
             fps = result.frame_count / result.duration_sec
