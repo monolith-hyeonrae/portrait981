@@ -20,7 +20,7 @@ from visualpath.core.compat import check_compatibility, CompatibilityReport
 from visualpath.core.graph import toposort_modules
 
 # Model path utilities
-from vpx.sdk.paths import get_models_dir
+from vpx.sdk.paths import get_home_dir, get_models_dir
 
 # Declarative visualization marks
 from vpx.sdk.marks import (
@@ -52,6 +52,7 @@ __all__ = [
     # Graph utilities
     "toposort_modules",
     # Model paths
+    "get_home_dir",
     "get_models_dir",
     # Visualization marks
     "DrawStyle",

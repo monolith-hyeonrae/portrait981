@@ -51,11 +51,12 @@ class ProcessResult:
     stats: Dict[str, Any] = field(default_factory=dict)
 
 
-def get_backend(backend: BackendType) -> "ExecutionBackend":
+def get_backend(backend: BackendType, *, batch_size: int = 1) -> "ExecutionBackend":
     """Get execution backend by name.
 
     Args:
         backend: Backend name ("simple", "pathway", or "worker").
+        batch_size: Batch size for GPU module processing.
 
     Returns:
         ExecutionBackend instance.
@@ -68,7 +69,7 @@ def get_backend(backend: BackendType) -> "ExecutionBackend":
 
     if backend == "simple":
         from visualpath.backends.simple import SimpleBackend
-        return SimpleBackend()
+        return SimpleBackend(batch_size=batch_size)
     elif backend == "pathway":
         try:
             from visualpath.backends.pathway import PathwayBackend
@@ -81,7 +82,7 @@ def get_backend(backend: BackendType) -> "ExecutionBackend":
     elif backend == "worker":
         try:
             from visualpath.backends.worker import WorkerBackend
-            return WorkerBackend()
+            return WorkerBackend(batch_size=batch_size)
         except ImportError as e:
             raise ImportError(
                 "Worker backend requires visualpath-isolation package. "
@@ -195,6 +196,7 @@ def run(
     modules: Sequence[Union[str, Module]],
     *,
     fps: int = DEFAULT_FPS,
+    batch_size: int = 1,
     backend: BackendType = "simple",
     isolation: Optional[Any] = None,
     profile: Optional[str] = None,
@@ -207,6 +209,7 @@ def run(
         video: Path to video file.
         modules: List of module names or instances.
         fps: Frames per second to process.
+        batch_size: Batch size for GPU module processing (default: 1).
         backend: Execution backend ("simple", "pathway", or "worker").
         isolation: Optional IsolationConfig for module execution.
             When provided, backend is auto-switched to "worker".
@@ -230,6 +233,7 @@ def run(
         video,
         modules=modules,
         fps=fps,
+        batch_size=batch_size,
         backend=backend,
         isolation=isolation,
         profile=profile,

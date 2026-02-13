@@ -2427,9 +2427,13 @@ local = [
     { name = "vpx-face-expression" },
     { name = "vpx-hand-gesture" },
 ]
+viz = [
+    { name = "matplotlib" },
+]
 
 [package.metadata]
 requires-dist = [
+    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.5" },
     { name = "momentscan", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture"], marker = "extra == 'local'", editable = "apps/momentscan" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
@@ -2448,7 +2452,7 @@ requires-dist = [
     { name = "vpx-hand-gesture", marker = "extra == 'hand-gesture'", editable = "libs/vpx/plugins/hand-gesture" },
     { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
-provides-extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "local", "dev"]
+provides-extras = ["viz", "face-detect", "face-expression", "body-pose", "hand-gesture", "local", "dev"]
 
 [[package]]
 name = "mpmath"

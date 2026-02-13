@@ -38,7 +38,11 @@ def run_process(args):
     trace_output = getattr(args, 'trace_output', None)
     hub, file_sink = setup_observability(trace_level, trace_output)
 
-    output_dir = Path(args.output_dir)
+    if args.output_dir is not None:
+        output_dir = Path(args.output_dir)
+    else:
+        from momentscan.paths import get_output_dir
+        output_dir = get_output_dir(args.path)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     backend = getattr(args, 'backend', 'simple')
@@ -61,14 +65,17 @@ def run_process(args):
             resolved, venv_paths=venv_paths
         )
 
+    batch_size = getattr(args, 'batch_size', 1)
+
     # Print header
     mode = "distributed" if distributed else "library"
     _  = "          "  # 10-char indent
 
     print()
     print(f"{BOLD}{'Process':<10}{RESET}{args.path}")
+    batch_label = f" · batch: {batch_size}" if batch_size > 1 else ""
     print(f"{_}{DIM}{args.fps} fps · {ITALIC}{mode}{RESET}")
-    print(f"{_}{DIM}backend: {backend} · output: {output_dir}{RESET}")
+    print(f"{_}{DIM}backend: {backend}{batch_label} · output: {output_dir}{RESET}")
     print()
 
     start_time = time.time()
@@ -81,6 +88,7 @@ def run_process(args):
             analyzers=analyzer_names,
             output_dir=str(output_dir),
             fps=args.fps,
+            batch_size=batch_size,
             backend=backend,
             profile=profile,
             isolation=isolation_config,
@@ -108,6 +116,9 @@ def run_process(args):
             n_frames = len(w.selected_frames)
             print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
         print()
+
+    # Print exported file locations
+    _print_exports(output_dir)
 
     # Save processing report if requested
     if args.report:
@@ -144,6 +155,29 @@ def run_process(args):
         print(f"{DIM}Report saved: {report_path}{RESET}")
 
     cleanup_observability(hub, file_sink)
+
+
+def _print_exports(output_dir: Path):
+    """Print exported file locations under output_dir/highlight/."""
+    highlight_dir = output_dir / "highlight"
+    if not highlight_dir.exists():
+        return
+
+    print(f"{BOLD}{'Exports':<10}{RESET}{highlight_dir}")
+    _  = "          "
+
+    for child in sorted(highlight_dir.iterdir()):
+        if child.is_dir():
+            files = sorted(child.iterdir())
+            if files:
+                print(f"  {DIM}{child.name}/{RESET}  {DIM}({len(files)} files){RESET}")
+                for f in files:
+                    print(f"    {DIM}{f.name}{RESET}")
+        else:
+            size_kb = child.stat().st_size / 1024
+            print(f"  {DIM}{child.name}{RESET}  {DIM}({size_kb:.1f} KB){RESET}")
+
+    print()
 
 
 def _collect_venv_paths(args, analyzer_names):

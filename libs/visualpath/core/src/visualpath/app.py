@@ -53,6 +53,7 @@ class App:
         modules=None,
         fps=None,
         backend=None,
+        batch_size=None,
         isolation=None,
         profile=None,
         on_trigger=None,
@@ -65,6 +66,7 @@ class App:
             modules: Override module list. None = use class default.
             fps: Override FPS. None = use class default.
             backend: Override backend. None = use class default.
+            batch_size: Batch size for GPU module processing. None = 1.
             isolation: Optional IsolationConfig.
             profile: Execution profile name (e.g. "lite", "platform").
             on_trigger: Callback when a trigger fires.
@@ -149,7 +151,8 @@ class App:
                 frame_cb = _frame_handler
 
             # 6. Execute
-            engine = get_backend(eff_backend)
+            eff_batch_size = batch_size if batch_size is not None else 1
+            engine = get_backend(eff_backend, batch_size=eff_batch_size)
             frames, cleanup_fn = _open_video_source(video, eff_fps)
             try:
                 pipeline_result = engine.execute(frames, graph, on_frame=frame_cb)

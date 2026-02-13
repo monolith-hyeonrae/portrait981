@@ -149,7 +149,19 @@ class MomentscanApp(vp.App):
         )
 
         if self._output_dir:
-            highlight_result.export(Path(self._output_dir))
+            output_path = Path(self._output_dir)
+            highlight_result.export(output_path)
+
+            video_path = getattr(self, 'video', None)
+            if video_path is not None:
+                # Peak frame 추출
+                from momentscan.algorithm.batch.export_frames import export_highlight_frames
+                export_highlight_frames(Path(video_path), highlight_result, output_path)
+
+                # Interactive HTML report
+                from momentscan.algorithm.batch.export_report import export_highlight_report
+                export_highlight_report(Path(video_path), highlight_result, output_path)
+
             logger.info("Results exported to %s", self._output_dir)
 
         return Result(
@@ -174,6 +186,7 @@ def run(
     analyzers: Optional[Sequence[str]] = None,
     output_dir: Optional[Union[str, Path]] = None,
     fps: int = DEFAULT_FPS,
+    batch_size: int = 1,
     backend: str = DEFAULT_BACKEND,
     profile: Optional[str] = None,
     isolation: Optional[Any] = None,
@@ -189,6 +202,7 @@ def run(
         output_dir: Directory for highlight output (windows.json, timeseries.csv, frames/).
             None = no file output.
         fps: Frames per second to process.
+        batch_size: Batch size for GPU module processing (default: 1).
         backend: Execution backend ("simple", "pathway", or "worker").
         profile: Execution profile ("lite" or "platform").
         isolation: Optional IsolationConfig for explicit module isolation.
@@ -209,6 +223,7 @@ def run(
         video,
         modules=list(analyzers) if analyzers else None,
         fps=fps,
+        batch_size=batch_size,
         backend=backend,
         isolation=isolation,
         profile=profile,

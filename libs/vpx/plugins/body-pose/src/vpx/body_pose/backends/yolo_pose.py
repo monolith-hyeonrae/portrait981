@@ -52,19 +52,20 @@ class YOLOPoseBackend:
         try:
             from ultralytics import YOLO
 
-            if self._models_dir is not None:
-                # ultralytics downloads bare filenames to CWD.
-                # 1) Set weights_dir so fallback download goes to models_dir
-                # 2) Pass absolute path so YOLO never checks CWD
-                self._models_dir.mkdir(parents=True, exist_ok=True)
-                try:
-                    from ultralytics.utils import SETTINGS
-                    SETTINGS["weights_dir"] = str(self._models_dir)
-                except Exception:
-                    pass
-                model_path = str(self._models_dir / self._model_name)
-            else:
-                model_path = self._model_name
+            models_dir = self._models_dir
+            if models_dir is None:
+                from vpx.sdk.paths import get_models_dir
+                models_dir = get_models_dir()
+            # ultralytics downloads bare filenames to CWD.
+            # 1) Set weights_dir so fallback download goes to models_dir
+            # 2) Pass absolute path so YOLO never checks CWD
+            models_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                from ultralytics.utils import SETTINGS
+                SETTINGS["weights_dir"] = str(models_dir)
+            except Exception:
+                pass
+            model_path = str(models_dir / self._model_name)
             self._model = YOLO(model_path)
 
             # Set device (YOLO accepts device string or int)

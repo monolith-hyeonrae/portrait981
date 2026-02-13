@@ -42,6 +42,9 @@ class WorkerBackend(ExecutionBackend):
         >>> result = backend.execute(frames, graph)
     """
 
+    def __init__(self, batch_size: int = 1):
+        self._batch_size = max(1, batch_size)
+
     @property
     def name(self) -> str:
         return "WorkerBackend"
@@ -71,7 +74,9 @@ class WorkerBackend(ExecutionBackend):
         wrapped_graph = self._wrap_isolated_modules(graph)
 
         from visualpath.backends.simple import SimpleBackend
-        return SimpleBackend().execute(frames, wrapped_graph, on_frame=on_frame)
+        return SimpleBackend(batch_size=self._batch_size).execute(
+            frames, wrapped_graph, on_frame=on_frame,
+        )
 
     def _wrap_isolated_modules(self, graph: "FlowGraph") -> "FlowGraph":
         """Create a new graph with isolated modules replaced by WorkerModule.

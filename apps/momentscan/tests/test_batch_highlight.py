@@ -1,7 +1,10 @@
 """Tests for batch highlight engine."""
 
+import csv
 import pytest
 import numpy as np
+from unittest.mock import patch, MagicMock
+from pathlib import Path
 
 from momentscan.algorithm.batch.types import (
     FrameRecord,
@@ -402,3 +405,314 @@ class TestExtractFrameRecord:
         assert record.face_confidence == 0.85
         assert record.face_area_ratio == 0.08
         assert record.head_yaw == -5.0
+
+
+# ── Timeseries export tests ──
+
+def _make_result_with_timeseries(n: int = 100) -> HighlightResult:
+    """_timeseries가 포함된 HighlightResult를 생성한다."""
+    records = _make_records(n)
+    for r in records:
+        r.mouth_open_ratio = 0.1
+
+    # 중간에 spike 삽입
+    mid = n // 2
+    for i in range(max(0, mid - 5), min(n, mid + 6)):
+        records[i].mouth_open_ratio = 0.85
+
+    engine = BatchHighlightEngine()
+    return engine.analyze(records)
+
+
+class TestExportTimeseriesCsv:
+    def test_csv_created(self, tmp_path):
+        """timeseries.csv가 생성된다."""
+        result = _make_result_with_timeseries(200)
+        result.export(tmp_path)
+
+        csv_path = tmp_path / "highlight" / "timeseries.csv"
+        assert csv_path.exists()
+
+    def test_csv_header_and_rows(self, tmp_path):
+        """CSV 헤더와 행 수가 올바르다."""
+        n = 200
+        result = _make_result_with_timeseries(n)
+        result.export(tmp_path)
+
+        csv_path = tmp_path / "highlight" / "timeseries.csv"
+        with open(csv_path) as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            rows = list(reader)
+
+        assert "frame_idx" in header
+        assert "timestamp_ms" in header
+        assert "gate_pass" in header
+        assert "quality_score" in header
+        assert "impact_score" in header
+        assert "final_score" in header
+        assert "smoothed_score" in header
+        assert "is_peak" in header
+        assert "mouth_open_ratio" in header
+        assert len(rows) == n
+
+    def test_csv_peak_marked(self, tmp_path):
+        """CSV에서 is_peak 컬럼이 peak 프레임에 1로 마킹된다."""
+        result = _make_result_with_timeseries(200)
+        result.export(tmp_path)
+
+        csv_path = tmp_path / "highlight" / "timeseries.csv"
+        with open(csv_path) as f:
+            reader = csv.DictReader(f)
+            peak_rows = [r for r in reader if r["is_peak"] == "1"]
+
+        # peak가 있으면 is_peak=1인 행이 존재
+        if result.windows:
+            assert len(peak_rows) > 0
+
+    def test_no_timeseries_no_csv(self, tmp_path):
+        """_timeseries가 None이면 CSV가 생성되지 않는다."""
+        result = HighlightResult(
+            windows=[],
+            frame_count=10,
+        )
+        result.export(tmp_path)
+
+        csv_path = tmp_path / "highlight" / "timeseries.csv"
+        assert not csv_path.exists()
+
+
+class TestExportScoreCurve:
+    def test_score_curve_without_matplotlib(self, tmp_path):
+        """matplotlib이 없어도 에러 없이 skip."""
+        result = _make_result_with_timeseries(200)
+
+        with patch.dict("sys.modules", {"matplotlib": None}):
+            # matplotlib import 실패 시 graceful skip
+            result.export(tmp_path)
+
+        # windows.json과 timeseries.csv는 생성됨
+        assert (tmp_path / "highlight" / "windows.json").exists()
+        assert (tmp_path / "highlight" / "timeseries.csv").exists()
+
+    def test_score_curve_with_matplotlib(self, tmp_path):
+        """matplotlib이 있으면 score_curve.png가 생성된다."""
+        try:
+            import matplotlib
+        except ImportError:
+            pytest.skip("matplotlib not installed")
+
+        result = _make_result_with_timeseries(200)
+        result.export(tmp_path)
+
+        png_path = tmp_path / "highlight" / "score_curve.png"
+        assert png_path.exists()
+        assert png_path.stat().st_size > 0
+
+
+# ── Frame export tests ──
+
+class TestExportHighlightFrames:
+    def test_no_windows_no_export(self, tmp_path):
+        """윈도우가 없으면 frames/ 디렉토리가 생성되지 않는다."""
+        from momentscan.algorithm.batch.export_frames import export_highlight_frames
+
+        result = HighlightResult(windows=[], frame_count=10)
+        export_highlight_frames(Path("/dummy.mp4"), result, tmp_path)
+
+        assert not (tmp_path / "highlight" / "frames").exists()
+
+    def test_export_with_mock_source(self, tmp_path):
+        """Mock FileSource로 frame 추출을 검증한다."""
+        from momentscan.algorithm.batch.export_frames import export_highlight_frames
+
+        result = HighlightResult(
+            windows=[
+                HighlightWindow(
+                    window_id=1,
+                    start_ms=1000.0,
+                    end_ms=3000.0,
+                    peak_ms=2000.0,
+                    score=0.85,
+                    reason={},
+                    selected_frames=[
+                        {"frame_idx": 18, "timestamp_ms": 1800.0, "frame_score": 0.7},
+                        {"frame_idx": 22, "timestamp_ms": 2200.0, "frame_score": 0.6},
+                    ],
+                ),
+            ],
+            frame_count=100,
+        )
+
+        # Mock FileSource + Frame
+        mock_frame = MagicMock()
+        mock_frame.data = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_source = MagicMock()
+        mock_source.seek.return_value = True
+        mock_source.read.return_value = mock_frame
+
+        with patch("visualbase.sources.file.FileSource") as MockFS, \
+             patch("momentscan.algorithm.batch.export_frames.cv2") as mock_cv2:
+            MockFS.return_value = mock_source
+            export_highlight_frames(Path("/dummy.mp4"), result, tmp_path)
+
+            # seek가 3번 호출됨 (peak + 2 best, timestamp 순)
+            assert mock_source.seek.call_count == 3
+            assert mock_cv2.imwrite.call_count == 3
+            mock_source.close.assert_called_once()
+
+    def test_export_filenames(self, tmp_path):
+        """출력 파일명이 w{id}_peak_{ms}ms.jpg / w{id}_best_{ms}ms.jpg 형식이다."""
+        from momentscan.algorithm.batch.export_frames import export_highlight_frames
+
+        result = HighlightResult(
+            windows=[
+                HighlightWindow(
+                    window_id=1,
+                    start_ms=1000.0,
+                    end_ms=3000.0,
+                    peak_ms=2000.0,
+                    score=0.85,
+                    reason={},
+                    selected_frames=[
+                        {"frame_idx": 22, "timestamp_ms": 2200.0, "frame_score": 0.6},
+                    ],
+                ),
+            ],
+            frame_count=100,
+        )
+
+        mock_frame = MagicMock()
+        mock_frame.data = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_source = MagicMock()
+        mock_source.seek.return_value = True
+        mock_source.read.return_value = mock_frame
+
+        with patch("visualbase.sources.file.FileSource") as MockFS, \
+             patch("momentscan.algorithm.batch.export_frames.cv2") as mock_cv2:
+            MockFS.return_value = mock_source
+            export_highlight_frames(Path("/dummy.mp4"), result, tmp_path)
+
+            # imwrite에 전달된 파일명 확인
+            written_paths = [call.args[0] for call in mock_cv2.imwrite.call_args_list]
+            assert any("w1_peak_2000ms.jpg" in p for p in written_paths)
+            assert any("w1_best_2200ms.jpg" in p for p in written_paths)
+
+
+# ── Highlight report tests ──
+
+class TestExportHighlightReport:
+    def test_report_created_with_timeseries(self, tmp_path):
+        """_timeseries가 있으면 report.html이 생성된다."""
+        from momentscan.algorithm.batch.export_report import export_highlight_report
+
+        result = _make_result_with_timeseries(200)
+
+        mock_frame = MagicMock()
+        mock_frame.data = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_source = MagicMock()
+        mock_source.seek.return_value = True
+        mock_source.read.return_value = mock_frame
+
+        with patch("visualbase.sources.file.FileSource") as MockFS:
+            MockFS.return_value = mock_source
+            export_highlight_report(Path("/dummy.mp4"), result, tmp_path)
+
+        report_path = tmp_path / "highlight" / "report.html"
+        assert report_path.exists()
+        assert report_path.stat().st_size > 0
+
+    def test_no_timeseries_no_report(self, tmp_path):
+        """_timeseries가 None이면 report.html이 생성되지 않는다."""
+        from momentscan.algorithm.batch.export_report import export_highlight_report
+
+        result = HighlightResult(windows=[], frame_count=10)
+        export_highlight_report(Path("/dummy.mp4"), result, tmp_path)
+
+        report_path = tmp_path / "highlight" / "report.html"
+        assert not report_path.exists()
+
+    def test_report_contains_plotly_and_frames(self, tmp_path):
+        """HTML에 Plotly CDN, FRAMES 배열, subplot div가 포함된다."""
+        from momentscan.algorithm.batch.export_report import export_highlight_report
+
+        result = _make_result_with_timeseries(200)
+
+        mock_frame = MagicMock()
+        mock_frame.data = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_source = MagicMock()
+        mock_source.seek.return_value = True
+        mock_source.read.return_value = mock_frame
+
+        with patch("visualbase.sources.file.FileSource") as MockFS:
+            MockFS.return_value = mock_source
+            export_highlight_report(Path("/dummy.mp4"), result, tmp_path)
+
+        report_path = tmp_path / "highlight" / "report.html"
+        html = report_path.read_text(encoding="utf-8")
+
+        assert "plotly-2.35.2.min.js" in html
+        assert "const FRAMES" in html
+        assert "const DATA" in html
+        assert 'id="plotDiv"' in html
+        assert 'id="framePanel"' in html
+        assert "mousemove" in html
+        # Head pose + face distribution charts
+        assert 'id="headPoseDiv"' in html
+        assert 'id="faceDistDiv"' in html
+        assert "head_yaw" in html
+        assert "head_pitch" in html
+        # New pipeline transparency fields
+        assert "blur_normed" in html
+        assert "normed_mouth_open_ratio" in html
+        assert "gate_face_confidence_pass" in html
+        assert "cfg_quality_weights" in html
+        # Pipeline decomposition hover panel
+        assert "pipeline-detail" in html
+        assert "gate-pass" in html or "gate-fail" in html
+        # Dynamic module-based subplots
+        assert '"modules"' in html
+
+    def test_report_contains_window_details(self, tmp_path):
+        """윈도우가 있으면 window detail 섹션이 포함된다."""
+        from momentscan.algorithm.batch.export_report import export_highlight_report
+
+        result = _make_result_with_timeseries(200)
+
+        mock_frame = MagicMock()
+        mock_frame.data = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        mock_source = MagicMock()
+        mock_source.seek.return_value = True
+        mock_source.read.return_value = mock_frame
+
+        with patch("visualbase.sources.file.FileSource") as MockFS:
+            MockFS.return_value = mock_source
+            export_highlight_report(Path("/dummy.mp4"), result, tmp_path)
+
+        html = (tmp_path / "highlight" / "report.html").read_text(encoding="utf-8")
+
+        if result.windows:
+            assert "Window 1" in html
+            assert "window-card" in html
+            assert "selected-frame" in html
+
+    def test_report_deltas_in_timeseries(self):
+        """BatchHighlightEngine이 _timeseries에 deltas를 저장한다."""
+        result = _make_result_with_timeseries(200)
+        assert result._timeseries is not None
+        assert "deltas" in result._timeseries
+        assert "head_velocity" in result._timeseries["deltas"]
+
+    def test_report_arrays_and_normed_in_timeseries(self):
+        """BatchHighlightEngine이 _timeseries에 arrays와 normed를 저장한다."""
+        result = _make_result_with_timeseries(200)
+        assert result._timeseries is not None
+        assert "arrays" in result._timeseries
+        assert "normed" in result._timeseries
+        assert "blur_score" in result._timeseries["arrays"]
+        assert "mouth_open_ratio" in result._timeseries["normed"]

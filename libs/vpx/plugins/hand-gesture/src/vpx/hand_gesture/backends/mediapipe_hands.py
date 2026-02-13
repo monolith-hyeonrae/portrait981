@@ -23,12 +23,13 @@ def _get_model_path(models_dir: Optional[Path] = None) -> Path:
 
     Args:
         models_dir: Directory to store the model. Falls back to
-            ``~/.cache/momentscan/models`` when *None*.
+            :func:`vpx.sdk.paths.get_models_dir` when *None*.
     """
     if models_dir is not None:
         target_dir = models_dir
     else:
-        target_dir = Path.home() / ".cache" / "momentscan" / "models"
+        from vpx.sdk.paths import get_models_dir
+        target_dir = get_models_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
 
     model_path = target_dir / "hand_landmarker.task"

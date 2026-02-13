@@ -97,7 +97,7 @@ class TestApp:
             result = app.run("test.mp4")
 
             # Class defaults used
-            mock_gb.assert_called_once_with("simple")
+            mock_gb.assert_called_once_with("simple", batch_size=1)
             mock_open.assert_called_once_with("test.mp4", 5)
             assert result.frame_count == 3
 
@@ -221,7 +221,7 @@ class TestApp:
             app = MyApp()
             app.run("v.mp4", modules=[EchoAnalyzer()], fps=5, backend="simple")
 
-            mock_gb.assert_called_once_with("simple")
+            mock_gb.assert_called_once_with("simple", batch_size=1)
             mock_open.assert_called_once_with("v.mp4", 5)
 
     def test_explicit_callback_and_hook_merge(self):

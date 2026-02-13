@@ -10,6 +10,14 @@ from visualbase.core.frame import Frame
 from visualbase.core.timestamp import NS_PER_SECOND
 from visualbase.sources.base import BaseSource
 
+# Tolerance for floating-point PTS imprecision from video decoders.
+# OpenCV CAP_PROP_POS_MSEC returns a float; int(ms * 1e6) truncation
+# can produce values slightly below the mathematical timestamp,
+# causing the sampler to skip boundary frames (e.g. 30fps→10fps
+# yields every 4th frame instead of every 3rd).  1 ms is safe for
+# any source frame rate ≥ 2 fps.
+_PTS_TOLERANCE_NS = 1_000_000  # 1 ms
+
 
 class Sampler:
     """Samples frames from a source at specified fps and resolution.
@@ -44,9 +52,11 @@ class Sampler:
             if frame is None:
                 raise StopIteration
 
-            # FPS sampling: skip frames until we reach the next target time
+            # FPS sampling: skip frames until we reach the next target time.
+            # Tolerance handles floating-point imprecision in PTS from
+            # video decoders (OpenCV CAP_PROP_POS_MSEC → pts_to_ns).
             if self._frame_interval_ns > 0:
-                if frame.t_src_ns < self._next_frame_time_ns:
+                if frame.t_src_ns + _PTS_TOLERANCE_NS < self._next_frame_time_ns:
                     continue
                 self._next_frame_time_ns = (
                     frame.t_src_ns + self._frame_interval_ns

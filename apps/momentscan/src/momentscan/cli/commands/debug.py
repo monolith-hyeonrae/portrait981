@@ -91,7 +91,7 @@ def run_debug(args):
     graph.add_node(PathNode(
         name="pipeline",
         modules=resolved,
-        parallel=True,
+        parallel=False,
         isolation=isolation_config,
     ))
     graph.add_edge("source", "pipeline")
@@ -254,6 +254,24 @@ def run_debug(args):
                 n_frames = len(w.selected_frames)
                 print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
 
+        # Export batch results (always — timeseries.csv is useful even without highlights)
+        from pathlib import Path
+        from momentscan.algorithm.batch.export_frames import export_highlight_frames
+        from momentscan.algorithm.batch.export_report import export_highlight_report
+
+        output_dir = getattr(args, 'output_dir', None)
+        if output_dir is not None:
+            out = Path(output_dir)
+        else:
+            from momentscan.paths import get_output_dir
+            out = get_output_dir(args.path)
+        out.mkdir(parents=True, exist_ok=True)
+        highlight_result.export(out)
+        export_highlight_report(Path(args.path), highlight_result, out)
+        if highlight_result.windows:
+            export_highlight_frames(Path(args.path), highlight_result, out)
+        _print_exports(out)
+
         result = Result(
             highlights=highlight_result.windows,
             frame_count=frame_count,
@@ -280,12 +298,55 @@ def run_debug(args):
                     reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
                     n_frames = len(w.selected_frames)
                     print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
+
+            # Export batch results (always)
+            from pathlib import Path
+            from momentscan.algorithm.batch.export_frames import export_highlight_frames
+            from momentscan.algorithm.batch.export_report import export_highlight_report
+
+            output_dir = getattr(args, 'output_dir', None)
+            if output_dir is not None:
+                out = Path(output_dir)
+            else:
+                from momentscan.paths import get_output_dir
+                out = get_output_dir(args.path)
+            out.mkdir(parents=True, exist_ok=True)
+            highlight_result.export(out)
+            export_highlight_report(Path(args.path), highlight_result, out)
+            if highlight_result.windows:
+                export_highlight_frames(Path(args.path), highlight_result, out)
+            _print_exports(out)
         else:
             print(f"{DIM}Too few frames for batch analysis{RESET}")
     finally:
         executor.cleanup()
         handler.cleanup()
         cleanup_observability(hub, file_sink)
+
+
+def _print_exports(output_dir):
+    """Print exported file locations under output_dir/highlight/."""
+    from pathlib import Path
+
+    highlight_dir = Path(output_dir) / "highlight"
+    if not highlight_dir.exists():
+        return
+
+    print()
+    print(f"{BOLD}{'Exports':<10}{RESET}{highlight_dir}")
+
+    for child in sorted(highlight_dir.iterdir()):
+        if child.is_dir():
+            files = sorted(child.iterdir())
+            if files:
+                print(f"  {DIM}{child.name}/{RESET}  {DIM}({len(files)} files){RESET}")
+                for f in files:
+                    print(f"    {DIM}{f.name}{RESET}")
+        else:
+            size_kb = child.stat().st_size / 1024
+            print(f"  {DIM}{child.name}{RESET}  {DIM}({size_kb:.1f} KB){RESET}")
+
+    print()
 
 
 def _resolve_selected_to_names(selected: List[str], args) -> List[str]:

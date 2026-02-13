@@ -73,6 +73,10 @@ Examples:
         "--steps", action="store_true",
         help="Show internal processing steps of each analyzer",
     )
+    info_parser.add_argument(
+        "--scoring", action="store_true",
+        help="Show detailed highlight scoring pipeline",
+    )
 
     # debug command (unified)
     debug_parser = subparsers.add_parser(
@@ -112,6 +116,10 @@ Examples:
              "When > 1, modules with BATCHING capability use process_batch() for optimization."
     )
     debug_parser.add_argument(
+        "--output-dir", type=str, metavar="DIR",
+        help="Export batch analysis results (timeseries.csv, score_curve.png, peak frames) to directory"
+    )
+    debug_parser.add_argument(
         "--report", type=str, metavar="PATH",
         help="Generate HTML debug report after session (e.g. --report report.html)"
     )
@@ -124,7 +132,7 @@ Examples:
     proc_parser = subparsers.add_parser("process", help="Process video and extract highlight clips")
     proc_parser.add_argument("path", help="Path to video file")
     proc_parser.add_argument("--fps", type=int, default=10, help="Analysis FPS (default: 10)")
-    proc_parser.add_argument("--output-dir", "-o", type=str, default="./clips", help="Output directory")
+    proc_parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory (default: ~/.portrait981/momentscan/output/{video_stem}/)")
     proc_parser.add_argument("--report", type=str, help="Save processing report to JSON file")
     _add_trace_args(proc_parser)
     proc_parser.add_argument(
@@ -136,6 +144,11 @@ Examples:
         help="Execution profile: 'lite' (inline, no observability) or 'platform' (process isolation, observability)"
     )
     _add_distributed_args(proc_parser)
+    proc_parser.add_argument(
+        "--batch-size", type=int, default=1, metavar="N",
+        help="Batch size for GPU module processing (default: 1). "
+             "When > 1, modules with BATCHING capability use process_batch() for optimization."
+    )
     proc_parser.add_argument(
         "--roi", type=str, metavar="X1,Y1,X2,Y2",
         help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"

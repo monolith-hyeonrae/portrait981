@@ -86,9 +86,12 @@ class InsightFaceSCRFD:
             self._device = device
 
             # [5] redirect_stdout — find model, set det-size, Applied providers
+            models_dir = self._models_dir
+            if models_dir is None:
+                from vpx.sdk.paths import get_models_dir
+                models_dir = get_models_dir()
             fa_kwargs = dict(name=self._model_name, providers=providers)
-            if self._models_dir is not None:
-                fa_kwargs["root"] = str(self._models_dir / "insightface")
+            fa_kwargs["root"] = str(models_dir / "insightface")
             with contextlib.redirect_stdout(io.StringIO()):
                 self._app = FaceAnalysis(**fa_kwargs)
                 self._app.prepare(ctx_id=ctx_id, det_size=self._det_size)

@@ -14,6 +14,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# === Visualization (score curve export) ===
+viz = ["matplotlib>=3.5"]
+
 # === Analyzer packages (each with independent dependencies) ===
 # In production, each VenvWorker installs only its sub-package:
 #   uv pip install vpx-face-detect   → onnxruntime-gpu
