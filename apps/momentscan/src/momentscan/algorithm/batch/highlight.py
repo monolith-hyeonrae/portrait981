@@ -16,6 +16,10 @@ from typing import List, Optional
 
 import numpy as np
 
+from momentscan.algorithm.batch.field_mapping import (
+    PIPELINE_DELTA_SPECS,
+    PIPELINE_DERIVED_FIELDS,
+)
 from momentscan.algorithm.batch.types import (
     FrameRecord,
     HighlightConfig,
@@ -87,28 +91,44 @@ class BatchHighlightEngine:
         # 10. Window 생성 + best frame 선택
         windows = self._generate_windows(peaks, records, final_scores, normed)
 
-        return HighlightResult(
+        result = HighlightResult(
             windows=windows,
             frame_count=n,
             config=self.config,
         )
 
+        # 검증 산출물용 중간 데이터 저장
+        result._timeseries = {
+            "records": records,
+            "gate_mask": gate_mask,
+            "quality_scores": quality_scores,
+            "impact_scores": impact_scores,
+            "final_scores": final_scores,
+            "smoothed": smoothed,
+            "peaks": peaks,
+        }
+
+        return result
+
     # ── Step 1: 배열 구성 ──
 
     def _build_arrays(self, records: List[FrameRecord]) -> dict[str, np.ndarray]:
-        """FrameRecord 리스트를 feature별 numpy 배열로 변환."""
-        n = len(records)
+        """FrameRecord 리스트를 feature별 numpy 배열로 변환.
+
+        delta 대상 필드 + derived 필드의 소스 + scoring에 필요한 추가 필드를
+        PIPELINE_DELTA_SPECS / PIPELINE_DERIVED_FIELDS에서 자동 수집한다.
+        """
+        # delta 대상 필드
+        fields: set[str] = {spec.record_field for spec in PIPELINE_DELTA_SPECS}
+        # derived 필드의 소스
+        for derived in PIPELINE_DERIVED_FIELDS:
+            fields.update(derived.source_fields)
+        # scoring에 필요하지만 delta/derived에 없는 추가 필드
+        fields.update(("blur_score", "eye_open_ratio", "face_confidence"))
+
         return {
-            "mouth_open_ratio": np.array([r.mouth_open_ratio for r in records]),
-            "eye_open_ratio": np.array([r.eye_open_ratio for r in records]),
-            "head_yaw": np.array([r.head_yaw for r in records]),
-            "head_pitch": np.array([r.head_pitch for r in records]),
-            "wrist_raise": np.array([r.wrist_raise for r in records]),
-            "torso_rotation": np.array([r.torso_rotation for r in records]),
-            "face_area_ratio": np.array([r.face_area_ratio for r in records]),
-            "blur_score": np.array([r.blur_score for r in records]),
-            "brightness": np.array([r.brightness for r in records]),
-            "face_confidence": np.array([r.face_confidence for r in records]),
+            field: np.array([getattr(r, field) for r in records])
+            for field in sorted(fields)
         }
 
     # ── Step 2: Temporal delta ──
@@ -116,26 +136,25 @@ class BatchHighlightEngine:
     def _compute_deltas(self, arrays: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
         """EMA 기준선 대비 변화량(delta)을 계산.
 
-        delta(t) = |feature(t) - EMA(feature, alpha=0.1)|
+        delta(t) = |feature(t) - EMA(feature, alpha)|
         highlight_rules.md §4.D
         """
-        alpha = 0.1
+        cfg = self.config
         deltas = {}
-        for key in ["mouth_open_ratio", "head_yaw", "head_pitch",
-                     "wrist_raise", "torso_rotation", "face_area_ratio",
-                     "brightness"]:
-            arr = arrays[key]
-            ema = self._compute_ema(arr, alpha)
-            deltas[key] = np.abs(arr - ema)
+        for spec in PIPELINE_DELTA_SPECS:
+            arr = arrays[spec.record_field]
+            ema = self._compute_ema(arr, cfg.delta_alpha)
+            deltas[spec.record_field] = np.abs(arr - ema)
 
-        # head_velocity = sqrt(delta_yaw^2 + delta_pitch^2) / dt
-        # 간소화: 프레임 간 각도 변화
-        yaw = arrays["head_yaw"]
-        pitch = arrays["head_pitch"]
-        dt = 1.0 / self.config.fps
-        dyaw = np.abs(np.diff(yaw, prepend=yaw[0])) / dt
-        dpitch = np.abs(np.diff(pitch, prepend=pitch[0])) / dt
-        deltas["head_velocity"] = np.sqrt(dyaw**2 + dpitch**2)
+        # Derived fields
+        for derived in PIPELINE_DERIVED_FIELDS:
+            if derived.name == "head_velocity":
+                yaw = arrays["head_yaw"]
+                pitch = arrays["head_pitch"]
+                dt = 1.0 / cfg.fps
+                dyaw = np.abs(np.diff(yaw, prepend=yaw[0])) / dt
+                dpitch = np.abs(np.diff(pitch, prepend=pitch[0])) / dt
+                deltas["head_velocity"] = np.sqrt(dyaw**2 + dpitch**2)
 
         return deltas
 
@@ -205,8 +224,8 @@ class BatchHighlightEngine:
         # Face size (face_area_ratio, 높을수록 좋음)
         face_size_normed = self._minmax_normalize(arrays["face_area_ratio"])
 
-        # Frontalness (1 - |yaw|/45, 정면에 가까울수록 1)
-        frontalness = np.clip(1.0 - np.abs(arrays["head_yaw"]) / 45.0, 0.0, 1.0)
+        # Frontalness (1 - |yaw|/max_yaw, 정면에 가까울수록 1)
+        frontalness = np.clip(1.0 - np.abs(arrays["head_yaw"]) / cfg.frontalness_max_yaw, 0.0, 1.0)
 
         quality = (
             cfg.quality_blur_weight * blur_normed

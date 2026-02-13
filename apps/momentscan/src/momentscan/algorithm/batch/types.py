@@ -5,10 +5,16 @@ highlight_rules.md 설계를 따르는 데이터 구조 정의.
 
 from __future__ import annotations
 
+import csv
 import json
+import logging
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -97,6 +103,10 @@ class HighlightConfig:
     impact_face_size_change_weight: float = 0.10
     impact_exposure_change_weight: float = 0.10
 
+    # Delta computation
+    delta_alpha: float = 0.1           # EMA baseline alpha (for temporal deltas)
+    frontalness_max_yaw: float = 45.0  # frontalness 정규화 기준각
+
     # Temporal smoothing (§7)
     smoothing_alpha: float = 0.25  # EMA alpha
 
@@ -121,6 +131,7 @@ class HighlightResult:
     windows: List[HighlightWindow] = field(default_factory=list)
     frame_count: int = 0
     config: Optional[HighlightConfig] = None
+    _timeseries: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
     def export(self, output_dir: Path) -> None:
         """결과를 파일로 출력한다.
@@ -135,3 +146,106 @@ class HighlightResult:
         windows_data = [asdict(w) for w in self.windows]
         with open(highlight_dir / "windows.json", "w") as f:
             json.dump(windows_data, f, indent=2, ensure_ascii=False)
+
+        # timeseries.csv + score_curve.png
+        if self._timeseries is not None:
+            self._export_timeseries_csv(highlight_dir)
+            self._export_score_curve(highlight_dir)
+
+    def _export_timeseries_csv(self, highlight_dir: Path) -> None:
+        """프레임별 점수 데이터를 CSV로 출력한다."""
+        ts = self._timeseries
+        records: List[FrameRecord] = ts["records"]
+        gate_mask: np.ndarray = ts["gate_mask"]
+        quality_scores: np.ndarray = ts["quality_scores"]
+        impact_scores: np.ndarray = ts["impact_scores"]
+        final_scores: np.ndarray = ts["final_scores"]
+        smoothed: np.ndarray = ts["smoothed"]
+        peaks: np.ndarray = ts["peaks"]
+
+        peak_set = set(int(p) for p in peaks)
+
+        csv_path = highlight_dir / "timeseries.csv"
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            header = [
+                "frame_idx", "timestamp_ms",
+                "gate_pass", "quality_score", "impact_score",
+                "final_score", "smoothed_score", "is_peak",
+                # raw features
+                "face_detected", "face_confidence", "face_area_ratio",
+                "head_yaw", "head_pitch",
+                "mouth_open_ratio", "eye_open_ratio", "smile_intensity",
+                "wrist_raise", "torso_rotation",
+                "blur_score", "brightness",
+            ]
+            writer.writerow(header)
+
+            for i, r in enumerate(records):
+                writer.writerow([
+                    r.frame_idx,
+                    f"{r.timestamp_ms:.1f}",
+                    int(gate_mask[i]),
+                    f"{quality_scores[i]:.4f}",
+                    f"{impact_scores[i]:.4f}",
+                    f"{final_scores[i]:.4f}",
+                    f"{smoothed[i]:.4f}",
+                    int(i in peak_set),
+                    int(r.face_detected),
+                    f"{r.face_confidence:.3f}",
+                    f"{r.face_area_ratio:.4f}",
+                    f"{r.head_yaw:.1f}",
+                    f"{r.head_pitch:.1f}",
+                    f"{r.mouth_open_ratio:.3f}",
+                    f"{r.eye_open_ratio:.3f}",
+                    f"{r.smile_intensity:.3f}",
+                    f"{r.wrist_raise:.3f}",
+                    f"{r.torso_rotation:.3f}",
+                    f"{r.blur_score:.1f}",
+                    f"{r.brightness:.1f}",
+                ])
+
+        logger.info("Exported timeseries CSV: %s (%d rows)", csv_path, len(records))
+
+    def _export_score_curve(self, highlight_dir: Path) -> None:
+        """시간축 점수 그래프 + peak 마커를 PNG로 출력한다.
+
+        matplotlib이 없으면 skip.
+        """
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+        except ImportError:
+            logger.info("matplotlib not installed — skipping score_curve.png")
+            return
+
+        ts = self._timeseries
+        records: List[FrameRecord] = ts["records"]
+        final_scores: np.ndarray = ts["final_scores"]
+        smoothed: np.ndarray = ts["smoothed"]
+        peaks: np.ndarray = ts["peaks"]
+
+        time_sec = np.array([r.timestamp_ms / 1000.0 for r in records])
+
+        fig, ax = plt.subplots(figsize=(14, 4))
+        ax.plot(time_sec, final_scores, alpha=0.3, linewidth=0.5, label="final_score")
+        ax.plot(time_sec, smoothed, linewidth=1.0, label="smoothed")
+
+        if len(peaks) > 0:
+            ax.scatter(
+                time_sec[peaks], smoothed[peaks],
+                color="red", zorder=5, s=40, label="peak",
+            )
+
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Score")
+        ax.set_title("Highlight Score Curve")
+        ax.legend(loc="upper right", fontsize=8)
+        ax.set_xlim(time_sec[0], time_sec[-1])
+        fig.tight_layout()
+
+        png_path = highlight_dir / "score_curve.png"
+        fig.savefig(png_path, dpi=120)
+        plt.close(fig)
+        logger.info("Exported score curve: %s", png_path)

@@ -1,59 +1,62 @@
 """Info command for momentscan CLI.
 
 Shows available analyzers, backends, and pipeline structure.
+Dynamic introspection via discover_modules(), Module.capabilities,
+get_processing_steps(), and HighlightConfig.
 """
 
-import sys
+from momentscan.algorithm.batch.field_mapping import (
+    PIPELINE_FIELD_MAPPINGS,
+    PIPELINE_DELTA_SPECS,
+    PIPELINE_DERIVED_FIELDS,
+)
+from momentscan.cli.utils import BOLD, DIM, ITALIC, RESET
 
 
 def run_info(args):
     """Show system information and available components."""
-    # Handle --deps flag
     if getattr(args, 'deps', False):
         _print_dependency_graph()
-        return
-
-    # Handle --graph flag
-    graph_format = getattr(args, 'graph', None)
-    if graph_format is not None:
-        _print_flow_graph(graph_format)
-        return
-
-    # Handle --steps flag
-    if getattr(args, 'steps', False):
+    elif getattr(args, 'graph', None) is not None:
+        _print_flow_graph(args.graph)
+    elif getattr(args, 'steps', False):
         _print_processing_steps()
-        return
+    elif getattr(args, 'scoring', False):
+        _print_scoring_detail()
+    else:
+        print(f"{BOLD}MomentScan - System Information{RESET}")
+        print("=" * 60)
+        _print_version_info()
+        _print_modules_section(args.verbose)
+        _print_scoring_section()
+        if args.verbose:
+            _print_device_info()
 
-    print("MomentScan - System Information")
-    print("=" * 60)
 
-    # Version info
-    _print_version_info()
+# ── Common helper ──
 
-    # Analyzer availability
-    print("\n[Analyzers]")
-    print("-" * 60)
-    _check_face_analyzer(verbose=args.verbose)
-    _check_pose_analyzer(verbose=args.verbose)
-    _check_gesture_analyzer(verbose=args.verbose)
-    _check_quality_analyzer()
+def _discover_all_modules():
+    """Discover modules via entry points, load classes.
 
-    # Batch highlight info
-    print("\n[Batch Highlight]")
-    print("-" * 60)
-    _print_batch_highlight_info()
+    Returns list of (name, entry_point, cls_or_error).
+    Test modules (mock.*) are excluded.
+    """
+    from visualpath.plugin.discovery import discover_modules
 
-    # Pipeline structure
-    print("\n[Pipeline Structure]")
-    print("-" * 60)
-    _print_pipeline_structure()
+    entries = discover_modules()
+    result = []
+    for name, ep in sorted(entries.items()):
+        if name.startswith("mock."):
+            continue
+        try:
+            cls = ep.load()
+            result.append((name, ep, cls))
+        except Exception as e:
+            result.append((name, ep, e))
+    return result
 
-    # Device info
-    if args.verbose:
-        print("\n[Device]")
-        print("-" * 60)
-        _print_device_info()
 
+# ── Kept: already dynamic ──
 
 def _print_version_info():
     """Print version information."""
@@ -65,120 +68,15 @@ def _print_version_info():
 
     try:
         import visualbase
-        version = getattr(visualbase, '__version__', 'installed')
-        print(f"  visualbase: {version}")
+        ver = getattr(visualbase, '__version__', 'installed')
+        print(f"  visualbase: {ver}")
     except ImportError:
         print("  visualbase: NOT INSTALLED")
 
 
-def _check_face_analyzer(verbose: bool = False):
-    """Check FaceAnalyzer availability."""
-    status = {"detection": None, "expression": None}
-
-    # Detection backend (InsightFace)
-    try:
-        import insightface
-        from vpx.face_detect.backends.insightface import InsightFaceSCRFD
-        status["detection"] = f"InsightFace SCRFD (v{insightface.__version__})"
-    except ImportError as e:
-        status["detection"] = f"NOT AVAILABLE (insightface not installed)"
-    except Exception as e:
-        status["detection"] = f"ERROR: {e}"
-
-    # Expression backend (HSEmotion or PyFeat)
-    try:
-        from vpx.face_expression.backends.hsemotion import HSEmotionBackend
-        import hsemotion_onnx
-        status["expression"] = "HSEmotion (fast)"
-    except ImportError:
-        try:
-            from vpx.face_expression.backends.pyfeat import PyFeatBackend
-            status["expression"] = "PyFeat (accurate, slow)"
-        except ImportError:
-            status["expression"] = "NOT AVAILABLE (install hsemotion-onnx or py-feat)"
-
-    available = status["detection"] and "NOT" not in status["detection"]
-    icon = "+" if available else "-"
-    print(f"  [{icon}] FaceAnalyzer")
-    print(f"        Detection:  {status['detection']}")
-    print(f"        Expression: {status['expression']}")
-
-
-def _check_pose_analyzer(verbose: bool = False):
-    """Check PoseAnalyzer availability."""
-    try:
-        import ultralytics
-        from vpx.body_pose.backends.yolo_pose import YOLOPoseBackend
-        print(f"  [+] PoseAnalyzer")
-        print(f"        Backend: YOLO-Pose (ultralytics v{ultralytics.__version__})")
-    except ImportError:
-        print(f"  [-] PoseAnalyzer")
-        print(f"        Backend: NOT AVAILABLE (ultralytics not installed)")
-
-
-def _check_gesture_analyzer(verbose: bool = False):
-    """Check GestureAnalyzer availability."""
-    try:
-        import mediapipe
-        print(f"  [+] GestureAnalyzer")
-        print(f"        Backend: MediaPipe Hands (v{mediapipe.__version__})")
-    except ImportError:
-        print(f"  [-] GestureAnalyzer")
-        print(f"        Backend: NOT AVAILABLE (mediapipe not installed)")
-
-
-def _check_quality_analyzer():
-    """Check QualityAnalyzer (always available)."""
-    print(f"  [+] QualityAnalyzer")
-    print(f"        Backend: OpenCV (blur/brightness/contrast)")
-
-
-def _print_batch_highlight_info():
-    """Print batch highlight engine information."""
-    print("  BatchHighlightEngine (Phase 1)")
-    print("    - Per-video normalization (MAD z-score)")
-    print("    - Temporal delta (EMA baseline)")
-    print("    - Quality gate × Impact scoring")
-    print("    - Peak detection (scipy.signal.find_peaks)")
-    print("    - Window generation + best frame selection")
-
-
-def _print_pipeline_structure():
-    """Print pipeline structure diagram."""
-    print("""
-  Video Source (visualbase)
-       │
-       ▼
-  ┌─────────────────────────────────────────┐
-  │              Analyzers (per-frame)      │
-  │  ┌─────────┐ ┌─────────┐ ┌───────────┐  │
-  │  │  Face   │ │  Pose   │ │  Quality  │  │
-  │  │(detect+ │ │ (YOLO)  │ │(blur/bright)│ │
-  │  │ expr)  │ │         │ │           │  │
-  │  └────┬────┘ └────┬────┘ └─────┬─────┘  │
-  │       └───────────┴────────────┘        │
-  └────────────────┬────────────────────────┘
-                   │ on_frame → FrameRecord
-                   ▼
-          ┌─────────────────┐
-          │ Accumulate      │
-          │ _frame_records  │
-          └────────┬────────┘
-                   │ after_run (batch)
-                   ▼
-  ┌─────────────────────────────────────────┐
-  │        BatchHighlightEngine             │
-  │  Delta → Normalize → Gate × Impact     │
-  │  → Smooth → Peak Detect → Windows      │
-  └────────────────┬────────────────────────┘
-                   │
-                   ▼
-          HighlightResult (windows.json)
-""")
-
-
 def _print_device_info():
     """Print device information."""
+    print(f"\n{BOLD}[Device]{RESET}")
     # CUDA
     try:
         import torch
@@ -201,155 +99,249 @@ def _print_device_info():
         print("  ONNX Runtime: Not installed")
 
 
+# ── New: dynamic modules section ──
+
+def _print_modules_section(verbose):
+    """Print discovered modules with capabilities."""
+    from visualpath.core.capabilities import Capability
+
+    modules = _discover_all_modules()
+    print(f"\n{BOLD}[Modules]{RESET}  {len(modules)} registered")
+
+    for name, ep, cls_or_err in modules:
+        if isinstance(cls_or_err, Exception):
+            print(f"  {name:<18s}UNAVAILABLE ({cls_or_err})")
+            continue
+
+        cls = cls_or_err
+
+        # origin: vpx.* -> "vpx", else "core"
+        origin = "vpx" if ep.value.startswith("vpx.") else "core"
+
+        # depends
+        depends = getattr(cls, "depends", [])
+        deps_str = ", ".join(depends) if depends else "-"
+
+        # capabilities (safe: __init__ should not load models)
+        caps_parts = []
+        try:
+            instance = cls()
+            cap = instance.capabilities
+            for member in Capability:
+                if member != Capability.NONE and member in cap.flags:
+                    caps_parts.append(member.name)
+            if cap.resource_groups:
+                caps_parts.extend(sorted(cap.resource_groups))
+        except Exception:
+            pass
+
+        caps_str = "  ".join(caps_parts) if caps_parts else "-"
+
+        print(f"  {name:<18s}{origin:<7s}depends: {deps_str:<20s}{caps_str}")
+
+
+# ── New: scoring summary (basic view) ──
+
+def _print_scoring_section():
+    """Print highlight scoring summary from HighlightConfig defaults."""
+    from momentscan.algorithm.batch.types import HighlightConfig
+
+    cfg = HighlightConfig()
+
+    print(f"\n{BOLD}[Highlight Scoring]{RESET}")
+    print(f"  Quality gate    face_conf >= {cfg.gate_face_confidence:.2f}  "
+          f"face_area >= {cfg.gate_face_area_ratio:.2f}  "
+          f"blur >= {cfg.gate_blur_min:.0f}  "
+          f"bright \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}]")
+    print(f"  Quality score   blur: {cfg.quality_blur_weight:.2f}  "
+          f"face_size: {cfg.quality_face_size_weight:.2f}  "
+          f"frontalness: {cfg.quality_frontalness_weight:.2f}")
+    print(f"  Impact score    mouth: {cfg.impact_mouth_open_weight:.2f}  "
+          f"head_vel: {cfg.impact_head_velocity_weight:.2f}  "
+          f"wrist: {cfg.impact_wrist_raise_weight:.2f}  "
+          f"torso: {cfg.impact_torso_rotation_weight:.2f}  "
+          f"face_\u0394: {cfg.impact_face_size_change_weight:.2f}  "
+          f"bright_\u0394: {cfg.impact_exposure_change_weight:.2f}")
+    print(f"  Temporal        EMA smooth \u03b1={cfg.smoothing_alpha:.2f}  "
+          f"\u2192  peaks: dist\u2265{cfg.peak_min_distance_sec:.1f}s, "
+          f"prominence\u2265p{cfg.peak_prominence_percentile:.0f}")
+    print(f"  Window          peak \u00b1 {cfg.window_half_sec:.1f}s  "
+          f"top {cfg.best_frame_count} frames")
+
+
+# ── New: --scoring detail ──
+
+def _print_scoring_detail():
+    """Print detailed highlight scoring pipeline."""
+    from collections import defaultdict
+    from momentscan.algorithm.batch.types import HighlightConfig
+
+    cfg = HighlightConfig()
+    fps = cfg.fps
+
+    # Feature Sources — from registry
+    sources: dict[str, list[str]] = defaultdict(list)
+    for fm in PIPELINE_FIELD_MAPPINGS:
+        sources[fm.source].append(fm.record_field)
+
+    total_fields = sum(len(v) for v in sources.values())
+    print(f"{BOLD}[Feature Sources]{RESET}  {total_fields} fields from {len(sources)} analyzers")
+    for source, fields in sources.items():
+        print(f"  {source:<16s}\u2192 {', '.join(fields)}")
+
+    # Temporal Delta — from registry
+    delta_fields = [spec.record_field for spec in PIPELINE_DELTA_SPECS]
+    print(f"\n{BOLD}[Temporal Delta]{RESET}  EMA \u03b1={cfg.delta_alpha:.2f}")
+    print(f"  {', '.join(delta_fields)}")
+    for derived in PIPELINE_DERIVED_FIELDS:
+        if derived.name == "head_velocity":
+            print(f"  + {derived.name} = {derived.description}")
+
+    # Normalization
+    print(f"\n{BOLD}[Normalization]{RESET}  MAD z-score per video")
+    print(f"  z = (x - median) / MAD")
+
+    # Quality Gate
+    print(f"\n{BOLD}[Quality Gate]{RESET}  fail \u2192 score=0")
+    print(f"  face_detected     == True")
+    print(f"  face_confidence   >= {cfg.gate_face_confidence:.2f}")
+    print(f"  face_area_ratio   >= {cfg.gate_face_area_ratio:.2f}")
+    print(f"  blur_score        >= {cfg.gate_blur_min:.1f}    "
+          f"{DIM}(0=unmeasured \u2192 pass){RESET}")
+    print(f"  brightness        \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}] "
+          f"{DIM}(0=unmeasured \u2192 pass){RESET}")
+
+    # Quality Score
+    print(f"\n{BOLD}[Quality Score]{RESET}  = \u03a3(weight \u00d7 feature)")
+    print(f"  {cfg.quality_blur_weight:.2f}  blur_norm       {DIM}(min-max){RESET}")
+    print(f"  {cfg.quality_face_size_weight:.2f}  face_size_norm  {DIM}(min-max){RESET}")
+    print(f"  {cfg.quality_frontalness_weight:.2f}  frontalness     "
+          f"{DIM}(1 - |yaw|/{cfg.frontalness_max_yaw:.0f}, clamped){RESET}")
+
+    # Impact Score
+    print(f"\n{BOLD}[Impact Score]{RESET}  = \u03a3(weight \u00d7 ReLU(z-score delta))")
+    print(f"  {cfg.impact_mouth_open_weight:.2f}  mouth_open_ratio")
+    print(f"  {cfg.impact_head_velocity_weight:.2f}  head_velocity")
+    print(f"  {cfg.impact_wrist_raise_weight:.2f}  wrist_raise")
+    print(f"  {cfg.impact_torso_rotation_weight:.2f}  torso_rotation")
+    print(f"  {cfg.impact_face_size_change_weight:.2f}  face_area_ratio {DIM}(\u0394){RESET}")
+    print(f"  {cfg.impact_exposure_change_weight:.2f}  brightness {DIM}(\u0394){RESET}")
+
+    # Final
+    dist_frames = int(cfg.peak_min_distance_sec * fps)
+    half_frames = int(cfg.window_half_sec * fps)
+    print(f"\n{BOLD}[Final]{RESET}  quality_score \u00d7 impact_score  {DIM}(gated){RESET}")
+    print(f"  \u2192 EMA smooth \u03b1={cfg.smoothing_alpha:.2f}")
+    print(f"  \u2192 find_peaks: dist\u2265{dist_frames}f "
+          f"({cfg.peak_min_distance_sec:.1f}s@{fps:.0f}fps), "
+          f"prominence\u2265p{cfg.peak_prominence_percentile:.0f}")
+    print(f"  \u2192 window: peak \u00b1 {half_frames}f ({cfg.window_half_sec:.1f}s), "
+          f"top {cfg.best_frame_count} frames")
+
+
+# ── Rewritten: --deps ──
+
 def _print_dependency_graph():
-    """Print analyzer dependency graph."""
+    """Print analyzer dependency graph from discovered modules."""
     print("MomentScan - Analyzer Dependency Graph")
     print("=" * 60)
 
-    # Define analyzers with their dependencies
-    analyzers = [
-        ("face.detect", [], "Face detection (bbox, head pose)"),
-        ("face.classify", ["face.detect"], "Face role classification (main/passenger/transient)"),
-        ("face.expression", ["face.detect"], "Expression analysis (emotions)"),
-        ("body.pose", [], "Pose estimation (keypoints)"),
-        ("hand.gesture", [], "Gesture detection (hand signs)"),
-        ("frame.quality", [], "Quality metrics (blur, brightness)"),
-    ]
+    modules = _discover_all_modules()
+    loaded = [(name, cls) for name, ep, cls in modules if not isinstance(cls, Exception)]
 
-    # Build dependency graph
-    print("\n[Dependency Tree]")
+    print(f"\n{BOLD}[Dependency Tree]{RESET}")
     print("-" * 60)
 
-    # Group by root (no dependencies)
-    roots = [(name, deps, desc) for name, deps, desc in analyzers if not deps]
-    dependents = [(name, deps, desc) for name, deps, desc in analyzers if deps]
+    roots = [(name, cls) for name, cls in loaded if not getattr(cls, "depends", [])]
+    dependents = [(name, cls) for name, cls in loaded if getattr(cls, "depends", [])]
 
-    for name, deps, desc in roots:
+    for name, cls in roots:
         print(f"  {name}")
-        print(f"  │   {desc}")
-        # Find children
-        children = [(n, d, ds) for n, d, ds in dependents if name in d]
-        for i, (child_name, child_deps, child_desc) in enumerate(children):
+        children = [(n, c) for n, c in dependents if name in getattr(c, "depends", [])]
+        for i, (child_name, child_cls) in enumerate(children):
             is_last = i == len(children) - 1
-            prefix = "└──" if is_last else "├──"
+            prefix = "\u2514\u2500\u2500" if is_last else "\u251c\u2500\u2500"
             print(f"  {prefix} {child_name}")
-            print(f"  {'    ' if is_last else '│   '}   {child_desc}")
         print()
 
-    # Execution order recommendation
-    print("[Recommended Execution Order]")
+    # Execution order
+    print(f"{BOLD}[Execution Order]{RESET}")
     print("-" * 60)
-    print("  For face analysis pipeline:")
-    print("    1. face.detect     → 2. face_classifier → 3. face.expression")
-    print()
-    print("  For full analysis pipeline:")
-    print("    1. quality         (gate check)")
-    print("    2. face_detect     (detection)")
-    print("    3. face_classifier (depends on face_detect)")
-    print("    4. face.expression (depends on face.detect)")
-    print("    5. body.pose       (independent)")
-    print("    6. hand.gesture    (independent)")
-    print("    → BatchHighlightEngine (after_run, per-video batch)")
+    order = []
+    added = set()
+    for name, _cls in roots:
+        order.append(name)
+        added.add(name)
+    for name, _cls in dependents:
+        if name not in added:
+            order.append(name)
+            added.add(name)
+    for i, name in enumerate(order, 1):
+        cls = dict(loaded).get(name)
+        dep_list = getattr(cls, "depends", []) if cls else []
+        dep_str = f"  (depends: {', '.join(dep_list)})" if dep_list else ""
+        print(f"  {i}. {name}{dep_str}")
     print()
 
+
+# ── Rewritten: --graph ──
 
 def _build_momentscan_flow_graph():
-    """Build a FlowGraph representing the momentscan pipeline.
-
-    Creates a graph with individual analyzer nodes showing dependency
-    relationships, rather than a single pipeline node.
-    """
+    """Build FlowGraph dynamically from discovered modules."""
     from visualpath.flow import FlowGraph
-
-    # Define all momentscan analyzers with their dependencies
-    analyzer_defs = [
-        ("frame.quality", [], "QualityAnalyzer"),
-        ("face.detect", [], "FaceDetectionAnalyzer"),
-        ("face.classify", ["face.detect"], "FaceClassifierAnalyzer"),
-        ("face.expression", ["face.detect"], "ExpressionAnalyzer"),
-        ("body.pose", [], "PoseAnalyzer"),
-        ("hand.gesture", [], "GestureAnalyzer"),
-    ]
-
-    # Check which analyzers are actually available
-    availability = {}
-    availability["frame.quality"] = True  # always available
-    try:
-        from vpx.face_detect import FaceDetectionAnalyzer  # noqa: F401
-        availability["face.detect"] = True
-    except ImportError:
-        availability["face.detect"] = False
-    try:
-        from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer  # noqa: F401
-        availability["face.classify"] = True
-    except ImportError:
-        availability["face.classify"] = False
-    try:
-        from vpx.face_expression import ExpressionAnalyzer  # noqa: F401
-        availability["face.expression"] = True
-    except ImportError:
-        availability["face.expression"] = False
-    try:
-        from vpx.body_pose import PoseAnalyzer  # noqa: F401
-        availability["body.pose"] = True
-    except ImportError:
-        availability["body.pose"] = False
-    try:
-        from vpx.hand_gesture import GestureAnalyzer  # noqa: F401
-        availability["hand.gesture"] = True
-    except ImportError:
-        availability["hand.gesture"] = False
-
-    # Build graph manually to show dependency structure
     from visualpath.flow.nodes.source import SourceNode
-    from visualpath.flow.node import FlowNode, FlowData
+    from visualpath.flow.node import FlowNode
+    from visualpath.flow.specs import NodeSpec
 
-    # Lightweight stub node for graph visualization
     class AnalyzerNode(FlowNode):
         """Stub node for visualization only."""
         def __init__(self, node_name):
             self._name = node_name
+
         @property
         def name(self):
             return self._name
-        def process(self, data: FlowData) -> list:
-            return [data]
+
+        @property
+        def spec(self) -> NodeSpec:
+            return NodeSpec()
+
+    modules = _discover_all_modules()
+
+    # Build name -> depends mapping for available modules
+    available = {}
+    for name, ep, cls_or_err in modules:
+        if isinstance(cls_or_err, Exception):
+            continue
+        available[name] = getattr(cls_or_err, "depends", [])
+
+    # Filter out modules whose dependencies aren't available
+    valid = {}
+    for name, deps in available.items():
+        if all(d in available for d in deps):
+            valid[name] = deps
 
     graph = FlowGraph(entry_node="source")
     graph.add_node(SourceNode(name="source"))
 
-    available_names = []
-    for name, deps, _cls_name in analyzer_defs:
-        if not availability.get(name, False):
-            continue
-        # Skip if dependencies are not available
-        if deps and not all(availability.get(d, False) for d in deps):
-            continue
+    for name in sorted(valid):
         graph.add_node(AnalyzerNode(name))
-        available_names.append(name)
 
-    # Add edges: source → root analyzers, deps → dependents
-    for name, deps, _cls_name in analyzer_defs:
-        if name not in available_names:
-            continue
+    for name, deps in valid.items():
         if not deps:
             graph.add_edge("source", name)
         else:
             for dep in deps:
-                if dep in available_names:
+                if dep in valid:
                     graph.add_edge(dep, name)
 
-    return graph, available_names
+    return graph, sorted(valid.keys())
 
 
-def _print_flow_graph(fmt: str = "ascii"):
-    """Print pipeline FlowGraph visualization.
-
-    Args:
-        fmt: Output format - "ascii" for terminal, "dot" for Graphviz DOT.
-    """
+def _print_flow_graph(fmt="ascii"):
+    """Print pipeline FlowGraph visualization."""
     try:
-        from visualpath.flow import FlowGraph
+        from visualpath.flow import FlowGraph  # noqa: F401
     except ImportError:
         print("Error: visualpath.flow not available")
         print("  Install visualpath >= 0.2.0 for FlowGraph support")
@@ -368,110 +360,41 @@ def _print_flow_graph(fmt: str = "ascii"):
         print(graph.print_ascii())
 
 
+# ── Rewritten: --steps ──
+
 def _print_processing_steps():
-    """Print internal processing steps of each analyzer."""
+    """Print processing steps from discovered modules."""
     print("MomentScan - Processing Pipeline Steps")
     print("=" * 70)
     print()
-    print("Complete data transformation pipeline from video source to trigger output.")
-    print("Each step shows: name, description [backend], input → output (dependencies)")
-    print()
 
-    # Source preprocessing (input pipeline)
-    print("[SourceProcessor] (Input Pipeline)")
-    print("-" * 70)
-    try:
-        from momentscan.algorithm.source import SourceProcessor
-        for i, step in enumerate(SourceProcessor._STEPS, 1):
-            opt_marker = " (optional)" if step.optional else ""
-            backend_str = f" [{step.backend}]" if step.backend else ""
-            deps_str = f" (depends: {step.depends_on})" if step.depends_on else ""
-            print(f"  {i}. {step.name}{opt_marker}")
-            print(f"     {step.description}{backend_str}")
-            print(f"     {step.input_type} → {step.output_type}{deps_str}")
+    modules = _discover_all_modules()
+
+    for name, ep, cls_or_err in modules:
+        if isinstance(cls_or_err, Exception):
+            print(f"[{name}]  UNAVAILABLE ({cls_or_err})")
             print()
-    except (ImportError, AttributeError):
-        print("  (definition not available)")
-    print()
+            continue
 
-    # Backend preprocessing (internal to ML backends)
-    print("[BackendPreprocessor] (ML Backend Internal - for reference)")
-    print("-" * 70)
-    try:
-        from momentscan.algorithm.source import BackendPreprocessor
-        for i, step in enumerate(BackendPreprocessor._STEPS, 1):
-            opt_marker = " (optional)" if step.optional else ""
-            backend_str = f" [{step.backend}]" if step.backend else ""
-            deps_str = f" (depends: {step.depends_on})" if step.depends_on else ""
-            print(f"  {i}. {step.name}{opt_marker}")
-            print(f"     {step.description}{backend_str}")
-            print(f"     {step.input_type} → {step.output_type}{deps_str}")
-            print()
-    except (ImportError, AttributeError):
-        print("  (definition not available)")
-    print()
+        cls = cls_or_err
+        class_name = cls.__name__
 
-    analyzers_info = []
-
-    def _get_steps(cls):
-        """Get processing steps from class (supports both _STEPS and decorators)."""
-        # Try class-level _STEPS first
+        # Get processing steps
+        steps = []
         if hasattr(cls, '_STEPS'):
-            return cls._STEPS
-        # Try get_processing_steps (decorator-based)
-        try:
-            from vpx.sdk import get_processing_steps
-            return get_processing_steps(cls)
-        except Exception:
-            return []
+            steps = cls._STEPS
+        else:
+            try:
+                from vpx.sdk.steps import get_processing_steps
+                steps = get_processing_steps(cls)
+            except Exception:
+                pass
 
-    # Split Face analyzers
-    try:
-        from vpx.face_detect import FaceDetectionAnalyzer
-        analyzers_info.append(("FaceDetectionAnalyzer", "face.detect", _get_steps(FaceDetectionAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("FaceDetectionAnalyzer", "face.detect", f"NOT AVAILABLE: {e}"))
-
-    try:
-        from vpx.face_expression import ExpressionAnalyzer
-        analyzers_info.append(("ExpressionAnalyzer", "face.expression", _get_steps(ExpressionAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("ExpressionAnalyzer", "face.expression", f"NOT AVAILABLE: {e}"))
-
-    try:
-        from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
-        analyzers_info.append(("FaceClassifierAnalyzer", "face.classify", _get_steps(FaceClassifierAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("FaceClassifierAnalyzer", "face.classify", f"NOT AVAILABLE: {e}"))
-
-    # PoseAnalyzer
-    try:
-        from vpx.body_pose import PoseAnalyzer
-        analyzers_info.append(("PoseAnalyzer", "body.pose", _get_steps(PoseAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("PoseAnalyzer", "body.pose", f"NOT AVAILABLE: {e}"))
-
-    # GestureAnalyzer
-    try:
-        from vpx.hand_gesture import GestureAnalyzer
-        analyzers_info.append(("GestureAnalyzer", "hand.gesture", _get_steps(GestureAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("GestureAnalyzer", "hand.gesture", f"NOT AVAILABLE: {e}"))
-
-    # QualityAnalyzer (decorator-based)
-    try:
-        from momentscan.algorithm.analyzers.quality import QualityAnalyzer
-        analyzers_info.append(("QualityAnalyzer", "frame.quality", _get_steps(QualityAnalyzer)))
-    except (ImportError, AttributeError) as e:
-        analyzers_info.append(("QualityAnalyzer", "frame.quality", f"NOT AVAILABLE: {e}"))
-
-    # Print each analyzer's steps with DAG info
-    for class_name, name, steps in analyzers_info:
         print(f"[{class_name}] (name: {name})")
         print("-" * 70)
 
-        if isinstance(steps, str):
-            print(f"  {steps}")
+        if not steps:
+            print("  (no steps defined)")
         else:
             for i, step in enumerate(steps, 1):
                 opt_marker = " (optional)" if step.optional else ""
@@ -479,67 +402,7 @@ def _print_processing_steps():
                 deps_str = f" (depends: {step.depends_on})" if step.depends_on else ""
                 print(f"  {i}. {step.name}{opt_marker}")
                 print(f"     {step.description}{backend_str}")
-                print(f"     {step.input_type} → {step.output_type}{deps_str}")
+                print(f"     {step.input_type} \u2192 {step.output_type}{deps_str}")
                 print()
 
         print()
-
-    # Print ASCII visualization
-    print("=" * 70)
-    print("[Complete Pipeline Visualization]")
-    print("-" * 70)
-    print("""
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │  SOURCE PREPROCESSING                                               │
-  │  ┌──────────────┐   ┌───────────────┐   ┌────────┐   ┌───────────┐  │
-  │  │ video_decode │ → │ frame_sampling│ → │ resize │ → │frame_create│  │
-  │  │ [OpenCV]     │   │ [skip frames] │   │(option)│   │ [Frame]   │  │
-  │  └──────────────┘   └───────────────┘   └────────┘   └─────┬─────┘  │
-  └────────────────────────────────────────────────────────────┼────────┘
-                                                               │
-  Frame (BGR, original resolution)                             │
-       ┌───────────────────────────────────────────────────────┘
-       │
-       ├────────────────────────────────┬──────────────────────────────────┐
-       │                                │                                  │
-       ▼                                ▼                                  ▼
-  ┌─────────────────────┐    ┌──────────────────────┐    ┌──────────────────┐
-  │  FaceDetectionExt   │    │    QualityAnalyzer  │    │   PoseAnalyzer  │
-  │  ┌───────────────┐  │    │ ┌──────────────────┐ │    │ ┌──────────────┐ │
-  │  │ detect        │  │    │ │ grayscale_convert│ │    │ │ pose_estim   │ │
-  │  │ (→640x640)    │  │    │ │ blur_analysis    │ │    │ │ upper_body   │ │
-  │  │ tracking      │  │    │ │ brightness       │ │    │ │ hands_raised │ │
-  │  │ roi_filter    │  │    │ │ contrast         │ │    │ │ wave_detect  │ │
-  │  └───────┬───────┘  │    │ │ quality_gate     │ │    │ │ aggregation  │ │
-  └──────────┼──────────┘    │ └──────────────────┘ │    │ └──────────────┘ │
-             │               └──────────────────────┘    └──────────────────┘
-    ┌────────┴────────┐
-    │                 │
-    ▼                 ▼
-  ┌────────────────┐  ┌───────────────────┐    ┌───────────────────────┐
-  │ExpressionExt   │  │FaceClassifierExt  │    │   GestureAnalyzer    │
-  │(depends:       │  │(depends:          │    │ ┌───────────────────┐ │
-  │ face_detect)   │  │ face_detect)      │    │ │ hand_detection    │ │
-  │ ┌────────────┐ │  │ ┌───────────────┐ │    │ │ finger_state      │ │
-  │ │ expression │ │  │ │ track_update  │ │    │ │ gesture_classify  │ │
-  │ │ aggregation│ │  │ │ noise_filter  │ │    │ │ aggregation       │ │
-  │ └────────────┘ │  │ │ stability_chk │ │    │ └───────────────────┘ │
-  └────────────────┘  │ │ role_classify │ │    └───────────────────────┘
-                      │ │ role_assign   │ │
-                      │ └───────────────┘ │
-                      └───────────────────┘
-             │                 │                           │
-             └─────────────────┴───────────────────────────┘
-                                        │
-                               on_frame → FrameRecord
-                                        │
-                                        ▼
-                               ┌─────────────────────────────┐
-                               │  BatchHighlightEngine       │
-                               │  (after_run, per-video)     │
-                               │  Normalize → Peak → Windows │
-                               └─────────────────────────────┘
-                                        │
-                                        ▼
-                               HighlightResult (windows.json)
-""")
