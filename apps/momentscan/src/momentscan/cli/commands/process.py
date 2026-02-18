@@ -167,6 +167,7 @@ def _print_exports(output_dir: Path):
     print(f"{BOLD}{'Exports':<10}{RESET}{highlight_dir}")
     _  = "          "
 
+    report_path = None
     for child in sorted(highlight_dir.iterdir()):
         if child.is_dir():
             files = sorted(child.iterdir())
@@ -177,7 +178,11 @@ def _print_exports(output_dir: Path):
         else:
             size_kb = child.stat().st_size / 1024
             print(f"  {DIM}{child.name}{RESET}  {DIM}({size_kb:.1f} KB){RESET}")
+            if child.name == "report.html":
+                report_path = child.resolve()
 
+    if report_path:
+        print(f"\n  {BOLD}Report{RESET}  file://{report_path}")
     print()
 
 

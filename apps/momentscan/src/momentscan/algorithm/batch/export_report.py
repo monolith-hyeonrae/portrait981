@@ -35,12 +35,12 @@ JPEG_QUALITY = 70
 # ── Module display metadata ──
 
 _MODULE_PALETTES: Dict[str, List[str]] = {
-    "face.detect": ["#2e7d32", "#43a047", "#66bb6a", "#81c784", "#a5d6a7", "#c8e6c9"],
-    "face.expression": ["#d84315", "#e64a19", "#f4511e"],
-    "body.pose": ["#00838f", "#0097a7", "#00acc1", "#00bcd4"],
-    "hand.gesture": ["#6a1b9a", "#7b1fa2", "#8e24aa", "#9c27b0"],
-    "vision.embed": ["#ff6f00", "#ff8f00", "#ffa000"],
-    "frame.quality": ["#1565c0", "#1976d2", "#1e88e5"],
+    "face.detect": ["#2e7d32", "#e65100", "#1565c0", "#6a1b9a", "#c62828", "#00838f"],
+    "face.expression": ["#d84315", "#1565c0", "#2e7d32"],
+    "body.pose": ["#00838f", "#d84315", "#6a1b9a", "#2e7d32"],
+    "hand.gesture": ["#6a1b9a", "#e65100", "#00838f", "#c62828"],
+    "vision.embed": ["#2e7d32", "#00838f", "#d84315"],
+    "frame.quality": ["#1565c0", "#e65100", "#2e7d32"],
     "face.classify": ["#f9a825"],
     "frame.scoring": ["#757575"],
 }
@@ -839,10 +839,8 @@ _JS_MAIN = r"""
     mod.fields.forEach(function(f) {
       if (!DATA[f.key]) return;
       var roleBadge = f.role ? ' [' + f.role + ']' : '';
-      var rationale = f.rationale || '';
       var htempl = '<b>' + f.label + '</b>' + roleBadge +
         '<br>%{y:.3f}' +
-        (rationale ? '<br><i>' + rationale + '</i>' : '') +
         '<extra></extra>';
       traces.push({
         x: t, y: DATA[f.key], name: f.label,

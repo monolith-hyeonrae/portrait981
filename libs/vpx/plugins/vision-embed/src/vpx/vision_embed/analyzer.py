@@ -163,20 +163,24 @@ class VisionEmbedAnalyzer(Module):
         self, image, pose_data
     ) -> tuple[Optional["np.ndarray"], Optional[tuple[int, int, int, int]]]:
         """Extract upper-body crop from pose and compute embedding."""
+        import numpy as np
+
         if pose_data is None:
             return None, None
 
-        # Get keypoints from pose data
+        # PoseOutput.keypoints is List[Dict] with per-person data:
+        #   [{"person_id": 0, "keypoints": [[x,y,conf], ...], "image_size": (w,h)}]
+        # body_crop() expects a (17, 3) array of [x, y, conf].
         keypoints = None
-        if hasattr(pose_data, "keypoints") and pose_data.keypoints is not None:
-            keypoints = pose_data.keypoints
-        elif hasattr(pose_data, "poses") and pose_data.poses:
-            # Use first detected pose
-            first_pose = pose_data.poses[0]
-            if hasattr(first_pose, "keypoints"):
-                keypoints = first_pose.keypoints
+        kp_list = getattr(pose_data, "keypoints", None)
+        if kp_list and isinstance(kp_list, list) and len(kp_list) > 0:
+            first_person = kp_list[0]
+            if isinstance(first_person, dict) and "keypoints" in first_person:
+                keypoints = np.asarray(first_person["keypoints"], dtype=np.float32)
+            elif hasattr(first_person, "keypoints"):
+                keypoints = np.asarray(first_person.keypoints, dtype=np.float32)
 
-        if keypoints is None:
+        if keypoints is None or len(keypoints) < 13:
             return None, None
 
         crop, actual_box = body_crop(image, keypoints)
