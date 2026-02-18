@@ -57,8 +57,9 @@ class FrameRecord:
     main_face_confidence: float = 0.0
 
     # Embedding features (from vision.embed + face.detect ArcFace)
-    embed_delta_face: float = 0.0    # DINOv2 temporal delta (impact)
-    face_recog_quality: float = 0.0  # ArcFace anchor similarity (quality)
+    face_identity: float = 0.0   # ArcFace anchor similarity (quality)
+    face_change: float = 0.0     # DINOv2 face crop temporal delta (impact)
+    body_change: float = 0.0     # DINOv2 body crop temporal delta (impact)
 
     # Frame scoring (from frame.scoring)
     frame_score: float = 0.0
@@ -98,11 +99,12 @@ class HighlightConfig:
     # Quality score weights (§6 Step 2)
     quality_blur_weight: float = 0.35
     quality_face_size_weight: float = 0.25
-    quality_face_recog_weight: float = 0.40  # ArcFace anchor similarity (frontalness 대체)
-    quality_frontalness_weight: float = 0.30  # fallback (ArcFace 없을 때만 사용)
+    quality_face_identity_weight: float = 0.40  # ArcFace anchor similarity (frontalness 대체)
+    quality_frontalness_weight: float = 0.30   # fallback (ArcFace 없을 때만 사용)
 
     # Impact score weights (§6 Step 3)
-    impact_embed_face_weight: float = 0.20         # DINOv2 temporal delta
+    impact_face_change_weight: float = 0.15         # DINOv2 face temporal delta
+    impact_body_change_weight: float = 0.10         # DINOv2 body temporal delta
     impact_smile_intensity_weight: float = 0.25
     impact_head_yaw_delta_weight: float = 0.12
     impact_mouth_open_weight: float = 0.08
@@ -191,7 +193,7 @@ class HighlightResult:
                 "wrist_raise", "torso_rotation",
                 "blur_score", "brightness",
                 # embedding features
-                "embed_delta_face", "face_recog_quality",
+                "face_identity", "face_change", "body_change",
             ]
             writer.writerow(header)
 
@@ -217,8 +219,9 @@ class HighlightResult:
                     f"{r.torso_rotation:.3f}",
                     f"{r.blur_score:.1f}",
                     f"{r.brightness:.1f}",
-                    f"{r.embed_delta_face:.4f}",
-                    f"{r.face_recog_quality:.4f}",
+                    f"{r.face_identity:.4f}",
+                    f"{r.face_change:.4f}",
+                    f"{r.body_change:.4f}",
                 ])
 
         logger.info("Exported timeseries CSV: %s (%d rows)", csv_path, len(records))

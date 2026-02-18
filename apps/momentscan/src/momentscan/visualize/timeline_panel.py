@@ -43,6 +43,11 @@ class TimelinePanel:
         self._spike_history: List[float] = []
         self._gate_history: List[bool] = []
         self._trigger_times: List[int] = []
+        self._anchor_times: List[int] = []
+        # Embedding tracks
+        self._face_identity_history: List[float] = []
+        self._face_change_history: List[float] = []
+        self._body_change_history: List[float] = []
 
     def reset(self) -> None:
         self._happy_history.clear()
@@ -50,6 +55,10 @@ class TimelinePanel:
         self._spike_history.clear()
         self._gate_history.clear()
         self._trigger_times.clear()
+        self._anchor_times.clear()
+        self._face_identity_history.clear()
+        self._face_change_history.clear()
+        self._body_change_history.clear()
 
     @property
     def trigger_count(self) -> int:
@@ -62,6 +71,7 @@ class TimelinePanel:
         is_gate_open: bool,
         *,
         expression_obs: Optional[Observation] = None,
+        embed_stats: Optional[Dict[str, float]] = None,
     ) -> None:
         """Record one frame's data into the history."""
         happy = 0.0
@@ -90,6 +100,20 @@ class TimelinePanel:
             self._baseline_history.append(happy)
             self._spike_history.append(0)
 
+        # Embedding tracks
+        if embed_stats:
+            self._face_identity_history.append(embed_stats.get("face_identity", 0.0))
+            self._face_change_history.append(embed_stats.get("face_change", 0.0))
+            self._body_change_history.append(embed_stats.get("body_change", 0.0))
+        else:
+            self._face_identity_history.append(0.0)
+            self._face_change_history.append(0.0)
+            self._body_change_history.append(0.0)
+
+        # Anchor update marker
+        if embed_stats and embed_stats.get("anchor_updated", 0.0) > 0:
+            self._anchor_times.append(len(self._happy_history))
+
         # Trigger marker
         if fusion_result and fusion_result.should_trigger:
             self._trigger_times.append(len(self._happy_history))
@@ -100,7 +124,11 @@ class TimelinePanel:
             self._baseline_history.pop(0)
             self._spike_history.pop(0)
             self._gate_history.pop(0)
+            self._face_identity_history.pop(0)
+            self._face_change_history.pop(0)
+            self._body_change_history.pop(0)
             self._trigger_times = [t - 1 for t in self._trigger_times if t > 1]
+            self._anchor_times = [t - 1 for t in self._anchor_times if t > 1]
 
     def draw(
         self,
@@ -173,15 +201,71 @@ class TimelinePanel:
                     color = COLOR_RED_BGR if spike > threshold else (0, 180, 0)
                     cv2.line(canvas, (px, base_y), (px, base_y - spike_h), color, 1)
 
+        # Embedding tracks
+        # face_identity (green line, upper zone = good portrait)
+        COLOR_ID = (0, 200, 100)  # green-ish
+        if self._face_identity_history:
+            pts_q = [
+                (
+                    x + int(i * width / self._max_history),
+                    y + height - int(v * height),
+                )
+                for i, v in enumerate(self._face_identity_history)
+            ]
+            for i in range(1, len(pts_q)):
+                if self._face_identity_history[i] > 0 or self._face_identity_history[i - 1] > 0:
+                    cv2.line(canvas, pts_q[i - 1], pts_q[i], COLOR_ID, 1)
+
+        # face_change (cyan line, spiky = face visual change)
+        COLOR_FC = (200, 200, 0)  # cyan-ish
+        if self._face_change_history:
+            pts_fc = [
+                (
+                    x + int(i * width / self._max_history),
+                    y + height - int(min(1.0, v / 0.3) * height),
+                )
+                for i, v in enumerate(self._face_change_history)
+            ]
+            for i in range(1, len(pts_fc)):
+                if self._face_change_history[i] > 0 or self._face_change_history[i - 1] > 0:
+                    cv2.line(canvas, pts_fc[i - 1], pts_fc[i], COLOR_FC, 1)
+
+        # body_change (magenta line, spiky = body visual change)
+        COLOR_BC = (200, 0, 200)  # magenta
+        if self._body_change_history:
+            pts_bc = [
+                (
+                    x + int(i * width / self._max_history),
+                    y + height - int(min(1.0, v / 0.3) * height),
+                )
+                for i, v in enumerate(self._body_change_history)
+            ]
+            for i in range(1, len(pts_bc)):
+                if self._body_change_history[i] > 0 or self._body_change_history[i - 1] > 0:
+                    cv2.line(canvas, pts_bc[i - 1], pts_bc[i], COLOR_BC, 1)
+
         # Trigger markers
         for t in self._trigger_times:
             if t < len(self._happy_history):
                 px = x + int(t * width / self._max_history)
                 cv2.line(canvas, (px, y), (px, y + height), COLOR_RED_BGR, 2)
 
+        # Anchor update markers (yellow inverted triangle at top)
+        COLOR_ANCHOR = (0, 255, 255)  # yellow BGR
+        for t in self._anchor_times:
+            if t < len(self._happy_history):
+                px = x + int(t * width / self._max_history)
+                cv2.drawMarker(
+                    canvas, (px, y + 4), COLOR_ANCHOR,
+                    cv2.MARKER_TRIANGLE_DOWN, 6, 1,
+                )
+
         # Legend
         cv2.putText(canvas, "Happy", (x + 5, y + 12), FONT, 0.3, COLOR_HAPPY_BGR, 1)
-        cv2.putText(canvas, "base", (x + 45, y + 12), FONT, 0.3, COLOR_GRAY_BGR, 1)
+        cv2.putText(canvas, "ID", (x + 45, y + 12), FONT, 0.3, COLOR_ID, 1)
+        cv2.putText(canvas, "FC", (x + 62, y + 12), FONT, 0.3, COLOR_FC, 1)
+        cv2.putText(canvas, "BC", (x + 80, y + 12), FONT, 0.3, COLOR_BC, 1)
+        cv2.putText(canvas, "base", (x + 100, y + 12), FONT, 0.3, COLOR_GRAY_BGR, 1)
         cv2.putText(
             canvas, f"th={threshold:.2f}", (x + width - 50, y + 12),
             FONT, 0.25, COLOR_GRAY_BGR, 1,

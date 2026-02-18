@@ -33,17 +33,20 @@ _RIGHT_WRIST = 10
 # Module-level state for ArcFace anchor (quality)
 _anchor_embedding: Optional[np.ndarray] = None
 _anchor_confidence: float = 0.0
+_ANCHOR_DECAY: float = 0.998  # per-frame decay → half-life ~346 frames
 
 # Module-level state for DINOv2 EMA (impact)
 _embed_ema_face: Optional[np.ndarray] = None
+_embed_ema_body: Optional[np.ndarray] = None
 
 
 def reset_extract_state() -> None:
     """비디오 간 상태 격리를 위한 모듈 레벨 상태 리셋."""
-    global _anchor_embedding, _anchor_confidence, _embed_ema_face
+    global _anchor_embedding, _anchor_confidence, _embed_ema_face, _embed_ema_body
     _anchor_embedding = None
     _anchor_confidence = 0.0
     _embed_ema_face = None
+    _embed_ema_body = None
 
 
 def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord]:
@@ -120,7 +123,8 @@ def _extract_face_detect(record: FrameRecord, obs: Any) -> None:
         norm = np.linalg.norm(emb)
         if norm > 1e-8:
             emb = emb / norm
-            # Update anchor with highest-confidence face
+            # Decay anchor confidence so newer good faces can overtake
+            _anchor_confidence *= _ANCHOR_DECAY
             face_conf = record.face_confidence
             if face_conf > _anchor_confidence:
                 _anchor_embedding = emb
@@ -128,7 +132,7 @@ def _extract_face_detect(record: FrameRecord, obs: Any) -> None:
             # Compute similarity to anchor
             if _anchor_embedding is not None:
                 sim = float(np.dot(emb, _anchor_embedding))
-                record.face_recog_quality = max(0.0, sim)
+                record.face_identity = max(0.0, sim)
 
 
 def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
@@ -285,8 +289,8 @@ def _extract_frame_scoring(record: FrameRecord, obs: Any) -> None:
 
 
 def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
-    """vision.embed: DINOv2 face embedding에서 temporal delta 계산."""
-    global _embed_ema_face
+    """vision.embed: DINOv2 face/body embedding에서 temporal delta 계산."""
+    global _embed_ema_face, _embed_ema_body
 
     if obs is None:
         return
@@ -295,6 +299,7 @@ def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
     if data is None:
         return
 
+    # Face change (DINOv2 face crop)
     e_face = getattr(data, "e_face", None)
     if e_face is not None:
         e_face = np.asarray(e_face, dtype=np.float32)
@@ -302,8 +307,22 @@ def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
             _embed_ema_face = e_face.copy()
         else:
             delta = 1.0 - float(np.dot(e_face, _embed_ema_face))
-            record.embed_delta_face = max(0.0, delta)
+            record.face_change = max(0.0, delta)
             _embed_ema_face = 0.1 * e_face + 0.9 * _embed_ema_face
             norm = np.linalg.norm(_embed_ema_face)
             if norm > 1e-8:
                 _embed_ema_face = _embed_ema_face / norm
+
+    # Body change (DINOv2 body crop)
+    e_body = getattr(data, "e_body", None)
+    if e_body is not None:
+        e_body = np.asarray(e_body, dtype=np.float32)
+        if _embed_ema_body is None:
+            _embed_ema_body = e_body.copy()
+        else:
+            delta = 1.0 - float(np.dot(e_body, _embed_ema_body))
+            record.body_change = max(0.0, delta)
+            _embed_ema_body = 0.1 * e_body + 0.9 * _embed_ema_body
+            norm = np.linalg.norm(_embed_ema_body)
+            if norm > 1e-8:
+                _embed_ema_body = _embed_ema_body / norm

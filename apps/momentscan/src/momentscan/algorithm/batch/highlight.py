@@ -129,7 +129,7 @@ class BatchHighlightEngine:
             fields.update(derived.source_fields)
         # scoring에 필요하지만 delta/derived에 없는 추가 필드
         fields.update(("blur_score", "eye_open_ratio", "face_confidence",
-                        "face_recog_quality", "embed_delta_face"))
+                        "face_identity", "face_change", "body_change"))
 
         return {
             field: np.array([getattr(r, field) for r in records])
@@ -151,9 +151,10 @@ class BatchHighlightEngine:
             ema = self._compute_ema(arr, cfg.delta_alpha)
             deltas[spec.record_field] = np.abs(arr - ema)
 
-        # embed_delta_face is already a delta → pass-through (no "delta of delta")
-        if "embed_delta_face" in arrays:
-            deltas["embed_delta_face"] = arrays["embed_delta_face"]
+        # face_change / body_change are already deltas → pass-through
+        for key in ("face_change", "body_change"):
+            if key in arrays:
+                deltas[key] = arrays[key]
 
         # Derived fields
         for derived in PIPELINE_DERIVED_FIELDS:
@@ -243,8 +244,8 @@ class BatchHighlightEngine:
     ) -> np.ndarray:
         """연속 품질 점수.
 
-        ArcFace face_recog_quality 사용 시:
-          quality = blur * w_blur + face_size * w_size + face_recog * w_recog
+        ArcFace face_identity 사용 시:
+          quality = blur * w_blur + face_size * w_size + face_identity * w_identity
         ArcFace 없는 프레임은 frontalness fallback.
 
         highlight_rules.md §6 Step 2
@@ -258,16 +259,16 @@ class BatchHighlightEngine:
         # Face size (face_area_ratio, 높을수록 좋음)
         face_size_normed = self._minmax_normalize(arrays["face_area_ratio"])
 
-        # ArcFace quality (already 0~1 range)
-        face_recog = arrays["face_recog_quality"]
+        # ArcFace face_identity (already 0~1 range)
+        face_id = arrays["face_identity"]
 
         # Frontalness fallback (1 - |yaw|/max_yaw, 정면에 가까울수록 1)
         frontalness = np.clip(1.0 - np.abs(arrays["head_yaw"]) / cfg.frontalness_max_yaw, 0.0, 1.0)
 
-        # Per-frame: use face_recog where available, frontalness as fallback
-        has_recog = face_recog > 0
-        face_quality = np.where(has_recog, face_recog, frontalness)
-        recog_weight = np.where(has_recog, cfg.quality_face_recog_weight, cfg.quality_frontalness_weight)
+        # Per-frame: use face_identity where available, frontalness as fallback
+        has_identity = face_id > 0
+        face_quality = np.where(has_identity, face_id, frontalness)
+        recog_weight = np.where(has_identity, cfg.quality_face_identity_weight, cfg.quality_frontalness_weight)
 
         # Rebalance: blur + face_size weights must adjust with recog weight
         total_other = cfg.quality_blur_weight + cfg.quality_face_size_weight
@@ -302,9 +303,11 @@ class BatchHighlightEngine:
             + cfg.impact_face_size_change_weight * relu(normed["face_area_ratio"])
             + cfg.impact_exposure_change_weight * relu(normed["brightness"])
         )
-        # DINOv2 embed delta (if available in normed)
-        if "embed_delta_face" in normed:
-            impact = impact + cfg.impact_embed_face_weight * relu(normed["embed_delta_face"])
+        # DINOv2 change signals
+        if "face_change" in normed:
+            impact = impact + cfg.impact_face_change_weight * relu(normed["face_change"])
+        if "body_change" in normed:
+            impact = impact + cfg.impact_body_change_weight * relu(normed["body_change"])
         return impact
 
     # ── Step 8: Smoothing ──

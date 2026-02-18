@@ -15,9 +15,12 @@ from vpx.viz.renderer import render_marks
 from vpx.sdk.marks import DrawStyle
 from momentscan.visualize.components import (
     COLOR_RED_BGR,
+    COLOR_GREEN_BGR,
+    COLOR_WHITE_BGR,
     FONT,
     DebugLayer,
     LayerState,
+    draw_horizontal_bar,
 )
 
 
@@ -51,6 +54,11 @@ def _build_default_modules() -> Dict[str, object]:
     try:
         from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
         modules["face.classify"] = FaceClassifierAnalyzer()
+    except ImportError:
+        pass
+    try:
+        from vpx.vision_embed.analyzer import VisionEmbedAnalyzer
+        modules["vision.embed"] = VisionEmbedAnalyzer(backend=None)
     except ImportError:
         pass
     return modules
@@ -90,6 +98,7 @@ class VideoPanel:
         layers: Optional[LayerState] = None,
         fusion_result: Optional[Observation] = None,
         styles: Optional[Dict[str, DrawStyle]] = None,
+        embed_stats: Optional[Dict[str, float]] = None,
     ) -> np.ndarray:
         """Draw all video annotations.
 
@@ -100,6 +109,7 @@ class VideoPanel:
             layers: Layer visibility state. None means all layers enabled.
             fusion_result: Fusion result (for trigger flash).
             styles: Per-module DrawStyle overrides.
+            embed_stats: Embedding stats from EmbedTracker.
 
         Returns:
             Annotated image.
@@ -109,8 +119,9 @@ class VideoPanel:
         if roi is not None and (layers is None or layers[DebugLayer.ROI]):
             self._draw_roi(output, roi)
 
-        # Draw order: background (pose, gesture) -> foreground (face)
+        # Draw order: background (embed, pose, gesture) -> foreground (face)
         draw_order = [
+            "vision.embed",
             "body.pose", "hand.gesture",
             "face.detect", "face.expression", "face.classify",
         ]
@@ -135,11 +146,94 @@ class VideoPanel:
                 style = styles.get(name) if styles else None
                 output = render_marks(output, marks, style=style)
 
+        # Embedding quality indicator on main face
+        if embed_stats and (layers is None or layers[DebugLayer.FACE]):
+            self._draw_embed_quality(output, observations, embed_stats)
+
         if fusion_result is not None and fusion_result.should_trigger:
             if layers is None or layers[DebugLayer.TRIGGER]:
                 self._draw_trigger_flash(output, fusion_result)
 
         return output
+
+    # --- Embedding quality indicator ---
+
+    def _draw_embed_quality(
+        self,
+        image: np.ndarray,
+        observations: Optional[Dict[str, Observation]],
+        embed_stats: Dict[str, float],
+    ) -> None:
+        """Draw embedding indicators next to the main face bbox.
+
+        Shows small horizontal bars below the face bbox:
+        - face_identity: Green=high anchor similarity, Red=low
+        - face_change: Cyan bar (face visual change magnitude)
+        - body_change: Magenta bar (body visual change magnitude)
+        """
+        identity = embed_stats.get("face_identity", 0.0)
+        face_delta = embed_stats.get("face_change", 0.0)
+        body_delta = embed_stats.get("body_change", 0.0)
+
+        if identity <= 0 and face_delta <= 0 and body_delta <= 0:
+            return
+
+        # Find main face bbox from face.detect (face.classify wraps faces differently)
+        face_obs = observations.get("face.detect") if observations else None
+        if face_obs is None:
+            return
+        data = getattr(face_obs, "data", None)
+        if data is None:
+            return
+        faces = getattr(data, "faces", None)
+        if not faces:
+            return
+
+        face = max(faces, key=lambda f: getattr(f, "area_ratio", 0.0))
+        h, w = image.shape[:2]
+        bx, by, bw, bh = face.bbox
+        px = int(bx * w)
+        py = int((by + bh) * h) + 4  # Just below face bbox
+        bar_w = max(30, int(bw * w))
+
+        # Anchor update flash
+        if embed_stats.get("anchor_updated", 0.0) > 0:
+            anchor_y = int(by * h) - 8
+            cv2.putText(
+                image, "ANCHOR", (px, max(12, anchor_y)),
+                FONT, 0.45, (0, 255, 255), 2,  # bright yellow BGR
+            )
+
+        # Identity bar (green-red gradient)
+        if identity > 0:
+            qr = int(255 * (1 - identity))
+            qg = int(255 * identity)
+            q_color = (0, qg, qr)  # BGR
+            draw_horizontal_bar(image, px, py, bar_w, 5, identity, q_color)
+            cv2.putText(
+                image, f"ID:{identity:.2f}", (px + bar_w + 3, py + 5),
+                FONT, 0.3, q_color, 1,
+            )
+            py += 8
+
+        # Face change bar (cyan)
+        if face_delta > 0:
+            fc_color = (200, 200, 0)  # cyan-ish BGR
+            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, face_delta / 0.3), fc_color)
+            cv2.putText(
+                image, f"FC:{face_delta:.3f}", (px + bar_w + 3, py + 4),
+                FONT, 0.25, fc_color, 1,
+            )
+            py += 7
+
+        # Body change bar (magenta)
+        if body_delta > 0:
+            bc_color = (200, 0, 200)  # magenta BGR
+            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, body_delta / 0.3), bc_color)
+            cv2.putText(
+                image, f"BC:{body_delta:.3f}", (px + bar_w + 3, py + 4),
+                FONT, 0.25, bc_color, 1,
+            )
 
     # --- ROI ---
 

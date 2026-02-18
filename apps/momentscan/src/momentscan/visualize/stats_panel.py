@@ -78,6 +78,7 @@ class StatsPanel:
         layers: Optional[LayerState] = None,
         score_result: Optional[ScoreResult] = None,
         expression_obs: Optional[Observation] = None,
+        embed_stats: Optional[Dict[str, float]] = None,
     ) -> None:
         """Draw stats panel content onto canvas.
 
@@ -135,6 +136,10 @@ class StatsPanel:
         # Frame score (if available)
         if score_result is not None:
             y = self._draw_frame_score(canvas, x, y, rx2 - rx1 - 16, score_result)
+
+        # Embedding stats (ArcFace quality + DINOv2 delta)
+        if embed_stats is not None:
+            y = self._draw_embed_stats(canvas, x, y, rx2 - rx1 - 16, embed_stats)
 
         # Fusion info (skip if FUSION layer is off)
         if fusion_result is not None:
@@ -402,6 +407,87 @@ class StatsPanel:
             y += bar_height + 4
 
         y += 4
+        return y
+
+    def _draw_embed_stats(
+        self,
+        canvas: np.ndarray,
+        x: int,
+        y: int,
+        width: int,
+        embed_stats: Dict[str, float],
+    ) -> int:
+        """Draw embedding indicators.
+
+        Shows:
+        - face_identity: ArcFace similarity to anchor
+        - face_change: DINOv2 face temporal delta
+        - body_change: DINOv2 body temporal delta
+        - anchor_conf: confidence of the anchor face
+        """
+        identity = embed_stats.get("face_identity", 0.0)
+        face_delta = embed_stats.get("face_change", 0.0)
+        body_delta = embed_stats.get("body_change", 0.0)
+        anchor_conf = embed_stats.get("anchor_conf", 0.0)
+
+        if identity <= 0 and face_delta <= 0 and body_delta <= 0 and anchor_conf <= 0:
+            return y
+
+        y += 4
+        cv2.putText(canvas, "Embed", (x, y), FONT, FONT_MEDIUM, COLOR_WHITE_BGR, 1)
+        y += 14
+
+        bar_w = width - 50
+        bar_h = 8
+
+        # face_identity bar (green=good portrait, red=bad)
+        if identity > 0:
+            qr = int(255 * (1 - identity))
+            qg = int(255 * identity)
+            q_color = (0, qg, qr)
+            cv2.putText(canvas, "ID:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
+            bar_x = x + 35
+            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, identity, q_color)
+            cv2.putText(
+                canvas, f"{identity:.2f}",
+                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, q_color, 1,
+            )
+            y += bar_h + 4
+
+        # face_change bar (cyan, scaled to 0.3 max for display)
+        if face_delta > 0 or identity > 0:
+            fc_color = (200, 200, 0)  # cyan-ish
+            fc_fill = min(1.0, face_delta / 0.3)
+            cv2.putText(canvas, "FC:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
+            bar_x = x + 35
+            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, fc_fill, fc_color)
+            cv2.putText(
+                canvas, f"{face_delta:.3f}",
+                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, fc_color, 1,
+            )
+            y += bar_h + 4
+
+        # body_change bar (magenta, scaled to 0.3 max for display)
+        if body_delta > 0 or identity > 0:
+            bc_color = (200, 0, 200)  # magenta
+            bc_fill = min(1.0, body_delta / 0.3)
+            cv2.putText(canvas, "BC:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
+            bar_x = x + 35
+            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, bc_fill, bc_color)
+            cv2.putText(
+                canvas, f"{body_delta:.3f}",
+                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, bc_color, 1,
+            )
+            y += bar_h + 4
+
+        # Anchor info
+        if anchor_conf > 0:
+            cv2.putText(
+                canvas, f"anchor: c={anchor_conf:.2f}",
+                (x, y), FONT, 0.28, COLOR_GRAY_BGR, 1,
+            )
+            y += 12
+
         return y
 
     def _draw_fusion_info(

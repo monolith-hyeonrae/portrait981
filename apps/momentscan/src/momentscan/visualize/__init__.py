@@ -265,6 +265,8 @@ class DebugVisualizer:
         backend_label: str = "",
         score_result: Optional[ScoreResult] = None,
         expression_obs: Optional[Observation] = None,
+        embed_obs: Optional[Observation] = None,
+        embed_stats: Optional[Dict[str, float]] = None,
     ) -> np.ndarray:
         """Create combined debug visualization with panel layout."""
         h, w = frame.data.shape[:2]
@@ -288,6 +290,8 @@ class DebugVisualizer:
             observations["face.classify"] = classifier_obs
         if expression_obs is not None:
             observations["face.expression"] = expression_obs
+        if embed_obs is not None:
+            observations["vision.embed"] = embed_obs
 
         # 3. Video panel: annotate the frame (respects layers)
         video_frame = self._video_panel.draw(
@@ -296,6 +300,7 @@ class DebugVisualizer:
             roi=roi,
             layers=self.layers,
             fusion_result=fusion_result,
+            embed_stats=embed_stats,
         )
 
         # Frame info overlay on video
@@ -326,6 +331,7 @@ class DebugVisualizer:
                 layers=self.layers,
                 score_result=score_result,
                 expression_obs=expression_obs,
+                embed_stats=embed_stats,
             )
 
         # 5. Timeline panel: always update history, draw only if enabled
@@ -335,7 +341,10 @@ class DebugVisualizer:
             if adaptive_summary:
                 spike_threshold = adaptive_summary.get("threshold", 0.12)
 
-        self._timeline_panel.update(face_obs, fusion_result, is_gate_open, expression_obs=expression_obs)
+        self._timeline_panel.update(
+            face_obs, fusion_result, is_gate_open,
+            expression_obs=expression_obs, embed_stats=embed_stats,
+        )
         if self.layers[DebugLayer.TIMELINE]:
             self._timeline_panel.draw(canvas, self._layout.timeline_region(), threshold=spike_threshold)
 

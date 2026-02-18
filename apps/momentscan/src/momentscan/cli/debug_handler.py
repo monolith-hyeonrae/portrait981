@@ -46,6 +46,7 @@ class DebugFrameHandler:
         backend_label: str = "",
     ):
         from momentscan.visualize import DebugVisualizer
+        from momentscan.visualize.embed_tracker import EmbedTracker
         from momentscan.algorithm.analyzers.frame_scoring import FrameScorer
 
         self.show_window = show_window
@@ -56,6 +57,7 @@ class DebugFrameHandler:
 
         self.visualizer = DebugVisualizer()
         self.scorer = FrameScorer()
+        self.embed_tracker = EmbedTracker()
 
         self._writer = None
         self._writer_initialized = False
@@ -98,6 +100,12 @@ class DebugFrameHandler:
         # Build monitor_stats from observation timing data
         monitor_stats = self._build_monitor_stats(observations)
 
+        # Embedding tracking (ArcFace quality + DINOv2 delta)
+        embed_stats = self.embed_tracker.update(
+            face_obs=observations.get("face.detect"),
+            embed_obs=observations.get("vision.embed"),
+        )
+
         # Render debug view
         face_obs = observations.get("face.detect")
         debug_image = self.visualizer.create_debug_view(
@@ -115,6 +123,8 @@ class DebugFrameHandler:
             backend_label=self.backend_label,
             score_result=score_result,
             expression_obs=observations.get("face.expression"),
+            embed_obs=observations.get("vision.embed"),
+            embed_stats=embed_stats,
         )
 
         # Video writer
