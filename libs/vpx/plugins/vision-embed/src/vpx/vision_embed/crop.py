@@ -56,10 +56,10 @@ def body_crop(
     keypoints: np.ndarray,
     output_size: int = 224,
 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
-    """Extract an upper-body crop based on pose keypoints.
+    """Extract an upper-body crop (face included) based on pose keypoints.
 
-    Uses shoulders and hips (COCO keypoint indices 5, 6, 11, 12)
-    to define the upper-body region.
+    Uses nose, eyes, ears, shoulders, and hips
+    (COCO keypoint indices 0-6, 11, 12) to define the region.
 
     Args:
         image: Full frame (H, W, 3) BGR.
@@ -73,8 +73,8 @@ def body_crop(
     """
     h, w = image.shape[:2]
 
-    # COCO keypoint indices: 5=left_shoulder, 6=right_shoulder, 11=left_hip, 12=right_hip
-    upper_body_indices = [5, 6, 11, 12]
+    # COCO: 0=nose, 1/2=eyes, 3/4=ears, 5/6=shoulders, 11/12=hips
+    upper_body_indices = [0, 1, 2, 3, 4, 5, 6, 11, 12]
     pts = []
     for idx in upper_body_indices:
         if idx < len(keypoints):

@@ -102,17 +102,14 @@ class HighlightConfig:
     quality_face_identity_weight: float = 0.40  # ArcFace anchor similarity (frontalness 대체)
     quality_frontalness_weight: float = 0.30   # fallback (ArcFace 없을 때만 사용)
 
-    # Impact score weights (§6 Step 3)
-    impact_face_change_weight: float = 0.15         # DINOv2 face temporal delta
-    impact_body_change_weight: float = 0.10         # DINOv2 body temporal delta
-    impact_smile_intensity_weight: float = 0.25
-    impact_head_yaw_delta_weight: float = 0.12
-    impact_mouth_open_weight: float = 0.08
+    # Impact score weights (§6 Step 3) — Top-K weighted mean
+    impact_top_k: int = 3  # 상위 K개 시그널만 사용
+    impact_face_change_weight: float = 0.20         # DINOv2 face temporal delta
+    impact_body_change_weight: float = 0.15         # DINOv2 body temporal delta
+    impact_smile_intensity_weight: float = 0.30
+    impact_head_yaw_delta_weight: float = 0.15
     impact_head_velocity_weight: float = 0.10
-    impact_wrist_raise_weight: float = 0.08
-    impact_torso_rotation_weight: float = 0.07
-    impact_face_size_change_weight: float = 0.05
-    impact_exposure_change_weight: float = 0.05
+    impact_torso_rotation_weight: float = 0.10
 
     # Delta computation
     delta_alpha: float = 0.1           # EMA baseline alpha (for temporal deltas)

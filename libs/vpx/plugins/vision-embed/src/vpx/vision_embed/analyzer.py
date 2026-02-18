@@ -53,7 +53,7 @@ class VisionEmbedAnalyzer(Module):
         self,
         backend: Optional[EmbeddingBackend] = None,
         device: str = "cuda:0",
-        face_expand: float = 1.5,
+        face_expand: float = 1.1,
         smooth_alpha: float = 0.3,
     ):
         self._device = device
@@ -110,6 +110,44 @@ class VisionEmbedAnalyzer(Module):
         self._face_smoother.reset()
         self._body_smoother.reset()
 
+    # ========== Pose-Face matching ==========
+
+    @staticmethod
+    def _match_pose_to_face(kp_list: list, face_data) -> object | None:
+        """주 얼굴 bbox 중심과 nose 키포인트로 pose를 매칭."""
+        import math
+
+        if not kp_list:
+            return None
+        if len(kp_list) == 1 or face_data is None:
+            return kp_list[0]
+
+        # 주 얼굴 bbox 중심 (정규화 좌표)
+        faces = getattr(face_data, "faces", None)
+        if not faces:
+            return kp_list[0]
+        face = max(faces, key=lambda f: getattr(f, "area_ratio", 0.0))
+        bbox = getattr(face, "bbox", None)
+        if bbox is None or len(bbox) < 4:
+            return kp_list[0]
+        fx = bbox[0] + bbox[2] / 2.0
+        fy = bbox[1] + bbox[3] / 2.0
+
+        best, best_dist = kp_list[0], float("inf")
+        for person in kp_list:
+            kpts = person.get("keypoints", []) if isinstance(person, dict) else getattr(person, "keypoints", [])
+            img_size = person.get("image_size", (1, 1)) if isinstance(person, dict) else getattr(person, "image_size", (1, 1))
+            iw = float(img_size[0]) if img_size[0] > 0 else 1.0
+            ih = float(img_size[1]) if img_size[1] > 0 else 1.0
+            if kpts and len(kpts) > 0:
+                pt = kpts[0]  # nose
+                if hasattr(pt, '__len__') and len(pt) >= 2 and pt[0] > 0 and pt[1] > 0:
+                    d = math.hypot(pt[0] / iw - fx, pt[1] / ih - fy)
+                    if d < best_dist:
+                        best_dist = d
+                        best = person
+        return best
+
     # ========== Processing Steps ==========
 
     @processing_step(
@@ -160,25 +198,34 @@ class VisionEmbedAnalyzer(Module):
         depends_on=["face_embed"],
     )
     def _embed_body(
-        self, image, pose_data
+        self, image, pose_data, face_data=None,
     ) -> tuple[Optional["np.ndarray"], Optional[tuple[int, int, int, int]]]:
-        """Extract upper-body crop from pose and compute embedding."""
+        """Extract upper-body crop from pose and compute embedding.
+
+        When face_data is available, matches the pose whose nose keypoint
+        is closest to the main face bbox center (filters out bystanders).
+        """
+        import math
         import numpy as np
 
         if pose_data is None:
             return None, None
 
-        # PoseOutput.keypoints is List[Dict] with per-person data:
-        #   [{"person_id": 0, "keypoints": [[x,y,conf], ...], "image_size": (w,h)}]
-        # body_crop() expects a (17, 3) array of [x, y, conf].
-        keypoints = None
         kp_list = getattr(pose_data, "keypoints", None)
-        if kp_list and isinstance(kp_list, list) and len(kp_list) > 0:
-            first_person = kp_list[0]
-            if isinstance(first_person, dict) and "keypoints" in first_person:
-                keypoints = np.asarray(first_person["keypoints"], dtype=np.float32)
-            elif hasattr(first_person, "keypoints"):
-                keypoints = np.asarray(first_person.keypoints, dtype=np.float32)
+        if not kp_list or not isinstance(kp_list, list):
+            return None, None
+
+        # Find person matching the main face
+        person = self._match_pose_to_face(kp_list, face_data)
+        if person is None:
+            return None, None
+
+        # Extract keypoints array from person dict
+        keypoints = None
+        if isinstance(person, dict) and "keypoints" in person:
+            keypoints = np.asarray(person["keypoints"], dtype=np.float32)
+        elif hasattr(person, "keypoints"):
+            keypoints = np.asarray(person.keypoints, dtype=np.float32)
 
         if keypoints is None or len(keypoints) < 13:
             return None, None
@@ -222,8 +269,8 @@ class VisionEmbedAnalyzer(Module):
         # Face embedding
         e_face, face_box = self._embed_face(image, face_data)
 
-        # Body embedding (optional)
-        e_body, body_box = self._embed_body(image, pose_data)
+        # Body embedding (optional, matched to main face)
+        e_body, body_box = self._embed_body(image, pose_data, face_data)
 
         # Collect timing
         timing = self._step_timings.copy() if self._step_timings else None

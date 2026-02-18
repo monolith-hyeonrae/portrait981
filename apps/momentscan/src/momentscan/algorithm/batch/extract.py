@@ -35,18 +35,27 @@ _anchor_embedding: Optional[np.ndarray] = None
 _anchor_confidence: float = 0.0
 _ANCHOR_DECAY: float = 0.998  # per-frame decay → half-life ~346 frames
 
-# Module-level state for DINOv2 EMA (impact)
-_embed_ema_face: Optional[np.ndarray] = None
-_embed_ema_body: Optional[np.ndarray] = None
+# Module-level state for DINOv2 dual-EMA (impact)
+# fast EMA tracks recent changes, slow EMA provides stable baseline.
+# delta = 1 - dot(fast, slow) captures sustained change, filters noise.
+_EMBED_ALPHA_FAST: float = 0.3   # ~3 frame response
+_EMBED_ALPHA_SLOW: float = 0.05  # ~20 frame response
+_embed_fast_face: Optional[np.ndarray] = None
+_embed_slow_face: Optional[np.ndarray] = None
+_embed_fast_body: Optional[np.ndarray] = None
+_embed_slow_body: Optional[np.ndarray] = None
 
 
 def reset_extract_state() -> None:
     """비디오 간 상태 격리를 위한 모듈 레벨 상태 리셋."""
-    global _anchor_embedding, _anchor_confidence, _embed_ema_face, _embed_ema_body
+    global _anchor_embedding, _anchor_confidence
+    global _embed_fast_face, _embed_slow_face, _embed_fast_body, _embed_slow_body
     _anchor_embedding = None
     _anchor_confidence = 0.0
-    _embed_ema_face = None
-    _embed_ema_body = None
+    _embed_fast_face = None
+    _embed_slow_face = None
+    _embed_fast_body = None
+    _embed_slow_body = None
 
 
 def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord]:
@@ -75,9 +84,13 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
         timestamp_ms=getattr(frame, "t_src_ns", 0) / 1_000_000,
     )
 
-    _extract_face_detect(record, obs_by_source.get("face.detect"))
+    face_obs = obs_by_source.get("face.detect")
+    _extract_face_detect(record, face_obs)
     _extract_face_expression(record, obs_by_source.get("face.expression"))
-    _extract_body_pose(record, obs_by_source.get("body.pose"))
+
+    # 주 얼굴 중심 → body pose / vision.embed에서 인물 매칭용
+    face_center = _get_main_face_center(face_obs)
+    _extract_body_pose(record, obs_by_source.get("body.pose"), face_center)
     _extract_quality(record, obs_by_source.get("frame.quality"))
     _extract_face_classify(record, obs_by_source.get("face.classify"))
     _extract_frame_scoring(record, obs_by_source.get("frame.scoring"))
@@ -95,6 +108,57 @@ def _get_main_face(obs: Any) -> Any:
     if not faces:
         return None
     return max(faces, key=lambda f: getattr(f, "area_ratio", 0.0))
+
+
+def _get_main_face_center(face_obs: Any) -> Optional[tuple[float, float]]:
+    """주 얼굴 bbox 중심을 (x, y) 정규화 좌표로 반환."""
+    face = _get_main_face(face_obs)
+    if face is None:
+        return None
+    bbox = getattr(face, "bbox", None)
+    if bbox is None or len(bbox) < 4:
+        return None
+    nx, ny, nw, nh = bbox
+    return (nx + nw / 2.0, ny + nh / 2.0)
+
+
+def _match_pose_to_face(
+    kp_list: list,
+    face_center: Optional[tuple[float, float]],
+) -> Optional[dict]:
+    """얼굴 중심에 가장 가까운 pose의 person dict를 반환.
+
+    face_center가 없으면 첫 번째 person을 반환 (fallback).
+    매칭 기준: nose 키포인트(index 0)와 face bbox 중심의 거리.
+    """
+    if not kp_list:
+        return None
+    if len(kp_list) == 1 or face_center is None:
+        return kp_list[0]
+
+    fx, fy = face_center
+    best_person = None
+    best_dist = float("inf")
+
+    for person in kp_list:
+        kpts = person.get("keypoints", [])
+        img_size = person.get("image_size", (1, 1))
+        img_w = float(img_size[0]) if img_size[0] > 0 else 1.0
+        img_h = float(img_size[1]) if img_size[1] > 0 else 1.0
+
+        # nose keypoint (index 0)
+        if len(kpts) > 0:
+            pt = kpts[0]
+            if len(pt) >= 2 and pt[0] > 0 and pt[1] > 0:
+                # 정규화 좌표로 변환
+                nx = pt[0] / img_w
+                ny = pt[1] / img_h
+                dist = math.hypot(nx - fx, ny - fy)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_person = person
+
+    return best_person if best_person is not None else kp_list[0]
 
 
 def _extract_face_detect(record: FrameRecord, obs: Any) -> None:
@@ -163,11 +227,16 @@ def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
     record.smile_intensity = float(signals.get("expression_happy", 0.0))
 
 
-def _extract_body_pose(record: FrameRecord, obs: Any) -> None:
+def _extract_body_pose(
+    record: FrameRecord,
+    obs: Any,
+    face_center: Optional[tuple[float, float]] = None,
+) -> None:
     """body.pose: PoseOutput.keypoints에서 포즈 수치를 계산.
 
     COCO keypoints [x, y, confidence] 배열에서
     wrist_raise, torso_rotation, hand_near_face를 직접 계산한다.
+    주 얼굴 중심과 가장 가까운 pose를 매칭하여 사용.
     """
     if obs is None:
         return
@@ -179,8 +248,7 @@ def _extract_body_pose(record: FrameRecord, obs: Any) -> None:
     if not kp_list:
         return
 
-    # 첫 번째 person 사용 (주 탑승자)
-    person = kp_list[0]
+    person = _match_pose_to_face(kp_list, face_center)
     kpts = person.get("keypoints", [])
     if len(kpts) < 11:
         return
@@ -288,9 +356,39 @@ def _extract_frame_scoring(record: FrameRecord, obs: Any) -> None:
     record.frame_score = float(signals.get("total_score", 0.0))
 
 
+def _update_dual_ema(
+    emb: np.ndarray,
+    fast: Optional[np.ndarray],
+    slow: Optional[np.ndarray],
+) -> tuple[float, np.ndarray, np.ndarray]:
+    """Dual-EMA 업데이트 후 delta 반환.
+
+    fast EMA는 최근 변화를 빠르게 추적, slow EMA는 안정 베이스라인.
+    delta = 1 - dot(fast, slow): 지속적 변화만 포착, 순간 노이즈 필터.
+    """
+    af, asl = _EMBED_ALPHA_FAST, _EMBED_ALPHA_SLOW
+
+    if fast is None:
+        return 0.0, emb.copy(), emb.copy()
+
+    new_fast = af * emb + (1.0 - af) * fast
+    norm_f = np.linalg.norm(new_fast)
+    if norm_f > 1e-8:
+        new_fast = new_fast / norm_f
+
+    new_slow = asl * emb + (1.0 - asl) * slow
+    norm_s = np.linalg.norm(new_slow)
+    if norm_s > 1e-8:
+        new_slow = new_slow / norm_s
+
+    delta = max(0.0, 1.0 - float(np.dot(new_fast, new_slow)))
+    return delta, new_fast, new_slow
+
+
 def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
-    """vision.embed: DINOv2 face/body embedding에서 temporal delta 계산."""
-    global _embed_ema_face, _embed_ema_body
+    """vision.embed: DINOv2 face/body dual-EMA delta 계산."""
+    global _embed_fast_face, _embed_slow_face
+    global _embed_fast_body, _embed_slow_body
 
     if obs is None:
         return
@@ -303,26 +401,16 @@ def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
     e_face = getattr(data, "e_face", None)
     if e_face is not None:
         e_face = np.asarray(e_face, dtype=np.float32)
-        if _embed_ema_face is None:
-            _embed_ema_face = e_face.copy()
-        else:
-            delta = 1.0 - float(np.dot(e_face, _embed_ema_face))
-            record.face_change = max(0.0, delta)
-            _embed_ema_face = 0.1 * e_face + 0.9 * _embed_ema_face
-            norm = np.linalg.norm(_embed_ema_face)
-            if norm > 1e-8:
-                _embed_ema_face = _embed_ema_face / norm
+        delta, _embed_fast_face, _embed_slow_face = _update_dual_ema(
+            e_face, _embed_fast_face, _embed_slow_face
+        )
+        record.face_change = delta
 
     # Body change (DINOv2 body crop)
     e_body = getattr(data, "e_body", None)
     if e_body is not None:
         e_body = np.asarray(e_body, dtype=np.float32)
-        if _embed_ema_body is None:
-            _embed_ema_body = e_body.copy()
-        else:
-            delta = 1.0 - float(np.dot(e_body, _embed_ema_body))
-            record.body_change = max(0.0, delta)
-            _embed_ema_body = 0.1 * e_body + 0.9 * _embed_ema_body
-            norm = np.linalg.norm(_embed_ema_body)
-            if norm > 1e-8:
-                _embed_ema_body = _embed_ema_body / norm
+        delta, _embed_fast_body, _embed_slow_body = _update_dual_ema(
+            e_body, _embed_fast_body, _embed_slow_body
+        )
+        record.body_change = delta

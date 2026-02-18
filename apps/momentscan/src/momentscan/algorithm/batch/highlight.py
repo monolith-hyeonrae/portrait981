@@ -283,31 +283,45 @@ class BatchHighlightEngine:
     # ── Step 6: Impact score ──
 
     def _compute_impact_scores(self, normed: dict[str, np.ndarray]) -> np.ndarray:
-        """감정/동작 변화 점수.
+        """감정/동작 변화 점수 (Top-K weighted mean).
 
         highlight_rules.md §6 Step 3
+
+        각 시그널의 가중 기여도를 계산한 뒤, 프레임별로 상위 K개만
+        선택하여 평균. 노이즈 누적을 방지하고 두드러진 변화에 집중.
         """
         cfg = self.config
 
-        # ReLU: 정규화된 delta 중 양수만 사용 (평균 이상 변화)
         def relu(x: np.ndarray) -> np.ndarray:
             return np.maximum(x, 0.0)
 
-        impact = (
-            cfg.impact_smile_intensity_weight * relu(normed["smile_intensity"])
-            + cfg.impact_head_yaw_delta_weight * relu(normed["head_yaw"])
-            + cfg.impact_mouth_open_weight * relu(normed["mouth_open_ratio"])
-            + cfg.impact_head_velocity_weight * relu(normed["head_velocity"])
-            + cfg.impact_wrist_raise_weight * relu(normed["wrist_raise"])
-            + cfg.impact_torso_rotation_weight * relu(normed["torso_rotation"])
-            + cfg.impact_face_size_change_weight * relu(normed["face_area_ratio"])
-            + cfg.impact_exposure_change_weight * relu(normed["brightness"])
-        )
-        # DINOv2 change signals
+        # (signal_name, weight, values) — 활성 시그널만 수집
+        channels: list[tuple[str, float, np.ndarray]] = [
+            ("smile_intensity", cfg.impact_smile_intensity_weight, relu(normed["smile_intensity"])),
+            ("head_yaw", cfg.impact_head_yaw_delta_weight, relu(normed["head_yaw"])),
+            ("head_velocity", cfg.impact_head_velocity_weight, relu(normed["head_velocity"])),
+            ("torso_rotation", cfg.impact_torso_rotation_weight, relu(normed["torso_rotation"])),
+        ]
         if "face_change" in normed:
-            impact = impact + cfg.impact_face_change_weight * relu(normed["face_change"])
+            channels.append(("face_change", cfg.impact_face_change_weight, relu(normed["face_change"])))
         if "body_change" in normed:
-            impact = impact + cfg.impact_body_change_weight * relu(normed["body_change"])
+            channels.append(("body_change", cfg.impact_body_change_weight, relu(normed["body_change"])))
+
+        n = len(normed["smile_intensity"])
+        k = min(cfg.impact_top_k, len(channels))
+
+        # Stack weighted contributions: shape (n_channels, n_frames)
+        weights_arr = np.array([w for _, w, _ in channels])   # (C,)
+        weighted = np.array([w * v for _, w, v in channels])  # (C, N)
+
+        # Per-frame top-K: select top K channels, normalize by their weights
+        top_k_indices = np.argsort(-weighted, axis=0)[:k]  # (K, N)
+        top_k_values = np.take_along_axis(weighted, top_k_indices, axis=0)  # (K, N)
+
+        # sum(w_i × v_i) / sum(w_i) for selected channels → [0, 1] range
+        top_k_weights = weights_arr[top_k_indices]  # (K, N)
+        impact = top_k_values.sum(axis=0) / (top_k_weights.sum(axis=0) + 1e-8)
+
         return impact
 
     # ── Step 8: Smoothing ──

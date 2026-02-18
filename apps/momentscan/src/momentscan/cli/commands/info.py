@@ -157,16 +157,13 @@ def _print_scoring_section():
           f"face_size: {cfg.quality_face_size_weight:.2f}  "
           f"face_identity: {cfg.quality_face_identity_weight:.2f}  "
           f"{DIM}(fallback frontalness: {cfg.quality_frontalness_weight:.2f}){RESET}")
-    print(f"  Impact score    face_chg: {cfg.impact_face_change_weight:.2f}  "
-          f"body_chg: {cfg.impact_body_change_weight:.2f}  "
+    print(f"  Impact score    top-{cfg.impact_top_k}: "
           f"smile: {cfg.impact_smile_intensity_weight:.2f}  "
+          f"face_chg: {cfg.impact_face_change_weight:.2f}  "
+          f"body_chg: {cfg.impact_body_change_weight:.2f}  "
           f"yaw: {cfg.impact_head_yaw_delta_weight:.2f}  "
-          f"mouth: {cfg.impact_mouth_open_weight:.2f}  "
-          f"head_vel: {cfg.impact_head_velocity_weight:.2f}")
-    print(f"                  wrist: {cfg.impact_wrist_raise_weight:.2f}  "
-          f"torso: {cfg.impact_torso_rotation_weight:.2f}  "
-          f"face_\u0394: {cfg.impact_face_size_change_weight:.2f}  "
-          f"bright_\u0394: {cfg.impact_exposure_change_weight:.2f}")
+          f"head_vel: {cfg.impact_head_velocity_weight:.2f}  "
+          f"torso: {cfg.impact_torso_rotation_weight:.2f}")
     print(f"  Temporal        EMA smooth \u03b1={cfg.smoothing_alpha:.2f}  "
           f"\u2192  peaks: dist\u2265{cfg.peak_min_distance_sec:.1f}s, "
           f"prominence\u2265p{cfg.peak_prominence_percentile:.0f}")
@@ -226,17 +223,13 @@ def _print_scoring_detail():
           f"{DIM}(fallback: 1 - |yaw|/{cfg.frontalness_max_yaw:.0f}, clamped){RESET}")
 
     # Impact Score
-    print(f"\n{BOLD}[Impact Score]{RESET}  = \u03a3(weight \u00d7 ReLU(z-score delta))")
+    print(f"\n{BOLD}[Impact Score]{RESET}  = mean(top-{cfg.impact_top_k} of weight \u00d7 ReLU(z-score))")
+    print(f"  {cfg.impact_smile_intensity_weight:.2f}  smile_intensity")
     print(f"  {cfg.impact_face_change_weight:.2f}  face_change       {DIM}(DINOv2 face crop temporal){RESET}")
     print(f"  {cfg.impact_body_change_weight:.2f}  body_change       {DIM}(DINOv2 body crop temporal){RESET}")
-    print(f"  {cfg.impact_smile_intensity_weight:.2f}  smile_intensity")
     print(f"  {cfg.impact_head_yaw_delta_weight:.2f}  head_yaw")
-    print(f"  {cfg.impact_mouth_open_weight:.2f}  mouth_open_ratio")
     print(f"  {cfg.impact_head_velocity_weight:.2f}  head_velocity")
-    print(f"  {cfg.impact_wrist_raise_weight:.2f}  wrist_raise")
     print(f"  {cfg.impact_torso_rotation_weight:.2f}  torso_rotation")
-    print(f"  {cfg.impact_face_size_change_weight:.2f}  face_area_ratio {DIM}(\u0394){RESET}")
-    print(f"  {cfg.impact_exposure_change_weight:.2f}  brightness {DIM}(\u0394){RESET}")
 
     # Final
     dist_frames = int(cfg.peak_min_distance_sec * fps)

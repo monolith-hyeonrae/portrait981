@@ -402,13 +402,10 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         "body_change": cfg.impact_body_change_weight,
         "smile_intensity": cfg.impact_smile_intensity_weight,
         "head_yaw": cfg.impact_head_yaw_delta_weight,
-        "mouth_open_ratio": cfg.impact_mouth_open_weight,
         "head_velocity": cfg.impact_head_velocity_weight,
-        "wrist_raise": cfg.impact_wrist_raise_weight,
         "torso_rotation": cfg.impact_torso_rotation_weight,
-        "face_area_ratio": cfg.impact_face_size_change_weight,
-        "brightness": cfg.impact_exposure_change_weight,
     }
+    data["cfg_impact_top_k"] = cfg.impact_top_k
 
     # ── Threshold values (for hover panel) ──
     data["thresholds"] = {
@@ -1014,22 +1011,25 @@ _JS_MAIN = r"""
 
     // Impact
     var is_ = D.impact_scores[pi];
+    var topK = D.cfg_impact_top_k || 3;
     var impF = [
       ['face_change ', 'face_change', D.normed_face_change[pi]],
       ['body_change ', 'body_change', D.normed_body_change[pi]],
       ['smile       ', 'smile_intensity',  D.normed_smile_intensity[pi]],
       ['yaw_\u0394       ', 'head_yaw',         D.normed_head_yaw[pi]],
-      ['mouth_open  ', 'mouth_open_ratio', D.normed_mouth_open_ratio[pi]],
       ['head_vel    ', 'head_velocity',    D.normed_head_velocity[pi]],
-      ['wrist       ', 'wrist_raise',      D.normed_wrist_raise[pi]],
-      ['torso       ', 'torso_rotation',   D.normed_torso_rotation[pi]],
-      ['face_size_\u0394 ', 'face_area_ratio',  D.normed_face_area_ratio[pi]],
-      ['brightness_\u0394', 'brightness',       D.normed_brightness[pi]]
+      ['torso       ', 'torso_rotation',   D.normed_torso_rotation[pi]]
     ];
-    h += '\n<span class="section-label">\u2500\u2500 Impact: ' + fmtN(is_,3) + ' \u2500\u2500</span>\n';
-    for (var j = 0; j < impF.length; j++) {
-      var w = iw[impF[j][1]];
-      h += '  ' + impF[j][0] + ' ' + fmtN(w,2) + ' \u00d7 ' + fmtN(impF[j][2],3) + ' = ' + fmtN(w*impF[j][2],3) + '\n';
+    // Compute weighted values and sort for top-K display
+    var impWV = impF.map(function(f) {
+      var w = iw[f[1]] || 0;
+      return {label: f[0], key: f[1], raw: f[2], w: w, wv: w * f[2]};
+    }).sort(function(a,b) { return b.wv - a.wv; });
+    h += '\n<span class="section-label">\u2500\u2500 Impact: ' + fmtN(is_,3) + ' (top-' + topK + ') \u2500\u2500</span>\n';
+    for (var j = 0; j < impWV.length; j++) {
+      var e = impWV[j];
+      var mark = j < topK ? '\u25cf' : ' ';
+      h += '  ' + mark + ' ' + e.label + ' ' + fmtN(e.w,2) + ' \u00d7 ' + fmtN(e.raw,3) + ' = ' + fmtN(e.wv,3) + '\n';
     }
 
     // Final

@@ -24,19 +24,26 @@ class EmbedTracker:
 
     _ANCHOR_DECAY: float = 0.998  # per-frame decay → half-life ~346 frames
 
+    _ALPHA_FAST: float = 0.3   # ~3 frame response
+    _ALPHA_SLOW: float = 0.05  # ~20 frame response
+
     def __init__(self):
         # ArcFace anchor (best face embedding seen)
         self._anchor_emb: Optional[np.ndarray] = None
         self._anchor_conf: float = 0.0
-        # DINOv2 EMA baselines
-        self._ema_face: Optional[np.ndarray] = None
-        self._ema_body: Optional[np.ndarray] = None
+        # DINOv2 dual-EMA (fast tracks recent, slow = baseline)
+        self._fast_face: Optional[np.ndarray] = None
+        self._slow_face: Optional[np.ndarray] = None
+        self._fast_body: Optional[np.ndarray] = None
+        self._slow_body: Optional[np.ndarray] = None
 
     def reset(self) -> None:
         self._anchor_emb = None
         self._anchor_conf = 0.0
-        self._ema_face = None
-        self._ema_body = None
+        self._fast_face = None
+        self._slow_face = None
+        self._fast_body = None
+        self._slow_body = None
 
     def update(
         self,
@@ -106,8 +113,32 @@ class EmbedTracker:
             sim = float(np.dot(emb, self._anchor_emb))
             stats["face_identity"] = max(0.0, sim)
 
+    def _dual_ema_update(
+        self,
+        emb: np.ndarray,
+        fast: Optional[np.ndarray],
+        slow: Optional[np.ndarray],
+    ) -> tuple[float, np.ndarray, np.ndarray]:
+        """Dual-EMA update: delta = 1 - dot(fast, slow)."""
+        if fast is None:
+            return 0.0, emb.copy(), emb.copy()
+
+        af, asl = self._ALPHA_FAST, self._ALPHA_SLOW
+        new_fast = af * emb + (1.0 - af) * fast
+        nf = np.linalg.norm(new_fast)
+        if nf > 1e-8:
+            new_fast = new_fast / nf
+
+        new_slow = asl * emb + (1.0 - asl) * slow
+        ns = np.linalg.norm(new_slow)
+        if ns > 1e-8:
+            new_slow = new_slow / ns
+
+        delta = max(0.0, 1.0 - float(np.dot(new_fast, new_slow)))
+        return delta, new_fast, new_slow
+
     def _update_dinov2(self, embed_obs: Any, stats: dict) -> None:
-        """Compute DINOv2 temporal deltas from vision.embed observation."""
+        """Compute DINOv2 dual-EMA temporal deltas."""
         data = getattr(embed_obs, "data", None)
         if data is None:
             return
@@ -116,26 +147,16 @@ class EmbedTracker:
         e_face = getattr(data, "e_face", None)
         if e_face is not None:
             e_face = np.asarray(e_face, dtype=np.float32)
-            if self._ema_face is None:
-                self._ema_face = e_face.copy()
-            else:
-                delta = 1.0 - float(np.dot(e_face, self._ema_face))
-                stats["face_change"] = max(0.0, delta)
-                self._ema_face = 0.1 * e_face + 0.9 * self._ema_face
-                norm = np.linalg.norm(self._ema_face)
-                if norm > 1e-8:
-                    self._ema_face = self._ema_face / norm
+            delta, self._fast_face, self._slow_face = self._dual_ema_update(
+                e_face, self._fast_face, self._slow_face
+            )
+            stats["face_change"] = delta
 
         # Body change
         e_body = getattr(data, "e_body", None)
         if e_body is not None:
             e_body = np.asarray(e_body, dtype=np.float32)
-            if self._ema_body is None:
-                self._ema_body = e_body.copy()
-            else:
-                delta = 1.0 - float(np.dot(e_body, self._ema_body))
-                stats["body_change"] = max(0.0, delta)
-                self._ema_body = 0.1 * e_body + 0.9 * self._ema_body
-                norm = np.linalg.norm(self._ema_body)
-                if norm > 1e-8:
-                    self._ema_body = self._ema_body / norm
+            delta, self._fast_body, self._slow_body = self._dual_ema_update(
+                e_body, self._fast_body, self._slow_body
+            )
+            stats["body_change"] = delta
