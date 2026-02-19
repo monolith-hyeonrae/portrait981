@@ -280,16 +280,16 @@ def run_debug(args):
             export_highlight_frames(Path(args.path), highlight_result, out)
         if identity_result is not None:
             from momentscan.algorithm.identity.export import export_identity_metadata
-            export_identity_metadata(identity_result, out)
-            from momentscan.algorithm.identity.export_report import export_identity_report
-            export_identity_report(Path(args.path), identity_result, identity_records, out)
             from momentscan.algorithm.identity.export_crops import export_identity_crops
-            export_identity_crops(Path(args.path), identity_result, identity_records, out)
             from momentscan.algorithm.identity.bank_bridge import register_to_bank
+            from momentscan.algorithm.identity.export_report import export_identity_report
+            export_identity_metadata(identity_result, out)
+            export_identity_crops(Path(args.path), identity_result, identity_records, out)
             bank_result = register_to_bank(identity_result, identity_records, out)
             if bank_result.persons_registered > 0:
                 for pid, n_nodes in bank_result.nodes_created.items():
                     print(f"          {DIM}person_{pid}: {n_nodes} memory nodes → {bank_result.bank_paths[pid]}{RESET}")
+            export_identity_report(Path(args.path), identity_result, identity_records, out)
         _print_exports(out)
 
         result = Result(
@@ -341,16 +341,16 @@ def run_debug(args):
                 export_highlight_frames(Path(args.path), highlight_result, out)
             if identity_result is not None:
                 from momentscan.algorithm.identity.export import export_identity_metadata
-                export_identity_metadata(identity_result, out)
-                from momentscan.algorithm.identity.export_report import export_identity_report
-                export_identity_report(Path(args.path), identity_result, identity_records, out)
                 from momentscan.algorithm.identity.export_crops import export_identity_crops
-                export_identity_crops(Path(args.path), identity_result, identity_records, out)
                 from momentscan.algorithm.identity.bank_bridge import register_to_bank
+                from momentscan.algorithm.identity.export_report import export_identity_report
+                export_identity_metadata(identity_result, out)
+                export_identity_crops(Path(args.path), identity_result, identity_records, out)
                 bank_result = register_to_bank(identity_result, identity_records, out)
                 if bank_result.persons_registered > 0:
                     for pid, n_nodes in bank_result.nodes_created.items():
                         print(f"          {DIM}person_{pid}: {n_nodes} memory nodes → {bank_result.bank_paths[pid]}{RESET}")
+                export_identity_report(Path(args.path), identity_result, identity_records, out)
             _print_exports(out)
         else:
             print(f"{DIM}Too few frames for batch analysis{RESET}")

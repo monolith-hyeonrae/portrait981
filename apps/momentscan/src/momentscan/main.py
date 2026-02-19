@@ -185,27 +185,24 @@ class MomentscanApp(vp.App):
                 from momentscan.algorithm.batch.export_report import export_highlight_report
                 export_highlight_report(Path(video_path), highlight_result, output_path)
 
-            # Identity metadata + HTML report + crops
+            # Identity metadata + crops → bank → HTML report
             if identity_result is not None:
                 from momentscan.algorithm.identity.export import export_identity_metadata
-                export_identity_metadata(identity_result, output_path)
-
-                from momentscan.algorithm.identity.export_report import export_identity_report
-                export_identity_report(
-                    Path(video_path), identity_result,
-                    self._identity_records, output_path,
-                )
-
                 from momentscan.algorithm.identity.export_crops import export_identity_crops
+                from momentscan.algorithm.identity.bank_bridge import register_to_bank
+                from momentscan.algorithm.identity.export_report import export_identity_report
+
+                export_identity_metadata(identity_result, output_path)
                 export_identity_crops(
                     Path(video_path), identity_result,
                     self._identity_records, output_path,
                 )
-
-                # Register to MemoryBank (long-term cross-video memory)
-                from momentscan.algorithm.identity.bank_bridge import register_to_bank
                 register_to_bank(
                     identity_result, self._identity_records, output_path,
+                )
+                export_identity_report(
+                    Path(video_path), identity_result,
+                    self._identity_records, output_path,
                 )
 
             logger.info("Results exported to %s", self._output_dir)
