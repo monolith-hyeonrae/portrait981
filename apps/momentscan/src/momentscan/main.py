@@ -63,7 +63,8 @@ class MomentscanApp(vp.App):
         from vpx.sdk.paths import get_models_dir
 
         names = list(modules) if modules else [
-            "face.detect", "face.expression", "body.pose", "hand.gesture",
+            "face.detect", "face.expression", "face.au", "head.pose",
+            "body.pose", "hand.gesture",
             "face.embed", "body.embed", "frame.quality", "frame.scoring",
         ]
 

@@ -10,6 +10,8 @@ members = [
     "libs/vpx/plugins/body-pose",
     "libs/vpx/plugins/hand-gesture",
     "libs/vpx/plugins/vision-embed",
+    "libs/vpx/plugins/face-au",
+    "libs/vpx/plugins/head-pose",
     "libs/vpx/sdk",
     "libs/vpx/runner",
     "libs/vpx/viz",

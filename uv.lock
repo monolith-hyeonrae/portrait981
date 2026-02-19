@@ -24,9 +24,11 @@ members = [
     "visualpath-isolation",
     "visualpath-pathway",
     "vpx-body-pose",
+    "vpx-face-au",
     "vpx-face-detect",
     "vpx-face-expression",
     "vpx-hand-gesture",
+    "vpx-head-pose",
     "vpx-runner",
     "vpx-sdk",
     "vpx-vision-embed",
@@ -5733,6 +5735,23 @@ requires-dist = [
 ]
 
 [[package]]
+name = "vpx-face-au"
+version = "0.1.0"
+source = { editable = "libs/vpx/plugins/face-au" }
+dependencies = [
+    { name = "onnxruntime", marker = "sys_platform != 'linux'" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "onnxruntime", specifier = ">=1.16.0" },
+    { name = "vpx-face-detect", editable = "libs/vpx/plugins/face-detect" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+]
+
+[[package]]
 name = "vpx-face-detect"
 version = "0.1.0"
 source = { editable = "libs/vpx/plugins/face-detect" }
@@ -5782,6 +5801,23 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "mediapipe", specifier = ">=0.10.32" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+]
+
+[[package]]
+name = "vpx-head-pose"
+version = "0.1.0"
+source = { editable = "libs/vpx/plugins/head-pose" }
+dependencies = [
+    { name = "onnxruntime", marker = "sys_platform != 'linux'" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-sdk" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "onnxruntime", specifier = ">=1.16.0" },
+    { name = "vpx-face-detect", editable = "libs/vpx/plugins/face-detect" },
     { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 
