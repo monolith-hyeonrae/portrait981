@@ -256,7 +256,7 @@ def _build_heatmap(person: PersonIdentity) -> Dict[str, Any]:
 
 def _build_expression_dist(person: PersonIdentity) -> Dict[str, Dict[str, int]]:
     """Expression distribution by set_type."""
-    expressions = ["neutral", "smile", "mouth_open", "eyes_closed"]
+    expressions = ["neutral", "smile", "mouth_open", "eyes_closed", "excited", "surprised"]
     dist: Dict[str, Dict[str, int]] = {}
 
     for stype, frames in [
@@ -361,6 +361,10 @@ def _build_gallery_html(
                 f'<div>novelty: {f.novelty_score:.3f}</div>'
                 if f.set_type == "challenge" else ""
             )
+            pivot_line = (
+                f'<div class="bucket-label">pivot: {f.pivot_name} (d={f.pivot_distance:.1f})</div>'
+                if f.pivot_name else ""
+            )
 
             html += f"""
             <div class="frame-card {css_class}">
@@ -371,6 +375,7 @@ def _build_gallery_html(
               </div>
               <div class="frame-detail">
                 <div class="bucket-label">{bucket_str}</div>
+                {pivot_line}
                 <div>quality: {f.quality_score:.3f}</div>
                 <div>stable: {f.stable_score:.3f}</div>
                 {novelty_line}
@@ -714,7 +719,7 @@ _JS_MAIN = r"""
 
     // ── Bar: Expression Distribution ──
     var expr = p.expression_dist;
-    var exprLabels = ['neutral','smile','mouth_open','eyes_closed'];
+    var exprLabels = ['neutral','smile','mouth_open','eyes_closed','excited','surprised'];
     var barTraces = [];
     ['anchor','coverage','challenge'].forEach(function(stype) {
       var vals = exprLabels.map(function(e) { return expr[stype][e] || 0; });

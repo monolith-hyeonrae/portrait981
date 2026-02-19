@@ -80,6 +80,12 @@ def extract_identity_record(
     # body.embed → DINOv2 body embedding + crop box
     _extract_body_embed(record, obs_by_source.get("body.embed"))
 
+    # face.au → AU intensities
+    _extract_face_au(record, obs_by_source.get("face.au"))
+
+    # head.pose → precise yaw/pitch/roll (overrides geometric estimate)
+    _extract_head_pose(record, obs_by_source.get("head.pose"))
+
     # face.classify → person_id
     _extract_person_id(record, obs_by_source.get("face.classify"))
 
@@ -157,6 +163,33 @@ def _extract_body_embed(record: IdentityRecord, obs: Any) -> None:
     record.body_crop_box = getattr(data, "body_crop_box", None)
     if record.image_size is None:
         record.image_size = getattr(data, "image_size", None)
+
+
+def _extract_face_au(record: IdentityRecord, obs: Any) -> None:
+    """face.au → AU intensities dict."""
+    if obs is None:
+        return
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+    au_list = getattr(data, "au_intensities", None)
+    if au_list and len(au_list) > 0:
+        record.au_intensities = au_list[0]  # main face
+
+
+def _extract_head_pose(record: IdentityRecord, obs: Any) -> None:
+    """head.pose → precise yaw/pitch/roll (overrides geometric estimate)."""
+    if obs is None:
+        return
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+    estimates = getattr(data, "estimates", None)
+    if estimates and len(estimates) > 0:
+        est = estimates[0]  # main face
+        record.head_yaw = float(getattr(est, "yaw", record.head_yaw))
+        record.head_pitch = float(getattr(est, "pitch", record.head_pitch))
+        record.head_roll = float(getattr(est, "roll", record.head_roll))
 
 
 def _extract_person_id(record: IdentityRecord, obs: Any) -> None:

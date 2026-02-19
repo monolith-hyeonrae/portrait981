@@ -940,3 +940,185 @@ class TestBankBridge:
                 has_meta = True
                 break
         assert has_meta
+
+
+# ── Pivot Assignment tests ──
+
+class TestPivotAssignment:
+    """Portrait pivot system tests (Phase A3)."""
+
+    def test_imports(self):
+        from momentscan.algorithm.identity.pivots import (
+            PosePivot, ExpressionPivot, PivotAssignment,
+            POSE_PIVOTS, EXPRESSION_PIVOTS,
+            assign_pivot, assign_pivot_fallback, pivot_to_bucket,
+        )
+        assert len(POSE_PIVOTS) == 5
+        assert len(EXPRESSION_PIVOTS) == 4
+
+    def test_assign_pivot_frontal_neutral(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        result = assign_pivot(0, 0, {"AU12": 0.0, "AU25": 0.0, "AU26": 0.0})
+        assert result is not None
+        assert result.pose.name == "frontal"
+        assert result.expression.name == "neutral"
+        assert result.pose_distance < 1.0
+
+    def test_assign_pivot_three_quarter(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        result = assign_pivot(28, 0, {"AU12": 0.5, "AU25": 0.3, "AU26": 0.1})
+        assert result is not None
+        assert result.pose.name == "three-quarter"
+        assert result.expression.name == "neutral"
+
+    def test_assign_pivot_smile(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        result = assign_pivot(0, 0, {"AU12": 2.0, "AU25": 0.5, "AU26": 0.3})
+        assert result is not None
+        assert result.expression.name == "smile"
+
+    def test_assign_pivot_excited(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        result = assign_pivot(0, 0, {"AU12": 2.0, "AU25": 2.0, "AU26": 0.3})
+        assert result is not None
+        assert result.expression.name == "excited"
+
+    def test_assign_pivot_surprised(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        result = assign_pivot(0, 0, {"AU12": 0.3, "AU25": 2.0, "AU26": 1.8})
+        assert result is not None
+        assert result.expression.name == "surprised"
+
+    def test_assign_pivot_rejected(self):
+        """r_accept 초과 시 None."""
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        # Very extreme pose (90, 45) - far from all pivots
+        result = assign_pivot(90, 45, {"AU12": 0.0, "AU25": 0.0, "AU26": 0.0})
+        assert result is None
+
+    def test_assign_pivot_symmetric_yaw(self):
+        """좌우 대칭 - yaw=-30과 yaw=30은 같은 pivot."""
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        r_left = assign_pivot(-30, 0, {"AU12": 0.0, "AU25": 0.0, "AU26": 0.0})
+        r_right = assign_pivot(30, 0, {"AU12": 0.0, "AU25": 0.0, "AU26": 0.0})
+        assert r_left is not None
+        assert r_right is not None
+        assert r_left.pose.name == r_right.pose.name
+        assert abs(r_left.pose_distance - r_right.pose_distance) < 0.01
+
+    def test_assign_pivot_fallback_smile(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot_fallback
+        result = assign_pivot_fallback(0, 0, smile_intensity=0.6, mouth_open_ratio=0.1)
+        assert result is not None
+        assert result.expression.name == "smile"
+
+    def test_assign_pivot_fallback_excited(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot_fallback
+        result = assign_pivot_fallback(0, 0, smile_intensity=0.5, mouth_open_ratio=0.7)
+        assert result is not None
+        assert result.expression.name == "excited"
+
+    def test_assign_pivot_fallback_surprised(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot_fallback
+        result = assign_pivot_fallback(0, 0, smile_intensity=0.1, mouth_open_ratio=0.7)
+        assert result is not None
+        assert result.expression.name == "surprised"
+
+    def test_pivot_to_bucket(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot, pivot_to_bucket
+        assignment = assign_pivot(0, 0, {"AU12": 2.0, "AU25": 0.3, "AU26": 0.1})
+        bucket = pivot_to_bucket(assignment)
+        assert bucket.yaw_bin == "frontal"
+        assert bucket.expression_bin == "smile"
+
+    def test_pivot_name_format(self):
+        from momentscan.algorithm.identity.pivots import assign_pivot
+        result = assign_pivot(0, 0, {"AU12": 2.0, "AU25": 2.0, "AU26": 0.0})
+        assert result.pivot_name == "frontal|excited"
+
+    def test_builder_with_au_records(self):
+        """Builder uses AU-based pivot assignment when au_intensities available."""
+        records = []
+        for i in range(10):
+            r = _make_record(
+                frame_idx=i,
+                timestamp_ms=i * 2000.0,
+                e_id_seed=1,  # Same person
+                head_yaw=0.0,
+                head_pitch=0.0,
+            )
+            r.au_intensities = {"AU12": 2.0, "AU25": 0.5, "AU26": 0.3}
+            records.append(r)
+
+        result = IdentityBuilder().build(records)
+        assert 0 in result.persons
+        person = result.persons[0]
+
+        # All frames should have smile expression from AU
+        for f in person.anchor_frames:
+            assert f.pivot_name is not None
+            assert "smile" in f.pivot_name
+            assert f.pivot_distance >= 0
+
+    def test_builder_fallback_without_au(self):
+        """Builder uses fallback pivot when no au_intensities."""
+        records = []
+        for i in range(10):
+            r = _make_record(
+                frame_idx=i,
+                timestamp_ms=i * 2000.0,
+                e_id_seed=1,
+                head_yaw=0.0,
+                head_pitch=0.0,
+                smile_intensity=0.6,
+                mouth_open_ratio=0.1,
+            )
+            records.append(r)
+
+        result = IdentityBuilder().build(records)
+        assert 0 in result.persons
+        person = result.persons[0]
+
+        for f in person.anchor_frames:
+            assert f.pivot_name is not None
+            assert "smile" in f.pivot_name
+
+    def test_pivot_coverage_in_person_identity(self):
+        """PersonIdentity.pivot_coverage tracks pivot distribution."""
+        records = []
+        for i in range(10):
+            r = _make_record(
+                frame_idx=i,
+                timestamp_ms=i * 2000.0,
+                e_id_seed=1,
+                head_yaw=0.0,
+            )
+            r.au_intensities = {"AU12": 0.0, "AU25": 0.0, "AU26": 0.0}
+            records.append(r)
+
+        result = IdentityBuilder().build(records)
+        person = result.persons[0]
+        assert isinstance(person.pivot_coverage, dict)
+        # All frontal|neutral
+        if person.pivot_coverage:
+            assert "frontal|neutral" in person.pivot_coverage
+
+    def test_identity_frame_pivot_fields(self):
+        """IdentityFrame has pivot_name and pivot_distance fields."""
+        f = IdentityFrame(
+            frame_idx=0,
+            timestamp_ms=0.0,
+            set_type="anchor",
+            bucket=BucketLabel("frontal", "frontal", "smile"),
+            pivot_name="frontal|smile",
+            pivot_distance=2.5,
+        )
+        assert f.pivot_name == "frontal|smile"
+        assert f.pivot_distance == 2.5
+
+    def test_identity_record_au_intensities_field(self):
+        """IdentityRecord has au_intensities field."""
+        r = IdentityRecord(frame_idx=0, timestamp_ms=0.0)
+        assert r.au_intensities is None
+        r.au_intensities = {"AU12": 2.0}
+        assert r.au_intensities["AU12"] == 2.0

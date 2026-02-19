@@ -100,6 +100,8 @@ def register_to_bank(
                 "pitch": frame.bucket.pitch_bin,
                 "expression": frame.bucket.expression_bin,
             }
+            if frame.pivot_name is not None:
+                meta["pivot"] = frame.pivot_name
 
             # Face crop image path (from export_crops)
             crops_dir = output_dir / "identity" / f"person_{pid}" / "crops"

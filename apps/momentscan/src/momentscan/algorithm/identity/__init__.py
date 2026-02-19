@@ -4,6 +4,16 @@
 """
 
 from momentscan.algorithm.identity.builder import IdentityBuilder
+from momentscan.algorithm.identity.pivots import (
+    PivotAssignment,
+    PosePivot,
+    ExpressionPivot,
+    POSE_PIVOTS,
+    EXPRESSION_PIVOTS,
+    assign_pivot,
+    assign_pivot_fallback,
+    pivot_to_bucket,
+)
 from momentscan.algorithm.identity.types import (
     BucketLabel,
     IdentityConfig,
@@ -21,4 +31,12 @@ __all__ = [
     "IdentityRecord",
     "IdentityResult",
     "PersonIdentity",
+    "PivotAssignment",
+    "PosePivot",
+    "ExpressionPivot",
+    "POSE_PIVOTS",
+    "EXPRESSION_PIVOTS",
+    "assign_pivot",
+    "assign_pivot_fallback",
+    "pivot_to_bucket",
 ]

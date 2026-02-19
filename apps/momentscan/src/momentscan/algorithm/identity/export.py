@@ -59,7 +59,7 @@ def export_identity_metadata(result: IdentityResult, output_dir: Path) -> None:
 
 def _frame_to_dict(frame) -> dict:
     """IdentityFrame → JSON-serializable dict."""
-    return {
+    d = {
         "frame_idx": frame.frame_idx,
         "timestamp_ms": frame.timestamp_ms,
         "set_type": frame.set_type,
@@ -71,3 +71,7 @@ def _frame_to_dict(frame) -> dict:
         "body_crop_box": frame.body_crop_box,
         "image_size": frame.image_size,
     }
+    if frame.pivot_name is not None:
+        d["pivot_name"] = frame.pivot_name
+        d["pivot_distance"] = round(frame.pivot_distance, 4)
+    return d

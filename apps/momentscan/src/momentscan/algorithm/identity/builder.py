@@ -19,6 +19,12 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from momentscan.algorithm.identity.buckets import classify_frame
+from momentscan.algorithm.identity.pivots import (
+    PivotAssignment,
+    assign_pivot,
+    assign_pivot_fallback,
+    pivot_to_bucket,
+)
 from momentscan.algorithm.identity.types import (
     BucketLabel,
     IdentityConfig,
@@ -85,7 +91,7 @@ class IdentityBuilder:
         prototype, proto_idx = self._compute_medoid(medoid_candidates)
 
         # (c) stable_score for all records with e_id
-        scored: List[Tuple[IdentityRecord, float, BucketLabel, float]] = []
+        scored: List[Tuple[IdentityRecord, float, BucketLabel, float, Optional[PivotAssignment]]] = []
         for r in records:
             if r.e_id is None:
                 continue
@@ -93,12 +99,26 @@ class IdentityBuilder:
             if stable < cfg.tau_id:
                 continue
 
-            bucket = classify_frame(
-                r.head_yaw, r.head_pitch,
-                r.smile_intensity, r.mouth_open_ratio, r.eye_open_ratio,
-            )
+            # Pivot assignment (AU-based or fallback)
+            if r.au_intensities:
+                assignment = assign_pivot(r.head_yaw, r.head_pitch, r.au_intensities)
+            else:
+                assignment = assign_pivot_fallback(
+                    r.head_yaw, r.head_pitch,
+                    r.smile_intensity, r.mouth_open_ratio,
+                )
+
+            if assignment is not None:
+                bucket = pivot_to_bucket(assignment)
+            else:
+                # Fallback to fixed grid for out-of-range poses
+                bucket = classify_frame(
+                    r.head_yaw, r.head_pitch,
+                    r.smile_intensity, r.mouth_open_ratio, r.eye_open_ratio,
+                )
+
             quality = self._compute_quality(r)
-            scored.append((r, stable, bucket, quality))
+            scored.append((r, stable, bucket, quality, assignment))
 
         if not scored:
             return None
@@ -118,10 +138,13 @@ class IdentityBuilder:
         yaw_cov: Dict[str, int] = defaultdict(int)
         pitch_cov: Dict[str, int] = defaultdict(int)
         expr_cov: Dict[str, int] = defaultdict(int)
+        pivot_cov: Dict[str, int] = defaultdict(int)
         for f in all_selected:
             yaw_cov[f.bucket.yaw_bin] += 1
             pitch_cov[f.bucket.pitch_bin] += 1
             expr_cov[f.bucket.expression_bin] += 1
+            if f.pivot_name:
+                pivot_cov[f.pivot_name] += 1
 
         logger.info(
             "Person %d: %d anchors, %d coverage, %d challenge (from %d scored / %d total)",
@@ -138,6 +161,7 @@ class IdentityBuilder:
             yaw_coverage=dict(yaw_cov),
             pitch_coverage=dict(pitch_cov),
             expression_coverage=dict(expr_cov),
+            pivot_coverage=dict(pivot_cov),
         )
 
     def _compute_medoid(
@@ -226,7 +250,7 @@ class IdentityBuilder:
 
     def _select_anchors(
         self,
-        scored: List[Tuple[IdentityRecord, float, BucketLabel, float]],
+        scored: List[Tuple[IdentityRecord, float, BucketLabel, float, Optional[PivotAssignment]]],
     ) -> List[IdentityFrame]:
         """정면 + strict gate + quality top-k로 앵커 선택 (중복 제거).
 
@@ -236,8 +260,8 @@ class IdentityBuilder:
 
         # Filter: frontal + strict gate
         candidates = [
-            (r, stable, bucket, quality)
-            for r, stable, bucket, quality in scored
+            (r, stable, bucket, quality, assignment)
+            for r, stable, bucket, quality, assignment in scored
             if abs(r.head_yaw) <= cfg.anchor_max_yaw
             and self._pass_strict_gate(r)
         ]
@@ -249,7 +273,7 @@ class IdentityBuilder:
         selected_timestamps: List[float] = []
         selected_embeddings: List[np.ndarray] = []
 
-        for r, stable, bucket, quality in candidates:
+        for r, stable, bucket, quality, assignment in candidates:
             if len(anchors) >= cfg.anchor_count:
                 break
 
@@ -271,6 +295,8 @@ class IdentityBuilder:
                 quality_score=quality,
                 stable_score=stable,
                 novelty_score=0.0,
+                pivot_name=assignment.pivot_name if assignment else None,
+                pivot_distance=assignment.pose_distance if assignment else 0.0,
                 face_crop_box=r.face_crop_box,
                 body_crop_box=r.body_crop_box,
                 image_size=r.image_size,
@@ -283,7 +309,7 @@ class IdentityBuilder:
 
     def _select_coverage(
         self,
-        scored: List[Tuple[IdentityRecord, float, BucketLabel, float]],
+        scored: List[Tuple[IdentityRecord, float, BucketLabel, float, Optional[PivotAssignment]]],
         already_selected: List[IdentityFrame],
     ) -> List[IdentityFrame]:
         """버킷별 best quality로 coverage 선택 (중복 제거).
@@ -295,16 +321,12 @@ class IdentityBuilder:
         cfg = self.config
         selected_indices = {f.frame_idx for f in already_selected}
 
-        # scored record lookup for embedding access
-        record_map: Dict[int, IdentityRecord] = {
-            r.frame_idx: r for r, _, _, _ in scored
-        }
-
         # Group by bucket key
-        buckets: Dict[str, List[Tuple[IdentityRecord, float, BucketLabel, float]]] = defaultdict(list)
-        for r, stable, bucket, quality in scored:
+        buckets: Dict[str, List[Tuple[IdentityRecord, float, BucketLabel, float, Optional[PivotAssignment]]]] = defaultdict(list)
+        for item in scored:
+            r = item[0]
             if r.frame_idx not in selected_indices:
-                buckets[bucket.key].append((r, stable, bucket, quality))
+                buckets[item[2].key].append(item)
 
         # Track selected coverage embeddings + per-bucket timestamps
         selected_embeddings: List[np.ndarray] = []
@@ -314,7 +336,7 @@ class IdentityBuilder:
         for key, candidates in buckets.items():
             candidates.sort(key=lambda x: x[3], reverse=True)
             count = 0
-            for r, stable, bucket, quality in candidates:
+            for r, stable, bucket, quality, assignment in candidates:
                 if count >= cfg.coverage_max_per_bucket:
                     break
 
@@ -338,6 +360,8 @@ class IdentityBuilder:
                     quality_score=quality,
                     stable_score=stable,
                     novelty_score=0.0,
+                    pivot_name=assignment.pivot_name if assignment else None,
+                    pivot_distance=assignment.pose_distance if assignment else 0.0,
                     face_crop_box=r.face_crop_box,
                     body_crop_box=r.body_crop_box,
                     image_size=r.image_size,
@@ -380,7 +404,7 @@ class IdentityBuilder:
 
     def _select_challenges(
         self,
-        scored: List[Tuple[IdentityRecord, float, BucketLabel, float]],
+        scored: List[Tuple[IdentityRecord, float, BucketLabel, float, Optional[PivotAssignment]]],
         already_selected: List[IdentityFrame],
     ) -> List[IdentityFrame]:
         """극단 조건 + 안정 + 신규성으로 challenge 선택."""
@@ -389,13 +413,13 @@ class IdentityBuilder:
 
         # Collect DINOv2 face embeddings from already selected
         selected_embeddings: List[np.ndarray] = []
-        for r, stable, bucket, quality in scored:
+        for r, stable, bucket, quality, assignment in scored:
             if r.frame_idx in selected_indices and r.e_face is not None:
                 selected_embeddings.append(r.e_face)
 
         # Candidates: not yet selected, loose gate, stable
         candidates = []
-        for r, stable, bucket, quality in scored:
+        for r, stable, bucket, quality, assignment in scored:
             if r.frame_idx in selected_indices:
                 continue
             if not self._pass_loose_gate(r):
@@ -405,13 +429,13 @@ class IdentityBuilder:
             novelty = self._compute_novelty(r, selected_embeddings)
             # Combined score: novelty dominant, with quality and stability bonus
             combined = 0.5 * novelty + 0.3 * quality + 0.2 * stable
-            candidates.append((r, stable, bucket, quality, novelty, combined))
+            candidates.append((r, stable, bucket, quality, assignment, novelty, combined))
 
         # Sort by combined score descending
-        candidates.sort(key=lambda x: x[5], reverse=True)
+        candidates.sort(key=lambda x: x[6], reverse=True)
 
         challenges = []
-        for r, stable, bucket, quality, novelty, combined in candidates[:cfg.challenge_count]:
+        for r, stable, bucket, quality, assignment, novelty, combined in candidates[:cfg.challenge_count]:
             challenges.append(IdentityFrame(
                 frame_idx=r.frame_idx,
                 timestamp_ms=r.timestamp_ms,
@@ -420,6 +444,8 @@ class IdentityBuilder:
                 quality_score=quality,
                 stable_score=stable,
                 novelty_score=novelty,
+                pivot_name=assignment.pivot_name if assignment else None,
+                pivot_distance=assignment.pose_distance if assignment else 0.0,
                 face_crop_box=r.face_crop_box,
                 body_crop_box=r.body_crop_box,
                 image_size=r.image_size,

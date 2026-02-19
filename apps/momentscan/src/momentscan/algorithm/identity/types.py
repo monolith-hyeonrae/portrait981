@@ -44,6 +44,9 @@ class IdentityRecord:
     body_crop_box: Optional[tuple[int, int, int, int]] = None  # 픽셀
     image_size: Optional[tuple[int, int]] = None  # (w, h)
 
+    # AU intensities from face.au (Dict[str, float], e.g., {"AU12": 2.5, ...})
+    au_intensities: Optional[Dict[str, float]] = None
+
     person_id: int = 0  # 0=main (MVP에서는 main만)
 
 
@@ -71,6 +74,8 @@ class IdentityFrame:
     quality_score: float = 0.0
     stable_score: float = 0.0
     novelty_score: float = 0.0
+    pivot_name: Optional[str] = None
+    pivot_distance: float = 0.0
     face_crop_box: Optional[tuple[int, int, int, int]] = None
     body_crop_box: Optional[tuple[int, int, int, int]] = None
     image_size: Optional[tuple[int, int]] = None
@@ -117,6 +122,7 @@ class PersonIdentity:
     yaw_coverage: Dict[str, int] = field(default_factory=dict)
     pitch_coverage: Dict[str, int] = field(default_factory=dict)
     expression_coverage: Dict[str, int] = field(default_factory=dict)
+    pivot_coverage: Dict[str, int] = field(default_factory=dict)
 
     def query(
         self,
