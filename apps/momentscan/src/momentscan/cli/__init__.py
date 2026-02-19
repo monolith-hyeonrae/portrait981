@@ -158,6 +158,17 @@ Examples:
         help="Enable verbose logging (show all third-party and internal messages)"
     )
 
+    # bank command
+    bank_parser = subparsers.add_parser(
+        "bank",
+        help="Show memory bank contents",
+        description="Display MemoryBank nodes, histograms, and representative images.",
+    )
+    bank_parser.add_argument(
+        "path",
+        help="Path to memory_bank.json or output directory",
+    )
+
     args = parser.parse_args()
 
     from momentscan.cli.utils import suppress_thirdparty_noise, configure_log_levels, StderrFilter
@@ -180,6 +191,9 @@ Examples:
 
     elif args.command == "process":
         commands.run_process(args)
+
+    elif args.command == "bank":
+        commands.run_bank(args)
 
     else:
         parser.print_help()
