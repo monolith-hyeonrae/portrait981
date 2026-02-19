@@ -1,4 +1,4 @@
-"""Tests for VisionEmbedAnalyzer.
+"""Tests for FaceEmbedAnalyzer and BodyEmbedAnalyzer.
 
 Tests run WITHOUT GPU — all model calls are mocked.
 """
@@ -6,9 +6,9 @@ Tests run WITHOUT GPU — all model calls are mocked.
 import numpy as np
 import pytest
 
-from vpx.vision_embed.types import EmbedOutput
+from vpx.vision_embed.types import FaceEmbedOutput, BodyEmbedOutput
 from vpx.vision_embed.crop import face_crop, body_crop, BBoxSmoother
-from vpx.vision_embed.analyzer import VisionEmbedAnalyzer
+from vpx.vision_embed.analyzer import FaceEmbedAnalyzer, BodyEmbedAnalyzer
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 from vpx.sdk import Observation, Capability
@@ -25,6 +25,7 @@ class MockEmbeddingBackend:
     def __init__(self, dim: int = 384):
         self._dim = dim
         self.embed_calls = 0
+        self.embed_batch_calls = 0
 
     @property
     def embed_dim(self) -> int:
@@ -39,6 +40,10 @@ class MockEmbeddingBackend:
         vec = rng.randn(self._dim).astype(np.float32)
         vec = vec / np.linalg.norm(vec)
         return vec
+
+    def embed_batch(self, images: list[np.ndarray]) -> list[np.ndarray]:
+        self.embed_batch_calls += 1
+        return [self.embed(img) for img in images]
 
     def cleanup(self) -> None:
         pass
@@ -75,25 +80,63 @@ def _make_face_obs(face_count=1, image_size=(640, 480)):
     )
 
 
+def _make_pose_obs(image_size=(640, 480)):
+    """Create a mock body.pose Observation with keypoints."""
+    kps = np.zeros((17, 3), dtype=np.float32)
+    kps[0] = [320, 100, 0.9]   # nose
+    kps[5] = [250, 200, 0.9]   # left shoulder
+    kps[6] = [390, 200, 0.8]   # right shoulder
+    kps[11] = [260, 350, 0.7]  # left hip
+    kps[12] = [380, 350, 0.6]  # right hip
+
+    class PoseOutput:
+        keypoints = [{
+            "keypoints": kps.tolist(),
+            "image_size": image_size,
+        }]
+
+    return Observation(
+        source="body.pose",
+        frame_id=0,
+        t_ns=0,
+        signals={"person_count": 1},
+        data=PoseOutput(),
+    )
+
+
 # ============================================================
-# EmbedOutput tests
+# FaceEmbedOutput / BodyEmbedOutput tests
 # ============================================================
 
 
-class TestEmbedOutput:
+class TestFaceEmbedOutput:
     def test_default_none_fields(self):
-        out = EmbedOutput()
+        out = FaceEmbedOutput()
         assert out.e_face is None
-        assert out.e_body is None
         assert out.face_crop_box is None
-        assert out.body_crop_box is None
+        assert out.image_size is None
 
     def test_with_embedding(self):
         vec = np.random.randn(384).astype(np.float32)
-        out = EmbedOutput(e_face=vec, face_crop_box=(10, 20, 100, 120))
+        out = FaceEmbedOutput(e_face=vec, face_crop_box=(10, 20, 100, 120))
         assert out.e_face is not None
         assert out.e_face.shape == (384,)
         assert out.face_crop_box == (10, 20, 100, 120)
+
+
+class TestBodyEmbedOutput:
+    def test_default_none_fields(self):
+        out = BodyEmbedOutput()
+        assert out.e_body is None
+        assert out.body_crop_box is None
+        assert out.image_size is None
+
+    def test_with_embedding(self):
+        vec = np.random.randn(384).astype(np.float32)
+        out = BodyEmbedOutput(e_body=vec, body_crop_box=(50, 60, 200, 300))
+        assert out.e_body is not None
+        assert out.e_body.shape == (384,)
+        assert out.body_crop_box == (50, 60, 200, 300)
 
 
 # ============================================================
@@ -257,21 +300,22 @@ class TestBodyCrop:
 
 
 # ============================================================
-# VisionEmbedAnalyzer tests
+# FaceEmbedAnalyzer tests
 # ============================================================
 
 
-class TestVisionEmbedAnalyzer:
+class TestFaceEmbedAnalyzer:
     def test_name(self):
-        analyzer = VisionEmbedAnalyzer()
-        assert analyzer.name == "vision.embed"
+        analyzer = FaceEmbedAnalyzer()
+        assert analyzer.name == "face.embed"
 
     def test_depends(self):
-        assert VisionEmbedAnalyzer.depends == ["face.detect"]
-        assert VisionEmbedAnalyzer.optional_depends == ["body.pose"]
+        assert FaceEmbedAnalyzer.depends == ["face.detect"]
+        # No optional_depends (inherits empty list from Module base)
+        assert FaceEmbedAnalyzer.optional_depends == []
 
     def test_capabilities(self):
-        analyzer = VisionEmbedAnalyzer()
+        analyzer = FaceEmbedAnalyzer()
         caps = analyzer.capabilities
         assert Capability.GPU in caps.flags
         assert Capability.STATEFUL in caps.flags
@@ -280,7 +324,7 @@ class TestVisionEmbedAnalyzer:
 
     def test_process_with_face(self):
         backend = MockEmbeddingBackend(dim=384)
-        analyzer = VisionEmbedAnalyzer(backend=backend)
+        analyzer = FaceEmbedAnalyzer(backend=backend)
         analyzer.initialize()
 
         frame = MockFrame(frame_id=42, t_src_ns=1000)
@@ -289,17 +333,15 @@ class TestVisionEmbedAnalyzer:
         result = analyzer.process(frame, deps)
 
         assert result is not None
-        assert result.source == "vision.embed"
+        assert result.source == "face.embed"
         assert result.frame_id == 42
         assert result.t_ns == 1000
         assert result.signals["has_face_embed"] is True
-        assert result.signals["has_body_embed"] is False
 
-        output: EmbedOutput = result.data
+        output: FaceEmbedOutput = result.data
         assert output.e_face is not None
         assert output.e_face.shape == (384,)
         assert output.face_crop_box is not None
-        assert output.e_body is None
 
         # Check L2 norm
         norm = np.linalg.norm(output.e_face)
@@ -309,7 +351,7 @@ class TestVisionEmbedAnalyzer:
 
     def test_process_no_face_detect_returns_none(self):
         backend = MockEmbeddingBackend()
-        analyzer = VisionEmbedAnalyzer(backend=backend)
+        analyzer = FaceEmbedAnalyzer(backend=backend)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -320,7 +362,7 @@ class TestVisionEmbedAnalyzer:
 
     def test_process_no_faces_detected(self):
         backend = MockEmbeddingBackend()
-        analyzer = VisionEmbedAnalyzer(backend=backend)
+        analyzer = FaceEmbedAnalyzer(backend=backend)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -334,7 +376,7 @@ class TestVisionEmbedAnalyzer:
         analyzer.cleanup()
 
     def test_process_not_initialized_raises(self):
-        analyzer = VisionEmbedAnalyzer()
+        analyzer = FaceEmbedAnalyzer()
         frame = MockFrame()
         deps = {"face.detect": _make_face_obs()}
 
@@ -343,7 +385,7 @@ class TestVisionEmbedAnalyzer:
 
     def test_context_manager(self):
         backend = MockEmbeddingBackend()
-        analyzer = VisionEmbedAnalyzer(backend=backend)
+        analyzer = FaceEmbedAnalyzer(backend=backend)
 
         with analyzer:
             frame = MockFrame()
@@ -351,27 +393,23 @@ class TestVisionEmbedAnalyzer:
             result = analyzer.process(frame, deps)
             assert result is not None
 
-    def test_reset_clears_smoothers(self):
+    def test_reset_clears_smoother(self):
         backend = MockEmbeddingBackend()
-        analyzer = VisionEmbedAnalyzer(backend=backend)
+        analyzer = FaceEmbedAnalyzer(backend=backend)
         analyzer.initialize()
 
         frame = MockFrame()
         deps = {"face.detect": _make_face_obs()}
 
-        # Process once to populate smoother state
         analyzer.process(frame, deps)
-
-        # Reset should clear smoother state
         analyzer.reset()
         assert analyzer._face_smoother._state is None
-        assert analyzer._body_smoother._state is None
 
         analyzer.cleanup()
 
     def test_metrics_populated(self):
         backend = MockEmbeddingBackend()
-        analyzer = VisionEmbedAnalyzer(backend=backend)
+        analyzer = FaceEmbedAnalyzer(backend=backend)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -380,14 +418,8 @@ class TestVisionEmbedAnalyzer:
 
         assert "_metrics" in result.metadata
         assert result.metadata["_metrics"]["face_embed_computed"] is True
-        assert result.metadata["_metrics"]["body_embed_computed"] is False
 
         analyzer.cleanup()
-
-    def test_entry_point_registered(self):
-        """Verify the entry point name matches the analyzer."""
-        analyzer = VisionEmbedAnalyzer()
-        assert analyzer.name == "vision.embed"
 
     def test_embed_dim_consistency(self):
         """Backend embed_dim matches actual output dimension."""
@@ -396,3 +428,248 @@ class TestVisionEmbedAnalyzer:
         backend.initialize("cpu")
         vec = backend.embed(np.zeros((224, 224, 3), dtype=np.uint8))
         assert vec.shape == (backend.embed_dim,)
+
+
+# ============================================================
+# BodyEmbedAnalyzer tests
+# ============================================================
+
+
+class TestBodyEmbedAnalyzer:
+    def test_name(self):
+        analyzer = BodyEmbedAnalyzer()
+        assert analyzer.name == "body.embed"
+
+    def test_depends(self):
+        assert BodyEmbedAnalyzer.depends == ["face.detect", "face.embed"]
+        assert BodyEmbedAnalyzer.optional_depends == ["body.pose"]
+
+    def test_capabilities(self):
+        analyzer = BodyEmbedAnalyzer()
+        caps = analyzer.capabilities
+        assert Capability.GPU in caps.flags
+        assert Capability.STATEFUL in caps.flags
+        assert "torch" in caps.resource_groups
+
+    def test_process_no_face_detect_returns_none(self):
+        backend = MockEmbeddingBackend()
+        analyzer = BodyEmbedAnalyzer(backend=backend)
+        analyzer.initialize()
+
+        frame = MockFrame()
+        result = analyzer.process(frame, deps={})
+
+        assert result is None
+        analyzer.cleanup()
+
+    def test_process_no_pose_returns_no_body(self):
+        backend = MockEmbeddingBackend()
+        analyzer = BodyEmbedAnalyzer(backend=backend)
+        analyzer.initialize()
+
+        frame = MockFrame()
+        deps = {"face.detect": _make_face_obs(face_count=1)}
+
+        result = analyzer.process(frame, deps)
+        assert result is not None
+        assert result.source == "body.embed"
+        assert result.signals["has_body_embed"] is False
+        assert result.data.e_body is None
+
+        analyzer.cleanup()
+
+    def test_process_with_pose(self):
+        backend = MockEmbeddingBackend(dim=384)
+        analyzer = BodyEmbedAnalyzer(backend=backend)
+        analyzer.initialize()
+
+        frame = MockFrame(frame_id=10, t_src_ns=500)
+        deps = {
+            "face.detect": _make_face_obs(face_count=1),
+            "body.pose": _make_pose_obs(),
+        }
+
+        result = analyzer.process(frame, deps)
+        assert result is not None
+        assert result.source == "body.embed"
+        assert result.frame_id == 10
+        assert result.signals["has_body_embed"] is True
+
+        output: BodyEmbedOutput = result.data
+        assert output.e_body is not None
+        assert output.e_body.shape == (384,)
+        assert output.body_crop_box is not None
+
+        analyzer.cleanup()
+
+    def test_process_not_initialized_raises(self):
+        analyzer = BodyEmbedAnalyzer()
+        frame = MockFrame()
+        deps = {"face.detect": _make_face_obs()}
+
+        with pytest.raises(RuntimeError, match="not initialized"):
+            analyzer.process(frame, deps)
+
+    def test_reset_clears_smoother(self):
+        backend = MockEmbeddingBackend()
+        analyzer = BodyEmbedAnalyzer(backend=backend)
+        analyzer.initialize()
+
+        analyzer.reset()
+        assert analyzer._body_smoother._state is None
+
+        analyzer.cleanup()
+
+    def test_metrics_populated(self):
+        backend = MockEmbeddingBackend()
+        analyzer = BodyEmbedAnalyzer(backend=backend)
+        analyzer.initialize()
+
+        frame = MockFrame()
+        deps = {
+            "face.detect": _make_face_obs(),
+            "body.pose": _make_pose_obs(),
+        }
+        result = analyzer.process(frame, deps)
+
+        assert "_metrics" in result.metadata
+        assert result.metadata["_metrics"]["body_embed_computed"] is True
+
+        analyzer.cleanup()
+
+    def test_match_pose_to_face_single_person(self):
+        """Single person in kp_list returns that person."""
+        kp = [{"keypoints": [[320, 100]], "image_size": (640, 480)}]
+        result = BodyEmbedAnalyzer._match_pose_to_face(kp, None)
+        assert result is kp[0]
+
+    def test_match_pose_to_face_empty(self):
+        result = BodyEmbedAnalyzer._match_pose_to_face([], None)
+        assert result is None
+
+
+# ============================================================
+# embed_batch tests
+# ============================================================
+
+
+class TestEmbedBatch:
+    def test_empty_list(self):
+        backend = MockEmbeddingBackend(dim=384)
+        result = backend.embed_batch([])
+        assert result == []
+
+    def test_single_image(self):
+        backend = MockEmbeddingBackend(dim=384)
+        img = np.zeros((224, 224, 3), dtype=np.uint8)
+        result = backend.embed_batch([img])
+        assert len(result) == 1
+        assert result[0].shape == (384,)
+
+    def test_multiple_images(self):
+        backend = MockEmbeddingBackend(dim=384)
+        imgs = [np.zeros((224, 224, 3), dtype=np.uint8) for _ in range(3)]
+        result = backend.embed_batch(imgs)
+        assert len(result) == 3
+        for vec in result:
+            assert vec.shape == (384,)
+            norm = np.linalg.norm(vec)
+            assert abs(norm - 1.0) < 1e-5
+
+    def test_batch_results_differ(self):
+        backend = MockEmbeddingBackend(dim=384)
+        imgs = [
+            np.zeros((224, 224, 3), dtype=np.uint8),
+            np.ones((224, 224, 3), dtype=np.uint8) * 128,
+        ]
+        result = backend.embed_batch(imgs)
+        assert not np.allclose(result[0], result[1])
+
+    def test_batch_calls_tracked(self):
+        backend = MockEmbeddingBackend(dim=384)
+        imgs = [np.zeros((224, 224, 3), dtype=np.uint8) for _ in range(2)]
+        backend.embed_batch(imgs)
+        assert backend.embed_batch_calls == 1
+
+
+# ============================================================
+# Shared backend (singleton registry) tests
+# ============================================================
+
+
+class TestSharedBackend:
+    """Test DINOv2Backend.get_shared() / release_shared() reference counting.
+
+    Uses mock to avoid loading actual DINOv2 model.
+    """
+
+    def setup_method(self):
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+        DINOv2Backend._reset_shared()
+
+    def teardown_method(self):
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+        DINOv2Backend._reset_shared()
+
+    def test_get_shared_creates_instance(self):
+        from unittest.mock import patch
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+
+        with patch.object(DINOv2Backend, "initialize"):
+            backend = DINOv2Backend.get_shared("cpu")
+            assert backend is not None
+            assert "cpu" in DINOv2Backend._shared_instances
+            assert DINOv2Backend._ref_counts["cpu"] == 1
+
+    def test_get_shared_returns_same_instance(self):
+        from unittest.mock import patch
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+
+        with patch.object(DINOv2Backend, "initialize"):
+            b1 = DINOv2Backend.get_shared("cpu")
+            b2 = DINOv2Backend.get_shared("cpu")
+            assert b1 is b2
+            assert DINOv2Backend._ref_counts["cpu"] == 2
+
+    def test_release_decrements_count(self):
+        from unittest.mock import patch
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+
+        with patch.object(DINOv2Backend, "initialize"):
+            DINOv2Backend.get_shared("cpu")
+            DINOv2Backend.get_shared("cpu")
+            assert DINOv2Backend._ref_counts["cpu"] == 2
+
+            DINOv2Backend.release_shared("cpu")
+            assert DINOv2Backend._ref_counts["cpu"] == 1
+            assert "cpu" in DINOv2Backend._shared_instances
+
+    def test_release_last_ref_cleans_up(self):
+        from unittest.mock import patch
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+
+        with patch.object(DINOv2Backend, "initialize"):
+            DINOv2Backend.get_shared("cpu")
+            assert "cpu" in DINOv2Backend._shared_instances
+
+            with patch.object(DINOv2Backend, "cleanup"):
+                DINOv2Backend.release_shared("cpu")
+
+            assert "cpu" not in DINOv2Backend._shared_instances
+            assert "cpu" not in DINOv2Backend._ref_counts
+
+    def test_different_devices_are_independent(self):
+        from unittest.mock import patch
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+
+        with patch.object(DINOv2Backend, "initialize"):
+            b_cpu = DINOv2Backend.get_shared("cpu")
+            b_cuda = DINOv2Backend.get_shared("cuda:0")
+            assert b_cpu is not b_cuda
+            assert DINOv2Backend._ref_counts["cpu"] == 1
+            assert DINOv2Backend._ref_counts["cuda:0"] == 1
+
+    def test_release_nonexistent_device_is_noop(self):
+        from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+        # Should not raise
+        DINOv2Backend.release_shared("nonexistent")

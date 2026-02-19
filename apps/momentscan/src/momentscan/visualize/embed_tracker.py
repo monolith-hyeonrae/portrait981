@@ -48,13 +48,15 @@ class EmbedTracker:
     def update(
         self,
         face_obs: Any = None,
-        embed_obs: Any = None,
+        face_embed_obs: Any = None,
+        body_embed_obs: Any = None,
     ) -> dict[str, float]:
         """Compute embedding stats for this frame.
 
         Args:
             face_obs: face.detect Observation (contains FaceObservation.embedding).
-            embed_obs: vision.embed Observation (contains EmbedOutput.e_face/e_body).
+            face_embed_obs: face.embed Observation (contains FaceEmbedOutput.e_face).
+            body_embed_obs: body.embed Observation (contains BodyEmbedOutput.e_body).
 
         Returns:
             Dict with face_identity, face_change, body_change, anchor_conf.
@@ -71,9 +73,13 @@ class EmbedTracker:
         if face_obs is not None:
             self._update_arcface(face_obs, stats)
 
-        # DINOv2 change from vision.embed
-        if embed_obs is not None:
-            self._update_dinov2(embed_obs, stats)
+        # DINOv2 face change from face.embed
+        if face_embed_obs is not None:
+            self._update_face_embed(face_embed_obs, stats)
+
+        # DINOv2 body change from body.embed
+        if body_embed_obs is not None:
+            self._update_body_embed(body_embed_obs, stats)
 
         stats["anchor_conf"] = self._anchor_conf
         return stats
@@ -137,13 +143,12 @@ class EmbedTracker:
         delta = max(0.0, 1.0 - float(np.dot(new_fast, new_slow)))
         return delta, new_fast, new_slow
 
-    def _update_dinov2(self, embed_obs: Any, stats: dict) -> None:
-        """Compute DINOv2 dual-EMA temporal deltas."""
-        data = getattr(embed_obs, "data", None)
+    def _update_face_embed(self, face_embed_obs: Any, stats: dict) -> None:
+        """Compute DINOv2 face dual-EMA temporal delta."""
+        data = getattr(face_embed_obs, "data", None)
         if data is None:
             return
 
-        # Face change
         e_face = getattr(data, "e_face", None)
         if e_face is not None:
             e_face = np.asarray(e_face, dtype=np.float32)
@@ -152,7 +157,12 @@ class EmbedTracker:
             )
             stats["face_change"] = delta
 
-        # Body change
+    def _update_body_embed(self, body_embed_obs: Any, stats: dict) -> None:
+        """Compute DINOv2 body dual-EMA temporal delta."""
+        data = getattr(body_embed_obs, "data", None)
+        if data is None:
+            return
+
         e_body = getattr(data, "e_body", None)
         if e_body is not None:
             e_body = np.asarray(e_body, dtype=np.float32)

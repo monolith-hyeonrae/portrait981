@@ -11,7 +11,8 @@ dependencies = [
 ]
 
 [project.entry-points."visualpath.modules"]
-"vision.embed" = "vpx.vision_embed:VisionEmbedAnalyzer"
+"face.embed" = "vpx.vision_embed:FaceEmbedAnalyzer"
+"body.embed" = "vpx.vision_embed:BodyEmbedAnalyzer"
 
 [build-system]
 requires = ["hatchling"]

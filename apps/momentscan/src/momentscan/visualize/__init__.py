@@ -265,7 +265,8 @@ class DebugVisualizer:
         backend_label: str = "",
         score_result: Optional[ScoreResult] = None,
         expression_obs: Optional[Observation] = None,
-        embed_obs: Optional[Observation] = None,
+        face_embed_obs: Optional[Observation] = None,
+        body_embed_obs: Optional[Observation] = None,
         embed_stats: Optional[Dict[str, float]] = None,
     ) -> np.ndarray:
         """Create combined debug visualization with panel layout."""
@@ -290,8 +291,10 @@ class DebugVisualizer:
             observations["face.classify"] = classifier_obs
         if expression_obs is not None:
             observations["face.expression"] = expression_obs
-        if embed_obs is not None:
-            observations["vision.embed"] = embed_obs
+        if face_embed_obs is not None:
+            observations["face.embed"] = face_embed_obs
+        if body_embed_obs is not None:
+            observations["body.embed"] = body_embed_obs
 
         # 3. Video panel: annotate the frame (respects layers)
         video_frame = self._video_panel.draw(

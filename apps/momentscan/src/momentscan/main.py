@@ -35,6 +35,7 @@ class Result:
     """
 
     highlights: List[Any] = field(default_factory=list)
+    identity: Optional[Any] = None
     frame_count: int = 0
     duration_sec: float = 0.0
     actual_backend: str = ""
@@ -54,6 +55,7 @@ class MomentscanApp(vp.App):
     def __init__(self, *, analyzers=None, output_dir=None):
         self._output_dir = output_dir
         self._frame_records: list = []
+        self._identity_records: list = []
         self._interrupted = False
         self._prev_sigint_handler = None
 
@@ -62,7 +64,7 @@ class MomentscanApp(vp.App):
 
         names = list(modules) if modules else [
             "face.detect", "face.expression", "body.pose", "hand.gesture",
-            "vision.embed", "frame.quality", "frame.scoring",
+            "face.embed", "body.embed", "frame.quality", "frame.scoring",
         ]
 
         if "face.detect" in names and "face.classify" not in names:
@@ -80,6 +82,7 @@ class MomentscanApp(vp.App):
 
     def setup(self):
         self._frame_records = []
+        self._identity_records = []
         self._interrupted = False
 
         # Reset extract module state for video-level isolation
@@ -122,10 +125,15 @@ class MomentscanApp(vp.App):
             return False
 
         from momentscan.algorithm.batch.extract import extract_frame_record
+        from momentscan.algorithm.identity.extract import extract_identity_record
 
         record = extract_frame_record(frame, results)
         if record is not None:
             self._frame_records.append(record)
+
+        id_record = extract_identity_record(frame, results)
+        if id_record is not None:
+            self._identity_records.append(id_record)
 
         n = len(self._frame_records)
         if n == 1:
@@ -153,6 +161,16 @@ class MomentscanApp(vp.App):
             len(highlight_result.windows),
         )
 
+        # Phase 3: Identity builder
+        identity_result = None
+        if self._identity_records:
+            from momentscan.algorithm.identity import IdentityBuilder
+            identity_result = IdentityBuilder().build(self._identity_records)
+            logger.info(
+                "Identity analysis complete — %d persons detected",
+                len(identity_result.persons),
+            )
+
         if self._output_dir:
             output_path = Path(self._output_dir)
             highlight_result.export(output_path)
@@ -167,10 +185,34 @@ class MomentscanApp(vp.App):
                 from momentscan.algorithm.batch.export_report import export_highlight_report
                 export_highlight_report(Path(video_path), highlight_result, output_path)
 
+            # Identity metadata + HTML report + crops
+            if identity_result is not None:
+                from momentscan.algorithm.identity.export import export_identity_metadata
+                export_identity_metadata(identity_result, output_path)
+
+                from momentscan.algorithm.identity.export_report import export_identity_report
+                export_identity_report(
+                    Path(video_path), identity_result,
+                    self._identity_records, output_path,
+                )
+
+                from momentscan.algorithm.identity.export_crops import export_identity_crops
+                export_identity_crops(
+                    Path(video_path), identity_result,
+                    self._identity_records, output_path,
+                )
+
+                # Register to MemoryBank (long-term cross-video memory)
+                from momentscan.algorithm.identity.bank_bridge import register_to_bank
+                register_to_bank(
+                    identity_result, self._identity_records, output_path,
+                )
+
             logger.info("Results exported to %s", self._output_dir)
 
         return Result(
             highlights=highlight_result.windows,
+            identity=identity_result,
             frame_count=result.frame_count,
             duration_sec=result.duration_sec,
             actual_backend=result.actual_backend,
@@ -179,6 +221,7 @@ class MomentscanApp(vp.App):
 
     def teardown(self):
         self._frame_records = []
+        self._identity_records = []
         # SIGINT 핸들러 복원
         if self._prev_sigint_handler is not None:
             signal.signal(signal.SIGINT, self._prev_sigint_handler)

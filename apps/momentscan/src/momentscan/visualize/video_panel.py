@@ -57,8 +57,9 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from vpx.vision_embed.analyzer import VisionEmbedAnalyzer
-        modules["vision.embed"] = VisionEmbedAnalyzer(backend=None)
+        from vpx.vision_embed.analyzer import FaceEmbedAnalyzer, BodyEmbedAnalyzer
+        modules["face.embed"] = FaceEmbedAnalyzer(backend=None)
+        modules["body.embed"] = BodyEmbedAnalyzer(backend=None)
     except ImportError:
         pass
     return modules
@@ -121,7 +122,7 @@ class VideoPanel:
 
         # Draw order: background (embed, pose, gesture) -> foreground (face)
         draw_order = [
-            "vision.embed",
+            "face.embed", "body.embed",
             "body.pose", "hand.gesture",
             "face.detect", "face.expression", "face.classify",
         ]

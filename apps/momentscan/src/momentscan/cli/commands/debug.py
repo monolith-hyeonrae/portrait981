@@ -176,15 +176,20 @@ def run_debug(args):
     from momentscan.main import Result
     from momentscan.algorithm.batch.extract import extract_frame_record
     from momentscan.algorithm.batch.highlight import BatchHighlightEngine
+    from momentscan.algorithm.identity.extract import extract_identity_record
 
     frame_count = 0
     frame_records = []
+    identity_records = []
 
     def _collect_and_handle(frame, terminal_results):
-        """DebugFrameHandler에 전달하면서 FrameRecord도 축적."""
+        """DebugFrameHandler에 전달하면서 FrameRecord + IdentityRecord도 축적."""
         record = extract_frame_record(frame, terminal_results)
         if record is not None:
             frame_records.append(record)
+        id_record = extract_identity_record(frame, terminal_results)
+        if id_record is not None:
+            identity_records.append(id_record)
         return handler(frame, terminal_results)
 
     try:
@@ -254,6 +259,9 @@ def run_debug(args):
                 n_frames = len(w.selected_frames)
                 print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
 
+        # --- Identity analysis ---
+        identity_result = _run_identity_analysis(identity_records)
+
         # Export batch results (always — timeseries.csv is useful even without highlights)
         from pathlib import Path
         from momentscan.algorithm.batch.export_frames import export_highlight_frames
@@ -270,10 +278,23 @@ def run_debug(args):
         export_highlight_report(Path(args.path), highlight_result, out)
         if highlight_result.windows:
             export_highlight_frames(Path(args.path), highlight_result, out)
+        if identity_result is not None:
+            from momentscan.algorithm.identity.export import export_identity_metadata
+            export_identity_metadata(identity_result, out)
+            from momentscan.algorithm.identity.export_report import export_identity_report
+            export_identity_report(Path(args.path), identity_result, identity_records, out)
+            from momentscan.algorithm.identity.export_crops import export_identity_crops
+            export_identity_crops(Path(args.path), identity_result, identity_records, out)
+            from momentscan.algorithm.identity.bank_bridge import register_to_bank
+            bank_result = register_to_bank(identity_result, identity_records, out)
+            if bank_result.persons_registered > 0:
+                for pid, n_nodes in bank_result.nodes_created.items():
+                    print(f"          {DIM}person_{pid}: {n_nodes} memory nodes → {bank_result.bank_paths[pid]}{RESET}")
         _print_exports(out)
 
         result = Result(
             highlights=highlight_result.windows,
+            identity=identity_result,
             frame_count=frame_count,
             duration_sec=duration_sec,
         )
@@ -299,6 +320,9 @@ def run_debug(args):
                     n_frames = len(w.selected_frames)
                     print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
 
+            # Identity analysis
+            identity_result = _run_identity_analysis(identity_records)
+
             # Export batch results (always)
             from pathlib import Path
             from momentscan.algorithm.batch.export_frames import export_highlight_frames
@@ -315,6 +339,18 @@ def run_debug(args):
             export_highlight_report(Path(args.path), highlight_result, out)
             if highlight_result.windows:
                 export_highlight_frames(Path(args.path), highlight_result, out)
+            if identity_result is not None:
+                from momentscan.algorithm.identity.export import export_identity_metadata
+                export_identity_metadata(identity_result, out)
+                from momentscan.algorithm.identity.export_report import export_identity_report
+                export_identity_report(Path(args.path), identity_result, identity_records, out)
+                from momentscan.algorithm.identity.export_crops import export_identity_crops
+                export_identity_crops(Path(args.path), identity_result, identity_records, out)
+                from momentscan.algorithm.identity.bank_bridge import register_to_bank
+                bank_result = register_to_bank(identity_result, identity_records, out)
+                if bank_result.persons_registered > 0:
+                    for pid, n_nodes in bank_result.nodes_created.items():
+                        print(f"          {DIM}person_{pid}: {n_nodes} memory nodes → {bank_result.bank_paths[pid]}{RESET}")
             _print_exports(out)
         else:
             print(f"{DIM}Too few frames for batch analysis{RESET}")
@@ -324,33 +360,86 @@ def run_debug(args):
         cleanup_observability(hub, file_sink)
 
 
+def _run_identity_analysis(identity_records):
+    """Identity builder 실행 + 결과 출력."""
+    if not identity_records:
+        return None
+
+    from momentscan.algorithm.identity import IdentityBuilder
+
+    print()
+    print(f"{BOLD}{'Identity':<10}{RESET}{DIM}Analyzing {len(identity_records)} identity records{RESET}")
+
+    builder = IdentityBuilder()
+    identity_result = builder.build(identity_records)
+
+    if not identity_result.persons:
+        print(f"          {DIM}No persons identified{RESET}")
+        return identity_result
+
+    for pid, person in identity_result.persons.items():
+        n_a = len(person.anchor_frames)
+        n_c = len(person.coverage_frames)
+        n_ch = len(person.challenge_frames)
+        yaw_bins = len(person.yaw_coverage)
+        expr_bins = len(person.expression_coverage)
+        print(f"          {DIM}person_{pid}: {n_a} anchors · {n_c} coverage · {n_ch} challenge{RESET}")
+        print(f"          {DIM}  yaw: {yaw_bins} bins · expression: {expr_bins} bins{RESET}")
+
+    return identity_result
+
+
 def _print_exports(output_dir):
-    """Print exported file locations under output_dir/highlight/."""
+    """Print exported file locations under output_dir."""
     from pathlib import Path
 
     highlight_dir = Path(output_dir) / "highlight"
-    if not highlight_dir.exists():
+    identity_dir = Path(output_dir) / "identity"
+
+    has_exports = highlight_dir.exists() or identity_dir.exists()
+    if not has_exports:
         return
 
     print()
-    print(f"{BOLD}{'Exports':<10}{RESET}{highlight_dir}")
+    print(f"{BOLD}{'Exports':<10}{RESET}{output_dir}")
 
-    report_path = None
-    for child in sorted(highlight_dir.iterdir()):
-        if child.is_dir():
-            files = sorted(child.iterdir())
-            if files:
-                print(f"  {DIM}{child.name}/{RESET}  {DIM}({len(files)} files){RESET}")
-                for f in files:
-                    print(f"    {DIM}{f.name}{RESET}")
-        else:
-            size_kb = child.stat().st_size / 1024
-            print(f"  {DIM}{child.name}{RESET}  {DIM}({size_kb:.1f} KB){RESET}")
-            if child.name == "report.html":
-                report_path = child.resolve()
+    highlight_report = None
+    identity_report = None
 
-    if report_path:
-        print(f"\n  {BOLD}Report{RESET}  file://{report_path}")
+    if highlight_dir.exists():
+        for child in sorted(highlight_dir.iterdir()):
+            if child.is_dir():
+                files = sorted(child.iterdir())
+                if files:
+                    print(f"  {DIM}highlight/{child.name}/{RESET}  {DIM}({len(files)} files){RESET}")
+                    for f in files:
+                        print(f"    {DIM}{f.name}{RESET}")
+            else:
+                size_kb = child.stat().st_size / 1024
+                print(f"  {DIM}highlight/{child.name}{RESET}  {DIM}({size_kb:.1f} KB){RESET}")
+                if child.name == "report.html":
+                    highlight_report = child.resolve()
+
+    if identity_dir.exists():
+        for child in sorted(identity_dir.iterdir()):
+            if child.is_dir():
+                files = sorted(child.iterdir())
+                if files:
+                    print(f"  {DIM}identity/{child.name}/{RESET}  {DIM}({len(files)} files){RESET}")
+                    for f in files:
+                        print(f"    {DIM}{f.name}{RESET}")
+            else:
+                size_kb = child.stat().st_size / 1024
+                print(f"  {DIM}identity/{child.name}{RESET}  {DIM}({size_kb:.1f} KB){RESET}")
+                if child.name == "report.html":
+                    identity_report = child.resolve()
+
+    if highlight_report or identity_report:
+        print()
+    if highlight_report:
+        print(f"  {BOLD}Highlight Report{RESET}  file://{highlight_report}")
+    if identity_report:
+        print(f"  {BOLD}Identity Report{RESET}   file://{identity_report}")
     print()
 
 
@@ -366,7 +455,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
     """
     if 'all' in selected:
         return ['face.detect', 'face.expression', 'body.pose', 'hand.gesture',
-                'vision.embed', 'frame.quality', 'frame.scoring']
+                'face.embed', 'body.embed', 'frame.quality', 'frame.scoring']
 
     names = []
     for s in selected:
@@ -376,7 +465,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
             names.append('face.expression')
 
     return names if names else ['face.detect', 'face.expression', 'body.pose', 'hand.gesture',
-                                'vision.embed', 'frame.quality', 'frame.scoring']
+                                'face.embed', 'body.embed', 'frame.quality', 'frame.scoring']
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +549,7 @@ def _parse_analyzer_arg(arg: str) -> List[str]:
         return ['raw']
 
     parts = [p.strip().lower() for p in arg.split(',')]
-    valid = {'face.detect', 'body.pose', 'frame.quality', 'hand.gesture', 'vision.embed', 'all', 'raw', 'none'}
+    valid = {'face.detect', 'body.pose', 'frame.quality', 'hand.gesture', 'face.embed', 'body.embed', 'all', 'raw', 'none'}
     for p in parts:
         if p not in valid:
             print(f"Warning: Unknown analyzer '{p}', valid: {valid}")

@@ -56,7 +56,7 @@ class FrameRecord:
     # Face classifier (from face.classify)
     main_face_confidence: float = 0.0
 
-    # Embedding features (from vision.embed + face.detect ArcFace)
+    # Embedding features (from face.embed, body.embed + face.detect ArcFace)
     face_identity: float = 0.0   # ArcFace anchor similarity (quality)
     face_change: float = 0.0     # DINOv2 face crop temporal delta (impact)
     body_change: float = 0.0     # DINOv2 body crop temporal delta (impact)

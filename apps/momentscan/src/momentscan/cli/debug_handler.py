@@ -103,7 +103,8 @@ class DebugFrameHandler:
         # Embedding tracking (ArcFace quality + DINOv2 delta)
         embed_stats = self.embed_tracker.update(
             face_obs=observations.get("face.detect"),
-            embed_obs=observations.get("vision.embed"),
+            face_embed_obs=observations.get("face.embed"),
+            body_embed_obs=observations.get("body.embed"),
         )
 
         # Render debug view
@@ -123,7 +124,8 @@ class DebugFrameHandler:
             backend_label=self.backend_label,
             score_result=score_result,
             expression_obs=observations.get("face.expression"),
-            embed_obs=observations.get("vision.embed"),
+            face_embed_obs=observations.get("face.embed"),
+            body_embed_obs=observations.get("body.embed"),
             embed_stats=embed_stats,
         )
 

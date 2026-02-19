@@ -1,11 +1,13 @@
-from vpx.vision_embed.analyzer import VisionEmbedAnalyzer
-from vpx.vision_embed.types import EmbedOutput
+from vpx.vision_embed.analyzer import FaceEmbedAnalyzer, BodyEmbedAnalyzer
+from vpx.vision_embed.types import FaceEmbedOutput, BodyEmbedOutput
 from vpx.vision_embed.backends.base import EmbeddingBackend
 from vpx.vision_embed.crop import BBoxSmoother, face_crop, body_crop
 
 __all__ = [
-    "VisionEmbedAnalyzer",
-    "EmbedOutput",
+    "FaceEmbedAnalyzer",
+    "BodyEmbedAnalyzer",
+    "FaceEmbedOutput",
+    "BodyEmbedOutput",
     "EmbeddingBackend",
     "BBoxSmoother",
     "face_crop",

@@ -88,13 +88,14 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
     _extract_face_detect(record, face_obs)
     _extract_face_expression(record, obs_by_source.get("face.expression"))
 
-    # 주 얼굴 중심 → body pose / vision.embed에서 인물 매칭용
+    # 주 얼굴 중심 → body pose에서 인물 매칭용
     face_center = _get_main_face_center(face_obs)
     _extract_body_pose(record, obs_by_source.get("body.pose"), face_center)
     _extract_quality(record, obs_by_source.get("frame.quality"))
     _extract_face_classify(record, obs_by_source.get("face.classify"))
     _extract_frame_scoring(record, obs_by_source.get("frame.scoring"))
-    _extract_vision_embed(record, obs_by_source.get("vision.embed"))
+    _extract_face_embed(record, obs_by_source.get("face.embed"))
+    _extract_body_embed(record, obs_by_source.get("body.embed"))
 
     return record
 
@@ -385,9 +386,28 @@ def _update_dual_ema(
     return delta, new_fast, new_slow
 
 
-def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
-    """vision.embed: DINOv2 face/body dual-EMA delta 계산."""
+def _extract_face_embed(record: FrameRecord, obs: Any) -> None:
+    """face.embed: DINOv2 face dual-EMA delta 계산."""
     global _embed_fast_face, _embed_slow_face
+
+    if obs is None:
+        return
+
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+
+    e_face = getattr(data, "e_face", None)
+    if e_face is not None:
+        e_face = np.asarray(e_face, dtype=np.float32)
+        delta, _embed_fast_face, _embed_slow_face = _update_dual_ema(
+            e_face, _embed_fast_face, _embed_slow_face
+        )
+        record.face_change = delta
+
+
+def _extract_body_embed(record: FrameRecord, obs: Any) -> None:
+    """body.embed: DINOv2 body dual-EMA delta 계산."""
     global _embed_fast_body, _embed_slow_body
 
     if obs is None:
@@ -397,16 +417,6 @@ def _extract_vision_embed(record: FrameRecord, obs: Any) -> None:
     if data is None:
         return
 
-    # Face change (DINOv2 face crop)
-    e_face = getattr(data, "e_face", None)
-    if e_face is not None:
-        e_face = np.asarray(e_face, dtype=np.float32)
-        delta, _embed_fast_face, _embed_slow_face = _update_dual_ema(
-            e_face, _embed_fast_face, _embed_slow_face
-        )
-        record.face_change = delta
-
-    # Body change (DINOv2 body crop)
     e_body = getattr(data, "e_body", None)
     if e_body is not None:
         e_body = np.asarray(e_body, dtype=np.float32)
