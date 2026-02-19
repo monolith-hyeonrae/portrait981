@@ -244,6 +244,8 @@ class DebugVisualizer:
             monitor_stats=ctx.monitor_stats,
             backend_label=ctx.backend_label,
             expression_obs=ctx.observations.get("face.expression"),
+            face_au_obs=ctx.observations.get("face.au"),
+            head_pose_obs=ctx.observations.get("head.pose"),
         )
 
     # --- Legacy API (backward compatible) ---
@@ -268,6 +270,8 @@ class DebugVisualizer:
         face_embed_obs: Optional[Observation] = None,
         body_embed_obs: Optional[Observation] = None,
         embed_stats: Optional[Dict[str, float]] = None,
+        face_au_obs: Optional[Observation] = None,
+        head_pose_obs: Optional[Observation] = None,
     ) -> np.ndarray:
         """Create combined debug visualization with panel layout."""
         h, w = frame.data.shape[:2]
@@ -295,6 +299,10 @@ class DebugVisualizer:
             observations["face.embed"] = face_embed_obs
         if body_embed_obs is not None:
             observations["body.embed"] = body_embed_obs
+        if face_au_obs is not None:
+            observations["face.au"] = face_au_obs
+        if head_pose_obs is not None:
+            observations["head.pose"] = head_pose_obs
 
         # 3. Video panel: annotate the frame (respects layers)
         video_frame = self._video_panel.draw(

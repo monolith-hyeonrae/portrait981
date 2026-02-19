@@ -57,6 +57,16 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
+        from vpx.face_au.analyzer import FaceAUAnalyzer
+        modules["face.au"] = FaceAUAnalyzer(au_backend=None)
+    except ImportError:
+        pass
+    try:
+        from vpx.head_pose.analyzer import HeadPoseAnalyzer
+        modules["head.pose"] = HeadPoseAnalyzer(pose_backend=None)
+    except ImportError:
+        pass
+    try:
         from vpx.vision_embed.analyzer import FaceEmbedAnalyzer, BodyEmbedAnalyzer
         modules["face.embed"] = FaceEmbedAnalyzer(backend=None)
         modules["body.embed"] = BodyEmbedAnalyzer(backend=None)
@@ -71,6 +81,8 @@ _LAYER_MAP = {
     "hand.gesture": DebugLayer.GESTURE,
     "face.detect": DebugLayer.FACE,
     "face.expression": DebugLayer.FACE,
+    "face.au": DebugLayer.FACE,
+    "head.pose": DebugLayer.FACE,
     "face.classify": DebugLayer.FACE,
 }
 
@@ -124,7 +136,9 @@ class VideoPanel:
         draw_order = [
             "face.embed", "body.embed",
             "body.pose", "hand.gesture",
-            "face.detect", "face.expression", "face.classify",
+            "face.detect", "face.expression",
+            "face.au", "head.pose",
+            "face.classify",
         ]
 
         for name in draw_order:

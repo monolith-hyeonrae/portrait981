@@ -23,6 +23,7 @@ from vpx.sdk.marks import (
     KeypointsMark,
     BarMark,
     LabelMark,
+    AxisMark,
     DrawStyle,
 )
 
@@ -59,6 +60,8 @@ def render_marks(
             _render_bar(output, mark, w, h, style)
         elif isinstance(mark, LabelMark):
             _render_label(output, mark, w, h, style)
+        elif isinstance(mark, AxisMark):
+            _render_axis(output, mark, w, h, style)
 
     return output
 
@@ -211,3 +214,43 @@ def _render_label(
         )
 
     cv2.putText(image, mark.text, (x, y), FONT, font_scale, color, 1)
+
+
+def _render_axis(
+    image: np.ndarray,
+    mark: AxisMark,
+    w: int,
+    h: int,
+    style: DrawStyle | None,
+) -> None:
+    """Render 3D pose axes (6DRepNet-style).
+
+    Projects yaw/pitch/roll rotation onto 2D as three colored lines:
+    X-axis (red), Y-axis (green), Z-axis (blue).
+    """
+    import math
+
+    cx = int(mark.cx * w)
+    cy = int(mark.cy * h)
+    size = mark.size * min(w, h)
+    thickness = style.thickness if style and style.thickness is not None else mark.thickness
+
+    pitch = mark.pitch * math.pi / 180
+    yaw = -(mark.yaw * math.pi / 180)
+    roll = mark.roll * math.pi / 180
+
+    # X-axis (red BGR: 0,0,255)
+    x1 = int(size * (math.cos(yaw) * math.cos(roll)) + cx)
+    y1 = int(size * (math.cos(pitch) * math.sin(roll) + math.cos(roll) * math.sin(pitch) * math.sin(yaw)) + cy)
+
+    # Y-axis (green BGR: 0,255,0)
+    x2 = int(size * (-math.cos(yaw) * math.sin(roll)) + cx)
+    y2 = int(size * (math.cos(pitch) * math.cos(roll) - math.sin(pitch) * math.sin(yaw) * math.sin(roll)) + cy)
+
+    # Z-axis (blue BGR: 255,0,0)
+    x3 = int(size * math.sin(yaw) + cx)
+    y3 = int(size * (-math.cos(yaw) * math.sin(pitch)) + cy)
+
+    cv2.line(image, (cx, cy), (x1, y1), (0, 0, 255), thickness)
+    cv2.line(image, (cx, cy), (x2, y2), (0, 255, 0), thickness)
+    cv2.line(image, (cx, cy), (x3, y3), (255, 0, 0), thickness)

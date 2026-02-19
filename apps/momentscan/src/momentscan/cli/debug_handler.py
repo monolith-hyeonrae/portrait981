@@ -127,6 +127,8 @@ class DebugFrameHandler:
             face_embed_obs=observations.get("face.embed"),
             body_embed_obs=observations.get("body.embed"),
             embed_stats=embed_stats,
+            face_au_obs=observations.get("face.au"),
+            head_pose_obs=observations.get("head.pose"),
         )
 
         # Video writer

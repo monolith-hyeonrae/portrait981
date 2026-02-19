@@ -89,7 +89,25 @@ class LabelMark:
     font_scale: float = 0.45
 
 
-Mark = BBoxMark | KeypointsMark | BarMark | LabelMark
+@dataclass(frozen=True)
+class AxisMark:
+    """3D pose axis visualization (6DRepNet-style).
+
+    Draws X(red)/Y(green)/Z(blue) axes from a center point
+    to visualize yaw/pitch/roll head orientation.
+    All coordinates normalized [0, 1]. Angles in degrees.
+    """
+
+    cx: float
+    cy: float
+    yaw: float
+    pitch: float
+    roll: float
+    size: float = 0.06
+    thickness: int = 2
+
+
+Mark = BBoxMark | KeypointsMark | BarMark | LabelMark | AxisMark
 
 __all__ = [
     "DrawStyle",
@@ -98,4 +116,5 @@ __all__ = [
     "KeypointsMark",
     "BarMark",
     "LabelMark",
+    "AxisMark",
 ]
