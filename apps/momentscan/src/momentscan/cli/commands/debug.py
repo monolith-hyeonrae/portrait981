@@ -126,9 +126,11 @@ def run_debug(args):
 
     print()
     print(f"{BOLD}{'Debug':<10}{RESET}{args.path}")
-    print(f"{_}{DIM}{source_frames} frames · {source_fps:.1f} fps · {ITALIC}{analyzer_label}{RESET}")
+    target_fps = int(args.fps)
+    print(f"  {DIM}{'video':<8}{source_frames} frames · {source_fps:.1f} fps{RESET}")
     batch_label = f" · batch: {batch_size}" if batch_size > 1 else ""
-    print(f"{_}{DIM}backend: {backend} · window: {'on' if show_window else 'off'} · ROI: {roi_pct}{batch_label}{RESET}")
+    print(f"  {DIM}{'run':<8}fps: {target_fps} · backend: {backend} · window: {'on' if show_window else 'off'} · ROI: {roi_pct}{batch_label}{RESET}")
+    print(f"  {DIM}{'analyze':<8}{ITALIC}{analyzer_label}{RESET}")
     print()
 
     # --- Analyzer table ---
@@ -243,7 +245,7 @@ def run_debug(args):
             print(f"          {DIM}face_detected: {face_pct:.0f}% of frames{RESET}")
             print(f"          {DIM}sample[{sample.frame_idx}]: conf={sample.face_confidence:.2f} area={sample.face_area_ratio:.3f} "
                   f"blur={sample.blur_score:.0f} bright={sample.brightness:.0f} "
-                  f"yaw={sample.head_yaw:.1f} mouth={sample.mouth_open_ratio:.2f}{RESET}")
+                  f"yaw={sample.head_yaw:.1f} smile={sample.smile_intensity:.2f}{RESET}")
 
         batch_engine = BatchHighlightEngine()
         highlight_result = batch_engine.analyze(frame_records)
@@ -455,8 +457,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
     """
     if 'all' in selected:
         return ['face.detect', 'face.expression', 'face.au', 'head.pose',
-                'body.pose', 'hand.gesture',
-                'face.embed', 'body.embed', 'frame.quality', 'frame.scoring']
+                'shot.quality', 'frame.quality']
 
     names = []
     for s in selected:
@@ -466,8 +467,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
             names.append('face.expression')
 
     return names if names else ['face.detect', 'face.expression', 'face.au', 'head.pose',
-                                'body.pose', 'hand.gesture',
-                                'face.embed', 'body.embed', 'frame.quality', 'frame.scoring']
+                                'shot.quality', 'frame.quality']
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +551,7 @@ def _parse_analyzer_arg(arg: str) -> List[str]:
         return ['raw']
 
     parts = [p.strip().lower() for p in arg.split(',')]
-    valid = {'face.detect', 'face.au', 'head.pose', 'body.pose', 'frame.quality', 'hand.gesture', 'face.embed', 'body.embed', 'all', 'raw', 'none'}
+    valid = {'face.detect', 'face.au', 'head.pose', 'body.pose', 'frame.quality', 'face.embed', 'body.embed', 'all', 'raw', 'none'}
     for p in parts:
         if p not in valid:
             print(f"Warning: Unknown analyzer '{p}', valid: {valid}")

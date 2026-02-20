@@ -1,15 +1,11 @@
-from vpx.vision_embed.analyzer import FaceEmbedAnalyzer, BodyEmbedAnalyzer
-from vpx.vision_embed.types import FaceEmbedOutput, BodyEmbedOutput
-from vpx.vision_embed.backends.base import EmbeddingBackend
-from vpx.vision_embed.crop import BBoxSmoother, face_crop, body_crop
+from vpx.vision_embed.analyzer import ShotQualityAnalyzer
+from vpx.vision_embed.types import ShotQualityOutput
+from vpx.vision_embed.crop import BBoxSmoother, CropRatio, face_crop
 
 __all__ = [
-    "FaceEmbedAnalyzer",
-    "BodyEmbedAnalyzer",
-    "FaceEmbedOutput",
-    "BodyEmbedOutput",
-    "EmbeddingBackend",
+    "ShotQualityAnalyzer",
+    "ShotQualityOutput",
+    "CropRatio",
     "BBoxSmoother",
     "face_crop",
-    "body_crop",
 ]

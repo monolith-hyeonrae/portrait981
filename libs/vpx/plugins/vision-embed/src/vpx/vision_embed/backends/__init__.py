@@ -1,3 +1,3 @@
-from vpx.vision_embed.backends.dinov2 import DINOv2Backend
+from vpx.vision_embed.backends.laion import LAIONAestheticBackend
 
-__all__ = ["DINOv2Backend"]
+__all__ = ["LAIONAestheticBackend"]

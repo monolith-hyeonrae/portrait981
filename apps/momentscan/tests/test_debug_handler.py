@@ -60,10 +60,10 @@ class TestObservationExtraction:
     def test_extracts_observations_from_flow_data(self, handler):
         """Handler should extract observations from FlowData."""
         face_obs = _make_observation("face.detect", signals={"face_count": 2})
-        pose_obs = _make_observation("body.pose", signals={"person_count": 1})
+        shot_quality_obs = _make_observation("shot.quality", signals={})
 
         frame = create_mock_frame()
-        fd = _make_flow_data({"face.detect": face_obs, "body.pose": pose_obs}, frame=frame)
+        fd = _make_flow_data({"face.detect": face_obs, "shot.quality": shot_quality_obs}, frame=frame)
 
         result = handler(frame, [fd])
 
@@ -71,7 +71,7 @@ class TestObservationExtraction:
         handler.visualizer.create_debug_view.assert_called_once()
         call_kwargs = handler.visualizer.create_debug_view.call_args[1]
         assert call_kwargs["face_obs"] is face_obs
-        assert call_kwargs["pose_obs"] is pose_obs
+        assert call_kwargs["shot_quality_obs"] is shot_quality_obs
 
     def test_empty_terminal_results(self, handler):
         """Handler should handle empty terminal results gracefully."""

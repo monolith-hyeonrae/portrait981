@@ -153,17 +153,14 @@ def _print_scoring_section():
           f"face_area >= {cfg.gate_face_area_ratio:.2f}  "
           f"blur >= {cfg.gate_blur_min:.0f}  "
           f"bright \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}]")
-    print(f"  Quality score   blur: {cfg.quality_blur_weight:.2f}  "
+    print(f"  Quality score   head_blur: {cfg.quality_head_blur_weight:.2f}  "
           f"face_size: {cfg.quality_face_size_weight:.2f}  "
           f"face_identity: {cfg.quality_face_identity_weight:.2f}  "
+          f"bg_sep: {cfg.quality_scene_bg_sep_weight:.2f}  "
           f"{DIM}(fallback frontalness: {cfg.quality_frontalness_weight:.2f}){RESET}")
     print(f"  Impact score    top-{cfg.impact_top_k}: "
           f"smile: {cfg.impact_smile_intensity_weight:.2f}  "
-          f"face_chg: {cfg.impact_face_change_weight:.2f}  "
-          f"body_chg: {cfg.impact_body_change_weight:.2f}  "
-          f"yaw: {cfg.impact_head_yaw_delta_weight:.2f}  "
-          f"head_vel: {cfg.impact_head_velocity_weight:.2f}  "
-          f"torso: {cfg.impact_torso_rotation_weight:.2f}")
+          f"yaw: {cfg.impact_head_yaw_delta_weight:.2f}")
     print(f"  Temporal        EMA smooth \u03b1={cfg.smoothing_alpha:.2f}  "
           f"\u2192  peaks: dist\u2265{cfg.peak_min_distance_sec:.1f}s, "
           f"prominence\u2265p{cfg.peak_prominence_percentile:.0f}")
@@ -195,9 +192,6 @@ def _print_scoring_detail():
     delta_fields = [spec.record_field for spec in PIPELINE_DELTA_SPECS]
     print(f"\n{BOLD}[Temporal Delta]{RESET}  EMA \u03b1={cfg.delta_alpha:.2f}")
     print(f"  {', '.join(delta_fields)}")
-    for derived in PIPELINE_DERIVED_FIELDS:
-        if derived.name == "head_velocity":
-            print(f"  + {derived.name} = {derived.description}")
 
     # Normalization
     print(f"\n{BOLD}[Normalization]{RESET}  MAD z-score per video")
@@ -215,21 +209,21 @@ def _print_scoring_detail():
 
     # Quality Score
     print(f"\n{BOLD}[Quality Score]{RESET}  = \u03a3(weight \u00d7 feature)")
-    print(f"  {cfg.quality_blur_weight:.2f}  blur_norm         {DIM}(min-max){RESET}")
+    print(f"  {cfg.quality_head_blur_weight:.2f}  head_blur_norm    {DIM}(portrait crop sharpness){RESET}")
     print(f"  {cfg.quality_face_size_weight:.2f}  face_size_norm    {DIM}(min-max){RESET}")
-    print(f"  {cfg.quality_face_identity_weight:.2f}  face_identity       "
+    print(f"  {cfg.quality_face_identity_weight:.2f}  face_identity     "
           f"{DIM}(ArcFace anchor cosine sim){RESET}")
+    print(f"  {cfg.quality_scene_bg_sep_weight:.2f}  bg_separation     "
+          f"{DIM}(head_blur/scene_blur ratio — bokeh proxy){RESET}")
+    print(f"  {cfg.quality_scene_composition_weight:.2f}  composition       "
+          f"{DIM}(rule-of-thirds framing){RESET}")
     print(f"  {cfg.quality_frontalness_weight:.2f}  frontalness       "
           f"{DIM}(fallback: 1 - |yaw|/{cfg.frontalness_max_yaw:.0f}, clamped){RESET}")
 
     # Impact Score
     print(f"\n{BOLD}[Impact Score]{RESET}  = mean(top-{cfg.impact_top_k} of weight \u00d7 ReLU(z-score))")
     print(f"  {cfg.impact_smile_intensity_weight:.2f}  smile_intensity")
-    print(f"  {cfg.impact_face_change_weight:.2f}  face_change       {DIM}(DINOv2 face crop temporal){RESET}")
-    print(f"  {cfg.impact_body_change_weight:.2f}  body_change       {DIM}(DINOv2 body crop temporal){RESET}")
-    print(f"  {cfg.impact_head_yaw_delta_weight:.2f}  head_yaw")
-    print(f"  {cfg.impact_head_velocity_weight:.2f}  head_velocity")
-    print(f"  {cfg.impact_torso_rotation_weight:.2f}  torso_rotation")
+    print(f"  {cfg.impact_head_yaw_delta_weight:.2f}  head_yaw          {DIM}(EMA 기준선 이탈){RESET}")
 
     # Final
     dist_frames = int(cfg.peak_min_distance_sec * fps)

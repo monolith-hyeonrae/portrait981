@@ -51,35 +51,26 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
     FieldMapping("face.detect", "head_yaw", "머리 좌우 회전 (도)", "quality",
                  rationale="정면에 가까운 사진이 고객 만족도 높음. 45도 이상 옆모습은 감점"),
     FieldMapping("face.detect", "head_pitch", "머리 상하 회전 (도)", "info",
-                 rationale="상하 회전 참고. head_velocity 파생 필드의 소스"),
+                 rationale="상하 회전 참고용. 현재 scoring 미사용"),
     FieldMapping("face.detect", "head_roll", "머리 기울기 (도)", "info",
                  rationale="머리 기울기 참고. 현재 scoring 미사용"),
     FieldMapping("face.detect", "face_identity", "얼굴 동일성", "quality", "quality_face_identity_weight",
                  rationale="ArcFace anchor 대비 cosine similarity. 정면/선명/가림없음을 통합적으로 평가"),
-    # face.embed / body.embed (2)
-    FieldMapping("face.embed", "face_change", "얼굴 시각 변화량", "impact", "impact_face_change_weight",
-                 rationale="DINOv2 face crop temporal delta. 표정/각도 변화를 holistic하게 포착"),
-    FieldMapping("body.embed", "body_change", "상체 시각 변화량", "impact", "impact_body_change_weight",
-                 rationale="DINOv2 body crop temporal delta. 자세/동작 변화를 holistic하게 포착"),
-    # face.expression (3)
-    FieldMapping("face.expression", "mouth_open_ratio", "비중립 표정 강도", "info",
-                 rationale="환호/놀람 — smile_intensity에 흡수됨"),
+    # shot.quality (3)
+    FieldMapping("shot.quality", "head_blur", "헤드샷 선명도 (Laplacian)", "quality", "quality_head_blur_weight",
+                 rationale="portrait crop 내 얼굴 선명도. 전체 프레임 blur보다 portrait 목적에 직접적"),
+    FieldMapping("shot.quality", "head_exposure", "헤드샷 밝기 (0-255)", "info",
+                 rationale="얼굴 crop 내 노출 참고용"),
+    FieldMapping("shot.quality", "head_aesthetic", "헤드샷 미학 점수 (LAION)", "quality", "quality_head_aesthetic_weight",
+                 rationale="LAION Aesthetic score for head_crop. quality score에 가중합 반영; impact score에도 per-video min-max 절대값으로 기여 (impact_head_aesthetic_weight). 0이면 shot.quality 미실행"),
+    # face.expression (2)
     FieldMapping("face.expression", "eye_open_ratio", "눈 개방도 proxy", "gate",
                  rationale="눈 감은 사진은 인물 사진으로 부적합. 0.15 미만이면 탈락"),
     FieldMapping("face.expression", "smile_intensity", "미소 강도", "impact", "impact_smile_intensity_weight",
-                 rationale="미소 피크는 감정적으로 좋은 순간. 평소 무표정/부정 표정 대비 미소 급등이 특히 의미 있음"),
-    # body.pose (4)
-    FieldMapping("body.pose", "wrist_raise", "손목 들어올림 비율", "info",
-                 rationale="손 올림 제스처 참고용. torso_rotation으로 대체"),
-    FieldMapping("body.pose", "torso_rotation", "어깨 기울기 (도)", "impact", "impact_torso_rotation_weight",
-                 rationale="상체 움직임이 큰 순간 = 활발한 반응 구간"),
-    FieldMapping("body.pose", "hand_near_face", "손-얼굴 근접도", "info",
-                 rationale="손으로 얼굴 가리는 순간 감지용. 향후 gate 추가 후보"),
-    FieldMapping("body.pose", "elbow_angle_change", "팔꿈치 평균 각도 (도)", "info",
-                 rationale="팔 동작 크기. wrist_raise와 중복도 높아 현재 미사용"),
+                 rationale="face.au 실행 시 LibreFace AU12(Lip Corner Puller) 직접 측정(DISFA 0-5 → min(AU12/3.0, 1.0)). face.au 없으면 HSEmotion em_happy 폴백. 표현 메트릭이므로 face.expression 패널에 표시"),
     # frame.quality (3)
-    FieldMapping("frame.quality", "blur_score", "선명도 (Laplacian 분산)", "quality", "quality_blur_weight",
-                 rationale="모션블러가 심한 프레임은 사진 품질 열화. Laplacian 50 미만 탈락"),
+    FieldMapping("frame.quality", "blur_score", "선명도 (Laplacian 분산)", "gate",
+                 rationale="모션블러가 심한 프레임은 사진 품질 열화. Laplacian 50 미만 탈락 (gate_blur_min). 품질 점수는 shot.quality head_blur 사용"),
     FieldMapping("frame.quality", "brightness", "평균 밝기 (0-255)", "gate",
                  rationale="너무 밝거나 너무 어두우면 후보정으로도 복구 어려움. 40-220 범위만 통과"),
     FieldMapping("frame.quality", "contrast", "대비 (표준편차)", "info",
@@ -87,23 +78,15 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
     # face.classify (1)
     FieldMapping("face.classify", "main_face_confidence", "주탑승자 분류 신뢰도", "info",
                  rationale="주탑승자 분류 신뢰도 참고용"),
-    # frame.scoring (1)
-    FieldMapping("frame.scoring", "frame_score", "종합 프레임 점수", "info",
-                 rationale="종합 프레임 점수 참고용"),
 )
 
 PIPELINE_DELTA_SPECS: tuple[DeltaSpec, ...] = (
-    DeltaSpec("mouth_open_ratio"),
     DeltaSpec("smile_intensity"),
     DeltaSpec("head_yaw"),
-    DeltaSpec("head_pitch"),
-    DeltaSpec("wrist_raise"),
-    DeltaSpec("torso_rotation"),
     DeltaSpec("face_area_ratio"),
     DeltaSpec("brightness"),
 )
 
 PIPELINE_DERIVED_FIELDS: tuple[DerivedField, ...] = (
-    DerivedField("head_velocity", ("head_yaw", "head_pitch"), "\u221a(\u0394yaw\u00b2 + \u0394pitch\u00b2) / dt"),
     DerivedField("frontalness", ("head_yaw",), "1 - |yaw| / max_yaw, clamped [0,1]"),
 )

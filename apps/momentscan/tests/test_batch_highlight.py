@@ -23,7 +23,7 @@ class TestFrameRecord:
         r = FrameRecord(frame_idx=0, timestamp_ms=0.0)
         assert r.face_detected is False
         assert r.face_confidence == 0.0
-        assert r.mouth_open_ratio == 0.0
+        assert r.eye_open_ratio == 0.0
 
     def test_with_values(self):
         r = FrameRecord(
@@ -73,12 +73,12 @@ def _make_records(n: int, *, fps: float = 10.0) -> list[FrameRecord]:
 
 
 def _inject_spike(records: list[FrameRecord], idx: int) -> None:
-    """특정 프레임에 mouth_open spike 주입."""
-    records[idx].mouth_open_ratio = 0.9
+    """특정 프레임에 smile_intensity spike 주입."""
+    records[idx].smile_intensity = 0.9
     # 주변 프레임은 낮은 값
     for i in range(max(0, idx - 5), min(len(records), idx + 6)):
         if i != idx:
-            records[i].mouth_open_ratio = 0.1
+            records[i].smile_intensity = 0.1
 
 
 class TestBatchHighlightEngine:
@@ -99,7 +99,7 @@ class TestBatchHighlightEngine:
         """모든 프레임이 동일하면 peak이 없어야 한다."""
         records = _make_records(100)
         for r in records:
-            r.mouth_open_ratio = 0.3
+            r.smile_intensity = 0.3
         engine = BatchHighlightEngine()
         result = engine.analyze(records)
         assert len(result.windows) == 0
@@ -122,11 +122,11 @@ class TestBatchHighlightEngine:
         """뚜렷한 spike 하나가 있으면 window가 생성된다."""
         records = _make_records(200)
         for r in records:
-            r.mouth_open_ratio = 0.1
+            r.smile_intensity = 0.1
 
         # 프레임 100 부근에 강한 spike
         for i in range(95, 106):
-            records[i].mouth_open_ratio = 0.8
+            records[i].smile_intensity = 0.8
 
         engine = BatchHighlightEngine()
         result = engine.analyze(records)
@@ -145,14 +145,14 @@ class TestBatchHighlightEngine:
         """충분히 떨어진 두 spike는 각각 window가 된다."""
         records = _make_records(500)
         for r in records:
-            r.mouth_open_ratio = 0.1
+            r.smile_intensity = 0.1
 
         # spike at frame 100
         for i in range(95, 106):
-            records[i].mouth_open_ratio = 0.85
+            records[i].smile_intensity = 0.85
         # spike at frame 350
         for i in range(345, 356):
-            records[i].mouth_open_ratio = 0.85
+            records[i].smile_intensity = 0.85
 
         engine = BatchHighlightEngine()
         result = engine.analyze(records)
@@ -164,10 +164,10 @@ class TestBatchHighlightEngine:
         """Window의 reason에 기여 feature가 포함된다."""
         records = _make_records(200)
         for r in records:
-            r.mouth_open_ratio = 0.1
+            r.smile_intensity = 0.1
 
         for i in range(95, 106):
-            records[i].mouth_open_ratio = 0.85
+            records[i].smile_intensity = 0.85
 
         engine = BatchHighlightEngine()
         result = engine.analyze(records)
@@ -186,6 +186,91 @@ class TestBatchHighlightEngine:
         # 모든 프레임이 gate 탈락 → peak 없음
         assert len(result.windows) == 0
 
+    def test_impact_smile_high_baseline(self):
+        """대부분 웃는 영상에서도 smile 피크의 impact가 충분히 높아야 한다.
+
+        기존 delta 방식: EMA baseline이 0.7에 수렴 → 피크 delta = 0.3 → impact ≈ 0.3
+        수정 후 절대값 방식: 피크 smile이 영상 내 최고값 → min-max = 1.0 → impact ≈ 0.46
+        """
+        records = _make_records(200)
+        # 대부분 웃는 baseline (0.7)
+        for r in records:
+            r.smile_intensity = 0.70
+
+        # 피크: 몇 개 프레임만 1.0
+        for i in range(98, 103):
+            records[i].smile_intensity = 1.0
+
+        engine = BatchHighlightEngine()
+        result = engine.analyze(records)
+        ts = result._timeseries
+
+        # 피크 프레임의 impact score가 0.40 이상이어야 한다
+        peak_impact = ts["impact_scores"][100]
+        assert peak_impact >= 0.40, f"impact at smile peak = {peak_impact:.3f} (expected >= 0.40)"
+
+    def test_high_baseline_smile_peaks_detected(self):
+        """대부분 웃는 영상에서도 피크가 검출되어야 한다.
+
+        기존 prominence(90th pct of absolute scores) 방식: final score floor가 높아
+        threshold >> 실제 피크 prominence → peak 미검출.
+        수정 후: range × 0.30 fallback → floor에 무관하게 상대적 피크 검출.
+        """
+        records = _make_records(300)
+        for r in records:
+            r.smile_intensity = 0.70  # 높은 baseline
+
+        # 3개 피크
+        for i in range(48, 53):
+            records[i].smile_intensity = 1.0
+        for i in range(148, 153):
+            records[i].smile_intensity = 1.0
+        for i in range(248, 253):
+            records[i].smile_intensity = 1.0
+
+        engine = BatchHighlightEngine()
+        result = engine.analyze(records)
+
+        assert len(result.windows) == 3, (
+            f"Expected 3 peaks for high-baseline smile video, got {len(result.windows)}"
+        )
+        peak_times = [w.peak_ms / 1000.0 for w in result.windows]
+        assert all(t < 30.0 for t in peak_times)
+
+    def test_impact_smile_uses_absolute_not_delta(self):
+        """smile_intensity impact는 delta가 아닌 per-video 절대값을 사용한다.
+
+        동일한 절대 smile 피크라도 baseline이 다르면 impact는 동일해야 한다.
+        delta 방식이었다면: 낮은 baseline → 큰 delta → 높은 impact, 높은 baseline → 작은 delta
+        절대값 방식: 두 경우 모두 min-max 최고값 1.0 → 동일한 impact
+        """
+        # Case A: 낮은 baseline (0.1) + 피크 0.9
+        records_a = _make_records(200)
+        for r in records_a:
+            r.smile_intensity = 0.1
+        for i in range(98, 103):
+            records_a[i].smile_intensity = 0.9
+
+        # Case B: 높은 baseline (0.75) + 피크 0.9
+        records_b = _make_records(200)
+        for r in records_b:
+            r.smile_intensity = 0.75
+        for i in range(98, 103):
+            records_b[i].smile_intensity = 0.9
+
+        engine = BatchHighlightEngine()
+        ts_a = engine.analyze(records_a)._timeseries
+        ts_b = engine.analyze(records_b)._timeseries
+
+        impact_a = ts_a["impact_scores"][100]
+        impact_b = ts_b["impact_scores"][100]
+
+        # 두 경우 모두 smile impact 기여분이 비슷해야 한다 (절대값 방식)
+        assert impact_a == pytest.approx(impact_b, abs=0.05), (
+            f"impact_a={impact_a:.3f}, impact_b={impact_b:.3f}: "
+            "절대값 방식이면 baseline에 무관하게 비슷해야 함"
+        )
+
 
 # ── HighlightResult export test ──
 
@@ -199,7 +284,7 @@ class TestHighlightResult:
                     end_ms=3000.0,
                     peak_ms=2000.0,
                     score=0.85,
-                    reason={"mouth_open_ratio": 1.2},
+                    reason={"smile_intensity": 1.2},
                     selected_frames=[
                         {"frame_idx": 20, "timestamp_ms": 2000.0, "frame_score": 0.85}
                     ],
@@ -311,17 +396,27 @@ class TestExtractFrameRecord:
         ])
         record = extract_frame_record(MockFrame(), [flow_data])
 
-        assert record.mouth_open_ratio == 0.7
         assert record.smile_intensity == 0.6
         assert record.eye_open_ratio == pytest.approx(0.8)
 
-    def test_body_pose_from_keypoints(self):
-        """body.pose: PoseOutput.keypoints에서 wrist_raise 등 계산."""
-        import math
+    def test_face_au_overrides_smile_intensity(self):
+        """face.au: AU12가 있으면 em_happy를 override하여 smile_intensity 보정."""
 
-        class MockPoseOutput:
-            def __init__(self, keypoints):
-                self.keypoints = keypoints
+        class MockFace:
+            def __init__(self, expression, signals):
+                self.expression = expression
+                self.signals = signals
+                self.area_ratio = 0.05
+
+        class MockExprOutput:
+            def __init__(self, faces):
+                self.faces = faces
+
+        class MockAUOutput:
+            def __init__(self, au_intensities):
+                self.au_intensities = au_intensities
+                self.au_presence = []
+                self.face_bboxes = []
 
         class MockObs:
             def __init__(self, source, *, signals=None, data=None):
@@ -337,32 +432,103 @@ class TestExtractFrameRecord:
             frame_id = 1
             t_src_ns = 100_000_000
 
-        # Keypoints: [x, y, confidence]
-        # 손목이 어깨보다 100px 위 (image height 480)
-        kpts = [[0] * 3] * 17
-        kpts[5] = [200, 200, 0.9]   # left shoulder
-        kpts[6] = [400, 200, 0.9]   # right shoulder
-        kpts[7] = [180, 170, 0.9]   # left elbow
-        kpts[8] = [420, 170, 0.9]   # right elbow
-        kpts[9] = [160, 100, 0.9]   # left wrist (100px above shoulder)
-        kpts[10] = [440, 200, 0.9]  # right wrist (same as shoulder)
-        kpts[0] = [300, 150, 0.9]   # nose
+        # em_happy=0.3 (낮음), AU12=3.6 (명확한 미소)
+        face = MockFace(expression=0.5, signals={"em_happy": 0.3, "em_neutral": 0.6})
+        expr_output = MockExprOutput([face])
+        au_output = MockAUOutput([{"AU12": 3.6, "AU6": 1.2}])
 
-        pose_output = MockPoseOutput([{
-            "keypoints": kpts,
-            "image_size": (640, 480),
-        }])
         flow_data = MockFlowData([
-            MockObs("body.pose", data=pose_output),
+            MockObs("face.expression", data=expr_output),
+            MockObs("face.au", data=au_output),
         ])
         record = extract_frame_record(MockFrame(), [flow_data])
 
-        # wrist_raise: (200 - 100) / 480 ≈ 0.208
-        assert record.wrist_raise == pytest.approx(100.0 / 480.0, abs=0.01)
-        # hand_near_face: 왼쪽 손목이 코에 가까움
-        assert record.hand_near_face > 0.0
-        # torso_rotation: 어깨가 수평 → 약 0도
-        assert record.torso_rotation == pytest.approx(0.0, abs=1.0)
+        # AU12=3.6 → min(3.6/3.0, 1.0) = 1.0
+        assert record.smile_intensity == pytest.approx(1.0)
+
+    def test_face_au_absent_falls_back_to_em_happy(self):
+        """face.au 없을 때 smile_intensity는 em_happy 그대로 유지."""
+
+        class MockFace:
+            def __init__(self, signals):
+                self.signals = signals
+                self.area_ratio = 0.05
+
+        class MockExprOutput:
+            def __init__(self, faces):
+                self.faces = faces
+
+        class MockObs:
+            def __init__(self, source, *, signals=None, data=None):
+                self.source = source
+                self.signals = signals or {}
+                self.data = data
+
+        class MockFlowData:
+            def __init__(self, observations):
+                self.observations = observations
+
+        class MockFrame:
+            frame_id = 1
+            t_src_ns = 100_000_000
+
+        face = MockFace(signals={"em_happy": 0.75, "em_neutral": 0.1})
+        expr_output = MockExprOutput([face])
+
+        flow_data = MockFlowData([
+            MockObs("face.expression", data=expr_output),
+            # face.au 없음
+        ])
+        record = extract_frame_record(MockFrame(), [flow_data])
+
+        assert record.smile_intensity == pytest.approx(0.75)
+
+    def test_face_au_low_au12_keeps_em_happy(self):
+        """AU12가 em_happy보다 낮으면 em_happy를 유지한다 (max 전략).
+
+        차량 내부 등 촬영 환경에서 LibreFace AU12가 낮게 나와도
+        em_happy 값이 보존되어 smile_intensity가 손실되지 않아야 한다.
+        """
+        class MockFace:
+            def __init__(self, signals):
+                self.signals = signals
+                self.area_ratio = 0.05
+
+        class MockExprOutput:
+            def __init__(self, faces):
+                self.faces = faces
+
+        class MockAUOutput:
+            def __init__(self, au_list):
+                self.au_intensities = au_list
+
+        class MockObs:
+            def __init__(self, source, *, signals=None, data=None):
+                self.source = source
+                self.signals = signals or {}
+                self.data = data
+
+        class MockFlowData:
+            def __init__(self, observations):
+                self.observations = observations
+
+        class MockFrame:
+            frame_id = 1
+            t_src_ns = 100_000_000
+
+        # em_happy=0.70 (확실한 미소), AU12=0.015 (LibreFace 저평가)
+        face = MockFace(signals={"em_happy": 0.70, "em_neutral": 0.2})
+        expr_output = MockExprOutput([face])
+        au_output = MockAUOutput([{"AU12": 0.015}])  # AU12/3.0 = 0.005
+
+        flow_data = MockFlowData([
+            MockObs("face.expression", data=expr_output),
+            MockObs("face.au", data=au_output),
+        ])
+        record = extract_frame_record(MockFrame(), [flow_data])
+
+        # max(0.70, 0.005) = 0.70 — em_happy 보존
+        assert record.smile_intensity == pytest.approx(0.70)
 
     def test_selects_largest_face(self):
         """여러 얼굴 중 area_ratio 최대인 주 얼굴을 선택한다."""
@@ -413,12 +579,12 @@ def _make_result_with_timeseries(n: int = 100) -> HighlightResult:
     """_timeseries가 포함된 HighlightResult를 생성한다."""
     records = _make_records(n)
     for r in records:
-        r.mouth_open_ratio = 0.1
+        r.smile_intensity = 0.1
 
     # 중간에 spike 삽입
     mid = n // 2
     for i in range(max(0, mid - 5), min(n, mid + 6)):
-        records[i].mouth_open_ratio = 0.85
+        records[i].smile_intensity = 0.85
 
     engine = BatchHighlightEngine()
     return engine.analyze(records)
@@ -453,7 +619,7 @@ class TestExportTimeseriesCsv:
         assert "final_score" in header
         assert "smoothed_score" in header
         assert "is_peak" in header
-        assert "mouth_open_ratio" in header
+        assert "smile_intensity" in header
         assert len(rows) == n
 
     def test_csv_peak_marked(self, tmp_path):
@@ -668,7 +834,7 @@ class TestExportHighlightReport:
         assert "head_pitch" in html
         # New pipeline transparency fields
         assert "blur_normed" in html
-        assert "normed_mouth_open_ratio" in html
+        assert "normed_smile_intensity" in html
         assert "gate_face_confidence_pass" in html
         assert "cfg_quality_weights" in html
         # Pipeline decomposition hover panel
@@ -706,7 +872,7 @@ class TestExportHighlightReport:
         result = _make_result_with_timeseries(200)
         assert result._timeseries is not None
         assert "deltas" in result._timeseries
-        assert "head_velocity" in result._timeseries["deltas"]
+        assert "head_yaw" in result._timeseries["deltas"]
 
     def test_report_arrays_and_normed_in_timeseries(self):
         """BatchHighlightEngine이 _timeseries에 arrays와 normed를 저장한다."""
@@ -715,4 +881,4 @@ class TestExportHighlightReport:
         assert "arrays" in result._timeseries
         assert "normed" in result._timeseries
         assert "blur_score" in result._timeseries["arrays"]
-        assert "mouth_open_ratio" in result._timeseries["normed"]
+        assert "smile_intensity" in result._timeseries["normed"]

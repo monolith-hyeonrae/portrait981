@@ -417,24 +417,24 @@ class StatsPanel:
         width: int,
         embed_stats: Dict[str, float],
     ) -> int:
-        """Draw embedding indicators.
+        """Draw shot quality indicators.
 
         Shows:
         - face_identity: ArcFace similarity to anchor
-        - face_change: DINOv2 face temporal delta
-        - body_change: DINOv2 body temporal delta
+        - head_blur: head crop sharpness (Laplacian variance)
+        - head_aesthetic: LAION aesthetic score for head crop [0,1]
         - anchor_conf: confidence of the anchor face
         """
         identity = embed_stats.get("face_identity", 0.0)
-        face_delta = embed_stats.get("face_change", 0.0)
-        body_delta = embed_stats.get("body_change", 0.0)
+        head_blur = embed_stats.get("head_blur", 0.0)
+        head_aesthetic = embed_stats.get("head_aesthetic", 0.0)
         anchor_conf = embed_stats.get("anchor_conf", 0.0)
 
-        if identity <= 0 and face_delta <= 0 and body_delta <= 0 and anchor_conf <= 0:
+        if identity <= 0 and head_blur <= 0 and head_aesthetic <= 0 and anchor_conf <= 0:
             return y
 
         y += 4
-        cv2.putText(canvas, "Embed", (x, y), FONT, FONT_MEDIUM, COLOR_WHITE_BGR, 1)
+        cv2.putText(canvas, "ShotQ", (x, y), FONT, FONT_MEDIUM, COLOR_WHITE_BGR, 1)
         y += 14
 
         bar_w = width - 50
@@ -454,29 +454,28 @@ class StatsPanel:
             )
             y += bar_h + 4
 
-        # face_change bar (cyan, scaled to 0.3 max for display)
-        if face_delta > 0 or identity > 0:
-            fc_color = (200, 200, 0)  # cyan-ish
-            fc_fill = min(1.0, face_delta / 0.3)
-            cv2.putText(canvas, "FC:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
+        # head_blur bar (cyan-ish, scaled to 500 max for display)
+        if head_blur > 0:
+            hb_color = (200, 200, 0)  # cyan-ish
+            hb_fill = min(1.0, head_blur / 500.0)
+            cv2.putText(canvas, "BLR:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
             bar_x = x + 35
-            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, fc_fill, fc_color)
+            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, hb_fill, hb_color)
             cv2.putText(
-                canvas, f"{face_delta:.3f}",
-                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, fc_color, 1,
+                canvas, f"{head_blur:.0f}",
+                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, hb_color, 1,
             )
             y += bar_h + 4
 
-        # body_change bar (magenta, scaled to 0.3 max for display)
-        if body_delta > 0 or identity > 0:
-            bc_color = (200, 0, 200)  # magenta
-            bc_fill = min(1.0, body_delta / 0.3)
-            cv2.putText(canvas, "BC:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
+        # head_aesthetic bar (orange, LAION aesthetic score [0,1])
+        if head_aesthetic > 0:
+            aes_color = (0, 140, 255)  # orange BGR
+            cv2.putText(canvas, "AES:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
             bar_x = x + 35
-            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, bc_fill, bc_color)
+            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, head_aesthetic, aes_color)
             cv2.putText(
-                canvas, f"{body_delta:.3f}",
-                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, bc_color, 1,
+                canvas, f"{head_aesthetic:.2f}",
+                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, aes_color, 1,
             )
             y += bar_h + 4
 

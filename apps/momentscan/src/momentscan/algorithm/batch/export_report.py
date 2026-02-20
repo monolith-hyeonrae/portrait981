@@ -37,10 +37,10 @@ JPEG_QUALITY = 70
 _MODULE_PALETTES: Dict[str, List[str]] = {
     "face.detect": ["#2e7d32", "#e65100", "#1565c0", "#6a1b9a", "#c62828", "#00838f"],
     "face.expression": ["#d84315", "#1565c0", "#2e7d32"],
-    "body.pose": ["#00838f", "#d84315", "#6a1b9a", "#2e7d32"],
+    "face.au": ["#f57f17", "#e65100"],       # AU intensity channels (amber)
+    "head.pose": ["#7b1fa2", "#1565c0", "#2e7d32"],  # precise yaw/pitch/roll (purple)
     "hand.gesture": ["#6a1b9a", "#e65100", "#00838f", "#c62828"],
-    "face.embed": ["#2e7d32", "#00838f"],
-    "body.embed": ["#00838f", "#d84315"],
+    "shot.quality": ["#2e7d32", "#00838f"],
     "frame.quality": ["#1565c0", "#e65100", "#2e7d32"],
     "face.classify": ["#f9a825"],
     "frame.scoring": ["#757575"],
@@ -49,10 +49,10 @@ _MODULE_PALETTES: Dict[str, List[str]] = {
 _MODULE_LABELS: Dict[str, str] = {
     "face.detect": "Face Detect",
     "face.expression": "Expression",
-    "body.pose": "Body Pose",
+    "face.au": "Face AU",
+    "head.pose": "Head Pose",
     "hand.gesture": "Hand Gesture",
-    "face.embed": "Face Embed",
-    "body.embed": "Body Embed",
+    "shot.quality": "Shot Quality",
     "frame.quality": "Frame Quality",
     "face.classify": "Face Classifier",
     "frame.scoring": "Frame Scoring",
@@ -61,7 +61,8 @@ _MODULE_LABELS: Dict[str, str] = {
 _DEFAULT_PALETTE = ["#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"]
 
 # Boolean fields: excluded from module subplot traces (redundant with gate_mask)
-_SKIP_CHART_FIELDS = {"face_detected"}
+# head_aesthetic: 수치 범위가 0~1로 head_blur/head_exposure와 달라 별도 auxiliary 차트로 분리
+_SKIP_CHART_FIELDS = {"face_detected", "head_aesthetic"}
 
 
 # ── Public API ──
@@ -350,24 +351,33 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # ── Normalized impact deltas (for hover panel) ──
     normed = ts.get("normed", {})
     for out_key, normed_key in (
-        ("normed_face_change", "face_change"),
-        ("normed_body_change", "body_change"),
-        ("normed_smile_intensity", "smile_intensity"),
         ("normed_head_yaw", "head_yaw"),
-        ("normed_mouth_open_ratio", "mouth_open_ratio"),
-        ("normed_head_velocity", "head_velocity"),
-        ("normed_wrist_raise", "wrist_raise"),
-        ("normed_torso_rotation", "torso_rotation"),
         ("normed_face_area_ratio", "face_area_ratio"),
         ("normed_brightness", "brightness"),
     ):
         arr = normed.get(normed_key, np.zeros(n))
         data[out_key] = np.maximum(arr, 0.0).tolist()
 
-    # head_velocity (derived, for hover)
-    deltas = ts.get("deltas", {})
-    hv = deltas.get("head_velocity", np.zeros(n))
-    data["head_velocity"] = hv.tolist() if isinstance(hv, np.ndarray) else hv
+    # smile_intensity: impact 계산은 per-video min-max 절대값을 사용하므로
+    # hover panel에도 동일한 값을 표시 (delta가 아닌 절대값)
+    raw_smile = arrays.get("smile_intensity", np.array([r.smile_intensity for r in records]))
+    mn, mx = float(raw_smile.min()), float(raw_smile.max())
+    if mx - mn > 1e-8:
+        smile_abs = np.clip((raw_smile - mn) / (mx - mn), 0.0, 1.0)
+    else:
+        smile_abs = np.zeros(n)
+    data["smile_intensity_abs"] = smile_abs.tolist()
+    # 하위 호환: normed_smile_intensity도 절대값으로 채움 (legacy JS 참조)
+    data["normed_smile_intensity"] = smile_abs.tolist()
+
+    # head_aesthetic: impact 계산과 동일한 per-video min-max 절대값
+    raw_aes = arrays.get("head_aesthetic", np.array([r.head_aesthetic for r in records]))
+    mn_aes, mx_aes = float(raw_aes.min()), float(raw_aes.max())
+    if mx_aes - mn_aes > 1e-8:
+        aes_abs = np.clip((raw_aes - mn_aes) / (mx_aes - mn_aes), 0.0, 1.0)
+    else:
+        aes_abs = np.zeros(n)
+    data["head_aesthetic_abs"] = aes_abs.tolist()
 
     # ── Per-gate-condition boolean arrays (for hover panel) ──
     data["gate_face_detected"] = [int(r.face_detected) for r in records]
@@ -394,18 +404,16 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
 
     # ── Config weights (for hover panel) ──
     data["cfg_quality_weights"] = {
-        "blur": cfg.quality_blur_weight,
+        "head_blur": cfg.quality_head_blur_weight,
         "face_size": cfg.quality_face_size_weight,
         "face_identity": cfg.quality_face_identity_weight,
         "frontalness": cfg.quality_frontalness_weight,
+        "head_aesthetic": cfg.quality_head_aesthetic_weight,
     }
     data["cfg_impact_weights"] = {
-        "face_change": cfg.impact_face_change_weight,
-        "body_change": cfg.impact_body_change_weight,
         "smile_intensity": cfg.impact_smile_intensity_weight,
         "head_yaw": cfg.impact_head_yaw_delta_weight,
-        "head_velocity": cfg.impact_head_velocity_weight,
-        "torso_rotation": cfg.impact_torso_rotation_weight,
+        "head_aesthetic": cfg.impact_head_aesthetic_weight,
     }
     data["cfg_impact_top_k"] = cfg.impact_top_k
 
@@ -1003,24 +1011,26 @@ _JS_MAIN = r"""
     var blV = D.blur_normed[pi], fsV = D.face_size_normed[pi];
     var fidV = D.face_identity[pi], frV = D.frontalness[pi];
     h += '\n<span class="section-label">\u2500\u2500 Quality: ' + fmtN(qs,3) + ' \u2500\u2500</span>\n';
-    h += '  blur_norm     ' + fmtN(qw.blur,2)       + ' \u00d7 ' + fmtN(blV,3) + ' = ' + fmtN(qw.blur*blV,3) + '\n';
+    h += '  head_blur     ' + fmtN(qw.head_blur,2)  + ' \u00d7 ' + fmtN(blV,3) + ' = ' + fmtN(qw.head_blur*blV,3) + '\n';
     h += '  face_size     ' + fmtN(qw.face_size,2)  + ' \u00d7 ' + fmtN(fsV,3) + ' = ' + fmtN(qw.face_size*fsV,3) + '\n';
     if (fidV > 0) {
       h += '  face_identity ' + fmtN(qw.face_identity,2) + ' \u00d7 ' + fmtN(fidV,3) + ' = ' + fmtN(qw.face_identity*fidV,3) + '\n';
     } else {
       h += '  frontalness   ' + fmtN(qw.frontalness,2)+ ' \u00d7 ' + fmtN(frV,3) + ' = ' + fmtN(qw.frontalness*frV,3) + ' <span style="color:#999">(fallback)</span>\n';
     }
+    var aesRaw = D.head_aesthetic ? D.head_aesthetic[pi] : 0;
+    if (aesRaw > 0 && qw.head_aesthetic) {
+      h += '  head_aes      ' + fmtN(qw.head_aesthetic,2) + ' \u00d7 ' + fmtN(aesRaw,3) + ' = ' + fmtN(qw.head_aesthetic*aesRaw,3) + '\n';
+    }
 
     // Impact
     var is_ = D.impact_scores[pi];
     var topK = D.cfg_impact_top_k || 3;
+    var aesAbs = D.head_aesthetic_abs ? D.head_aesthetic_abs[pi] : 0;
     var impF = [
-      ['face_change ', 'face_change', D.normed_face_change[pi]],
-      ['body_change ', 'body_change', D.normed_body_change[pi]],
-      ['smile       ', 'smile_intensity',  D.normed_smile_intensity[pi]],
-      ['yaw_\u0394       ', 'head_yaw',         D.normed_head_yaw[pi]],
-      ['head_vel    ', 'head_velocity',    D.normed_head_velocity[pi]],
-      ['torso       ', 'torso_rotation',   D.normed_torso_rotation[pi]]
+      ['smile       ', 'smile_intensity', D.normed_smile_intensity[pi]],
+      ['yaw_\u0394       ', 'head_yaw',        D.normed_head_yaw[pi]],
+      ['head_aes    ', 'head_aesthetic',  aesAbs]
     ];
     // Compute weighted values and sort for top-K display
     var impWV = impF.map(function(f) {
@@ -1085,6 +1095,29 @@ _JS_MAIN = r"""
     xaxis:{title:{text:'Yaw (\u00b0)', font:axFont}, gridcolor:gridColor, zeroline:true, zerolinecolor:'#ddd', tickfont:axFont},
     yaxis:{title:{text:'Pitch (\u00b0)', font:axFont}, gridcolor:gridColor, zeroline:true, zerolinecolor:'#ddd', tickfont:axFont, scaleanchor:'x'}
   }, {responsive:true, displayModeBar:false});
+
+  // ── Auxiliary: Head Aesthetic (LAION) — 별도 차트 (blur/exposure와 y축 범위 분리) ──
+  if (DATA.head_aesthetic && DATA.head_aesthetic.some(function(v){return v>0;})) {
+    var aesTraces = [
+      {x:t, y:DATA.head_aesthetic, name:'raw [0-1]', type:'scatter', mode:'lines',
+        line:{color:'#e65100', width:1.5},
+        hovertemplate:'%{y:.3f}<extra>raw</extra>'},
+      {x:t, y:DATA.head_aesthetic_abs, name:'normed (impact용)', type:'scatter', mode:'lines',
+        line:{color:'#ffb74d', width:1, dash:'dot'},
+        hovertemplate:'%{y:.3f}<extra>normed</extra>'}
+    ];
+    Plotly.newPlot('shotAestheticDiv', aesTraces, {
+      height:220, margin:{l:50,r:20,t:24,b:36},
+      paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'#fff',
+      font:{family:'Inter, sans-serif', color:'#666', size:11},
+      showlegend:true,
+      legend:{orientation:'h', y:1.15, x:0.5, xanchor:'center', font:{size:10, color:'#999'}},
+      hovermode:'x unified',
+      xaxis:{title:{text:'Time (s)', font:axFont}, gridcolor:gridColor, zeroline:false, tickfont:axFont},
+      yaxis:{title:{text:'Aesthetic Score', font:axFont}, gridcolor:gridColor,
+             zeroline:false, tickfont:axFont, range:[0,1]}
+    }, {responsive:true, displayModeBar:false});
+  }
 })();
 """
 
@@ -1139,6 +1172,8 @@ def _build_html(
         '    <div id="headPoseDiv"></div>\n'
         '    <div id="faceDistDiv"></div>\n'
         '  </div>\n'
+        '  <h2>Head Aesthetic (LAION)</h2>\n'
+        '  <div id="shotAestheticDiv"></div>\n'
         '  <h2>Highlight Windows</h2>\n' + window_detail_html + '\n'
         '  <h2>Field Reference</h2>\n' + field_ref_html + '\n'
         '  <h2>Configuration</h2>\n' + config_table_html + '\n'

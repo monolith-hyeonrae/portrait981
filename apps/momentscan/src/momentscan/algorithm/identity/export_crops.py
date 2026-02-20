@@ -101,24 +101,13 @@ def _extract_crops(
             f = identity_frame
             prefix = f"{f.set_type}_{f.frame_idx}"
 
-            # Face crop
-            if f.face_crop_box is not None:
-                face_img = _crop_image(img, f.face_crop_box)
-                if face_img is not None:
-                    path = crops_dir / f"{prefix}_face.jpg"
+            # Head crop
+            if f.head_crop_box is not None:
+                head_img = _crop_image(img, f.head_crop_box)
+                if head_img is not None:
+                    path = crops_dir / f"{prefix}_head.jpg"
                     cv2.imwrite(
-                        str(path), face_img,
-                        [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
-                    )
-                    saved += 1
-
-            # Body crop
-            if f.body_crop_box is not None:
-                body_img = _crop_image(img, f.body_crop_box)
-                if body_img is not None:
-                    path = crops_dir / f"{prefix}_body.jpg"
-                    cv2.imwrite(
-                        str(path), body_img,
+                        str(path), head_img,
                         [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
                     )
                     saved += 1

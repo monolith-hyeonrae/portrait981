@@ -217,16 +217,11 @@ class IdentityBuilder:
     def _compute_novelty(
         self, r: IdentityRecord, selected_embeddings: List[np.ndarray]
     ) -> float:
-        """DINOv2 기반 다양성 (최소 비유사도).
+        """Novelty score — always 1.0 (no visual embedding available).
 
-        min_j(1 - cos(e_face, selected_j))
-        DINOv2가 없으면 1.0 (최대 novelty).
+        Previously used DINOv2 e_head for diversity computation.
         """
-        if r.e_face is None or not selected_embeddings:
-            return 1.0
-
-        sims = [float(np.dot(r.e_face, s)) for s in selected_embeddings]
-        return 1.0 - max(sims)
+        return 1.0
 
     def _pass_strict_gate(self, r: IdentityRecord) -> bool:
         cfg = self.config
@@ -271,7 +266,6 @@ class IdentityBuilder:
 
         anchors = []
         selected_timestamps: List[float] = []
-        selected_embeddings: List[np.ndarray] = []
 
         for r, stable, bucket, quality, assignment in candidates:
             if len(anchors) >= cfg.anchor_count:
@@ -279,11 +273,6 @@ class IdentityBuilder:
 
             if self._too_close_temporally(
                 r.timestamp_ms, selected_timestamps, cfg.anchor_min_interval_ms
-            ):
-                continue
-
-            if self._too_similar_visually(
-                r, selected_embeddings, cfg.anchor_max_similarity
             ):
                 continue
 
@@ -297,13 +286,10 @@ class IdentityBuilder:
                 novelty_score=0.0,
                 pivot_name=assignment.pivot_name if assignment else None,
                 pivot_distance=assignment.pose_distance if assignment else 0.0,
-                face_crop_box=r.face_crop_box,
-                body_crop_box=r.body_crop_box,
+                head_crop_box=r.head_crop_box,
                 image_size=r.image_size,
             ))
             selected_timestamps.append(r.timestamp_ms)
-            if r.e_face is not None:
-                selected_embeddings.append(r.e_face)
 
         return anchors
 
@@ -328,8 +314,7 @@ class IdentityBuilder:
             if r.frame_idx not in selected_indices:
                 buckets[item[2].key].append(item)
 
-        # Track selected coverage embeddings + per-bucket timestamps
-        selected_embeddings: List[np.ndarray] = []
+        # Track per-bucket timestamps
         bucket_timestamps: Dict[str, List[float]] = defaultdict(list)
 
         coverage = []
@@ -340,15 +325,9 @@ class IdentityBuilder:
                 if count >= cfg.coverage_max_per_bucket:
                     break
 
-                # (1) Temporal gap within same bucket
+                # Temporal gap within same bucket
                 if self._too_close_temporally(
                     r.timestamp_ms, bucket_timestamps[key], cfg.coverage_min_interval_ms
-                ):
-                    continue
-
-                # (2) Visual similarity against all selected coverage
-                if self._too_similar_visually(
-                    r, selected_embeddings, cfg.coverage_max_similarity
                 ):
                     continue
 
@@ -362,16 +341,13 @@ class IdentityBuilder:
                     novelty_score=0.0,
                     pivot_name=assignment.pivot_name if assignment else None,
                     pivot_distance=assignment.pose_distance if assignment else 0.0,
-                    face_crop_box=r.face_crop_box,
-                    body_crop_box=r.body_crop_box,
+                    head_crop_box=r.head_crop_box,
                     image_size=r.image_size,
                 )
                 coverage.append(frame)
                 count += 1
 
                 bucket_timestamps[key].append(r.timestamp_ms)
-                if r.e_face is not None:
-                    selected_embeddings.append(r.e_face)
 
         return coverage
 
@@ -393,13 +369,7 @@ class IdentityBuilder:
         selected_embeddings: List[np.ndarray],
         max_similarity: float,
     ) -> bool:
-        """DINOv2 임베딩 기반 시각적 중복 검사."""
-        if record.e_face is None or not selected_embeddings:
-            return False
-        for emb in selected_embeddings:
-            sim = float(np.dot(record.e_face, emb))
-            if sim > max_similarity:
-                return True
+        """Visual dedup — always False (no visual embedding available)."""
         return False
 
     def _select_challenges(
@@ -411,12 +381,6 @@ class IdentityBuilder:
         cfg = self.config
         selected_indices = {f.frame_idx for f in already_selected}
 
-        # Collect DINOv2 face embeddings from already selected
-        selected_embeddings: List[np.ndarray] = []
-        for r, stable, bucket, quality, assignment in scored:
-            if r.frame_idx in selected_indices and r.e_face is not None:
-                selected_embeddings.append(r.e_face)
-
         # Candidates: not yet selected, loose gate, stable
         candidates = []
         for r, stable, bucket, quality, assignment in scored:
@@ -426,7 +390,7 @@ class IdentityBuilder:
                 continue
             if stable < cfg.challenge_min_stable:
                 continue
-            novelty = self._compute_novelty(r, selected_embeddings)
+            novelty = self._compute_novelty(r, [])
             # Combined score: novelty dominant, with quality and stability bonus
             combined = 0.5 * novelty + 0.3 * quality + 0.2 * stable
             candidates.append((r, stable, bucket, quality, assignment, novelty, combined))
@@ -446,12 +410,8 @@ class IdentityBuilder:
                 novelty_score=novelty,
                 pivot_name=assignment.pivot_name if assignment else None,
                 pivot_distance=assignment.pose_distance if assignment else 0.0,
-                face_crop_box=r.face_crop_box,
-                body_crop_box=r.body_crop_box,
+                head_crop_box=r.head_crop_box,
                 image_size=r.image_size,
             ))
-            # Update selected embeddings for novelty computation
-            if r.e_face is not None:
-                selected_embeddings.append(r.e_face)
 
         return challenges

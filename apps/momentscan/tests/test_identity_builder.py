@@ -39,8 +39,7 @@ def _make_record(
     frame_idx: int = 0,
     timestamp_ms: float = 0.0,
     e_id_seed: Optional[int] = None,
-    e_face_seed: Optional[int] = None,
-    e_body_seed: Optional[int] = None,
+    e_head_seed: Optional[int] = None,
     head_yaw: float = 0.0,
     head_pitch: float = 0.0,
     smile_intensity: float = 0.0,
@@ -57,8 +56,6 @@ def _make_record(
         frame_idx=frame_idx,
         timestamp_ms=timestamp_ms,
         e_id=_make_embedding(512, e_id_seed) if e_id_seed is not None else None,
-        e_face=_make_embedding(384, e_face_seed) if e_face_seed is not None else None,
-        e_body=_make_embedding(384, e_body_seed) if e_body_seed is not None else None,
         head_yaw=head_yaw,
         head_pitch=head_pitch,
         smile_intensity=smile_intensity,
@@ -171,12 +168,11 @@ class MockOutput:
 
 
 @dataclass
-class MockEmbedOutput:
-    e_face: Optional[np.ndarray] = None
-    e_body: Optional[np.ndarray] = None
-    face_crop_box: Optional[tuple] = None
-    body_crop_box: Optional[tuple] = None
+class MockShotQualityOutput:
+    """Mimics ShotQualityOutput (crop boxes only — no embeddings)."""
+    head_crop_box: Optional[tuple] = None
     image_size: Optional[tuple] = None
+    head_blur: float = 0.0
 
 
 @dataclass
@@ -233,52 +229,26 @@ class TestExtractIdentityRecord:
         # e_id should be L2-normalized
         assert abs(np.linalg.norm(record.e_id) - 1.0) < 1e-5
 
-    def test_face_embed_extraction(self):
+    def test_shot_quality_crop_extraction(self):
+        """shot.quality provides crop box coordinates for identity crops."""
         emb_id = _make_embedding(512, seed=1)
         face = MockFace(embedding=emb_id)
         face_output = MockOutput(faces=[face])
         face_obs = MockObs(source="face.detect", data=face_output)
 
-        e_face = _make_embedding(384, seed=2)
-        embed_data = MockEmbedOutput(
-            e_face=e_face,
-            face_crop_box=(10, 20, 100, 120),
+        shot_data = MockShotQualityOutput(
+            head_crop_box=(10, 20, 100, 120),
             image_size=(640, 480),
         )
-        embed_obs = MockObs(source="face.embed", data=embed_data)
+        shot_obs = MockObs(source="shot.quality", data=shot_data)
 
-        flow = MockFlowData(observations=[face_obs, embed_obs])
+        flow = MockFlowData(observations=[face_obs, shot_obs])
         frame = MockFrame()
 
         record = extract_identity_record(frame, [flow])
         assert record is not None
-        assert record.e_face is not None
-        assert record.e_face.shape == (384,)
-        assert record.face_crop_box == (10, 20, 100, 120)
+        assert record.head_crop_box == (10, 20, 100, 120)
         assert record.image_size == (640, 480)
-
-    def test_body_embed_extraction(self):
-        emb_id = _make_embedding(512, seed=1)
-        face = MockFace(embedding=emb_id)
-        face_output = MockOutput(faces=[face])
-        face_obs = MockObs(source="face.detect", data=face_output)
-
-        e_body = _make_embedding(384, seed=3)
-        body_data = MockEmbedOutput(
-            e_body=e_body,
-            body_crop_box=(0, 0, 200, 400),
-            image_size=(640, 480),
-        )
-        body_obs = MockObs(source="body.embed", data=body_data)
-
-        flow = MockFlowData(observations=[face_obs, body_obs])
-        frame = MockFrame()
-
-        record = extract_identity_record(frame, [flow])
-        assert record is not None
-        assert record.e_body is not None
-        assert record.e_body.shape == (384,)
-        assert record.body_crop_box == (0, 0, 200, 400)
 
     def test_expression_extraction(self):
         emb_id = _make_embedding(512, seed=1)
@@ -386,7 +356,7 @@ class TestIdentityBuilder:
                 frame_idx=i,
                 timestamp_ms=i * 100.0,
                 e_id_seed=42,
-                e_face_seed=i,
+
                 face_confidence=0.9,
                 blur_score=100.0,
                 head_yaw=(i % 20 - 10) * 3.0,  # -30 to 30
@@ -427,7 +397,7 @@ class TestIdentityBuilder:
         # 10 good records (same person)
         for i in range(10):
             r = _make_record(
-                frame_idx=i, e_id_seed=42, e_face_seed=i,
+                frame_idx=i, e_id_seed=42,
                 face_confidence=0.9, blur_score=100.0,
             )
             r.e_id = base_emb + np.random.default_rng(i).standard_normal(512).astype(np.float32) * 0.02
@@ -437,7 +407,7 @@ class TestIdentityBuilder:
         # 5 unstable records (very different embedding)
         for i in range(10, 15):
             r = _make_record(
-                frame_idx=i, e_id_seed=i * 100, e_face_seed=i,
+                frame_idx=i, e_id_seed=i * 100, e_head_seed=i,
                 face_confidence=0.9, blur_score=100.0,
             )
             records.append(r)
@@ -486,7 +456,7 @@ class TestIdentityBuilder:
             for j in range(5):
                 idx = i * 5 + j
                 r = _make_record(
-                    frame_idx=idx, e_id_seed=42, e_face_seed=idx,
+                    frame_idx=idx, e_id_seed=42, e_head_seed=idx,
                     face_confidence=0.9, blur_score=100.0,
                     head_yaw=float(yaw),
                 )
@@ -633,9 +603,8 @@ class TestCoverageDedup:
             assert len(person.coverage_frames) >= 2
 
     def test_visual_similarity_filters_duplicates(self):
-        """DINOv2 유사도가 높은 프레임은 건너뛴다."""
+        """시각적 유사도 필터 제거됨 → coverage는 max_per_bucket까지 선택된다."""
         base_emb = _make_embedding(512, seed=42)
-        base_face = _make_embedding(384, seed=100)
         cfg = IdentityConfig(
             coverage_max_per_bucket=3,
             coverage_min_interval_ms=0.0,  # 시간 제한 비활성화
@@ -651,10 +620,6 @@ class TestCoverageDedup:
             )
             r.e_id = base_emb + np.random.default_rng(i).standard_normal(512).astype(np.float32) * 0.02
             r.e_id = r.e_id / np.linalg.norm(r.e_id)
-            # 모두 거의 동일한 e_face → 유사도 ≈ 1.0
-            perturbation = np.random.default_rng(i).standard_normal(384).astype(np.float32) * 0.001
-            r.e_face = base_face + perturbation
-            r.e_face = r.e_face / np.linalg.norm(r.e_face)
             records.append(r)
 
         builder = IdentityBuilder(config=cfg)
@@ -662,8 +627,8 @@ class TestCoverageDedup:
 
         if 0 in result.persons:
             person = result.persons[0]
-            # 전부 시각적으로 동일 → coverage는 1장만 선택
-            assert len(person.coverage_frames) <= 1
+            # 시각적 유사도 필터 없음 → coverage는 max_per_bucket(3)까지 선택
+            assert len(person.coverage_frames) <= 3
 
 
 # ── Query (맥락 하이라이트) tests ──
@@ -836,7 +801,7 @@ class TestBankBridge:
                 frame_idx=i,
                 timestamp_ms=i * 2000.0,
                 e_id_seed=42,
-                e_face_seed=i,
+
                 face_confidence=0.9,
                 face_area_ratio=0.1,   # higher for quality > 0.5
                 blur_score=200.0,      # higher for quality > 0.5

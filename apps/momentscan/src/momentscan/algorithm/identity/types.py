@@ -22,10 +22,6 @@ class IdentityRecord:
     # ArcFace 512D (face.detect → FaceObservation.embedding)
     e_id: Optional[np.ndarray] = None
 
-    # DINOv2 384D (face.embed → e_face, body.embed → e_body)
-    e_face: Optional[np.ndarray] = None
-    e_body: Optional[np.ndarray] = None
-
     # 포즈/표정/품질 (버킷 분류 + 게이트용)
     head_yaw: float = 0.0
     head_pitch: float = 0.0
@@ -40,8 +36,7 @@ class IdentityRecord:
 
     # 크롭 좌표 (이미지 추출용)
     face_bbox: Optional[tuple[float, float, float, float]] = None  # 정규화
-    face_crop_box: Optional[tuple[int, int, int, int]] = None  # 픽셀
-    body_crop_box: Optional[tuple[int, int, int, int]] = None  # 픽셀
+    head_crop_box: Optional[tuple[int, int, int, int]] = None  # 픽셀
     image_size: Optional[tuple[int, int]] = None  # (w, h)
 
     # AU intensities from face.au (Dict[str, float], e.g., {"AU12": 2.5, ...})
@@ -76,8 +71,7 @@ class IdentityFrame:
     novelty_score: float = 0.0
     pivot_name: Optional[str] = None
     pivot_distance: float = 0.0
-    face_crop_box: Optional[tuple[int, int, int, int]] = None
-    body_crop_box: Optional[tuple[int, int, int, int]] = None
+    head_crop_box: Optional[tuple[int, int, int, int]] = None
     image_size: Optional[tuple[int, int]] = None
 
 

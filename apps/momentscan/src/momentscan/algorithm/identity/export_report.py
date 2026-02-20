@@ -23,13 +23,6 @@ from typing import Any, Dict, List
 
 import cv2
 
-from momentscan.algorithm.identity.buckets import (
-    YAW_LABELS,
-    PITCH_LABELS,
-    classify_yaw,
-    classify_pitch,
-    classify_expression,
-)
 from momentscan.algorithm.identity.types import (
     IdentityConfig,
     IdentityFrame,
@@ -41,6 +34,14 @@ from momentscan.algorithm.identity.types import (
 logger = logging.getLogger(__name__)
 
 THUMB_WIDTH = 220
+
+# Pivot-based heatmap labels
+_POSE_PIVOT_LABELS = [
+    "frontal", "three-quarter", "side-profile", "looking-up", "three-quarter-up", "fallback",
+]
+_EXPR_PIVOT_LABELS = [
+    "neutral", "smile", "excited", "surprised", "mouth_open", "eyes_closed",
+]
 JPEG_QUALITY = 70
 
 
@@ -183,6 +184,9 @@ def _build_person_data(
     records: List[IdentityRecord],
 ) -> Dict[str, Any]:
     """한 person의 차트 데이터."""
+    # Build frame_idx → record lookup for numeric yaw/pitch
+    record_map = {r.frame_idx: r for r in records}
+
     # All records: scatter plot (unselected)
     all_yaw = [r.head_yaw for r in records]
     all_pitch = [r.head_pitch for r in records]
@@ -197,8 +201,9 @@ def _build_person_data(
     scatter_selected = {}
     for stype, frames in selected_by_type.items():
         scatter_selected[stype] = {
-            "yaw": [f.bucket.yaw_bin for f in frames],
-            "pitch": [f.bucket.pitch_bin for f in frames],
+            # Numeric degrees from IdentityRecord (accurate for scatter plot)
+            "yaw": [round(record_map[f.frame_idx].head_yaw, 1) if f.frame_idx in record_map else 0.0 for f in frames],
+            "pitch": [round(record_map[f.frame_idx].head_pitch, 1) if f.frame_idx in record_map else 0.0 for f in frames],
             "frame_idx": [f.frame_idx for f in frames],
             "quality": [round(f.quality_score, 3) for f in frames],
             "stable": [round(f.stable_score, 3) for f in frames],
@@ -220,36 +225,40 @@ def _build_person_data(
 
 
 def _build_heatmap(person: PersonIdentity) -> Dict[str, Any]:
-    """Yaw x Pitch heatmap data."""
-    # Initialize grid
-    grid = [[0] * len(YAW_LABELS) for _ in range(len(PITCH_LABELS))]
-    # Expression detail per cell for tooltip
-    detail = [[{} for _ in range(len(YAW_LABELS))] for _ in range(len(PITCH_LABELS))]
+    """Pose pivot × Expression heatmap data.
+
+    X axis: pose pivot names (frontal → side-profile → … → fallback)
+    Y axis: expression labels (neutral → smile → excited → …)
+
+    Pivot frames: pose label from f.bucket.yaw_bin (set to pivot name by pivot_to_bucket())
+    Fallback frames: pose label = "fallback" (f.pivot_name is None)
+    """
+    x_labels = _POSE_PIVOT_LABELS
+    y_labels = _EXPR_PIVOT_LABELS
+    grid = [[0] * len(x_labels) for _ in range(len(y_labels))]
 
     all_frames = (
         person.anchor_frames + person.coverage_frames + person.challenge_frames
     )
     for f in all_frames:
-        yi = YAW_LABELS.index(f.bucket.yaw_bin) if f.bucket.yaw_bin in YAW_LABELS else -1
-        pi = PITCH_LABELS.index(f.bucket.pitch_bin) if f.bucket.pitch_bin in PITCH_LABELS else -1
-        if yi >= 0 and pi >= 0:
-            grid[pi][yi] += 1
-            expr = f.bucket.expression_bin
-            detail[pi][yi][expr] = detail[pi][yi].get(expr, 0) + 1
+        # Pivot frames have pose name in yaw_bin; fallback frames have old-style interval
+        pose_label = f.bucket.yaw_bin if f.pivot_name is not None else "fallback"
+        expr_label = f.bucket.expression_bin
 
-    # Build tooltip text matrix
-    tooltip = []
-    for pi in range(len(PITCH_LABELS)):
-        row = []
-        for yi in range(len(YAW_LABELS)):
-            parts = [f"{k}: {v}" for k, v in sorted(detail[pi][yi].items())]
-            row.append("<br>".join(parts) if parts else "empty")
-        tooltip.append(row)
+        xi = x_labels.index(pose_label) if pose_label in x_labels else -1
+        yi = y_labels.index(expr_label) if expr_label in y_labels else -1
+        if xi >= 0 and yi >= 0:
+            grid[yi][xi] += 1
+
+    tooltip = [
+        [str(grid[yi][xi]) if grid[yi][xi] > 0 else "empty" for xi in range(len(x_labels))]
+        for yi in range(len(y_labels))
+    ]
 
     return {
         "z": grid,
-        "x": YAW_LABELS,
-        "y": PITCH_LABELS,
+        "x": x_labels,
+        "y": y_labels,
         "tooltip": tooltip,
     }
 
@@ -305,9 +314,8 @@ def _build_summary_html(
             <span class="badge total">{n_total} total</span>
           </div>
           <div class="person-coverage">
-            yaw: {yaw_bins}/{len(YAW_LABELS)} bins &middot;
-            pitch: {pitch_bins}/{len(PITCH_LABELS)} bins &middot;
-            expression: {expr_bins}/4 bins
+            pose pivots: {yaw_bins}/{len(_POSE_PIVOT_LABELS)} &middot;
+            expression: {expr_bins}/4
           </div>
         </div>"""
 
@@ -668,14 +676,11 @@ _JS_MAIN = r"""
     ['anchor','coverage','challenge'].forEach(function(stype) {
       var sel = p.selected[stype];
       if (!sel || !sel.frame_idx.length) return;
-      // Convert yaw_bin/pitch_bin labels to approximate numeric values for plotting
-      var yawNums = sel.yaw.map(function(b) { return binToCenter(b, 'yaw'); });
-      var pitchNums = sel.pitch.map(function(b) { return binToCenter(b, 'pitch'); });
       var htext = sel.frame_idx.map(function(fi, i) {
-        return '#' + fi + '<br>q=' + sel.quality[i] + ' s=' + sel.stable[i];
+        return '#' + fi + '<br>y=' + sel.yaw[i].toFixed(1) + '\u00b0 p=' + sel.pitch[i].toFixed(1) + '\u00b0<br>q=' + sel.quality[i] + ' s=' + sel.stable[i];
       });
       scatterTraces.push({
-        x: yawNums, y: pitchNums, name: stype,
+        x: sel.yaw, y: sel.pitch, name: stype,
         text: htext,
         type:'scatter', mode:'markers',
         marker:{size:8, color:SET_COLORS[stype], opacity:0.85,
@@ -741,21 +746,7 @@ _JS_MAIN = r"""
     }, {responsive:true, displayModeBar:false});
   });
 
-  // Helper: convert bucket label to center value for scatter plot
-  function binToCenter(label, axis) {
-    if (axis === 'yaw') {
-      var yawMap = {
-        '[-45,-30]': -37.5, '[-30,-15]': -22.5, '[-15,-5]': -10,
-        '[-5,5]': 0, '[5,15]': 10, '[15,30]': 22.5, '[30,45]': 37.5
-      };
-      return yawMap[label] || 0;
-    }
-    var pitchMap = {
-      'down': -20, 'slight-down': -7.5, 'neutral': 0,
-      'slight-up': 7.5, 'up': 20
-    };
-    return pitchMap[label] || 0;
-  }
+
 })();
 """
 

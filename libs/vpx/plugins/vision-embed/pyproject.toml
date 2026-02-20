@@ -1,18 +1,22 @@
 [project]
 name = "vpx-vision-embed"
-version = "0.1.0"
-description = "Vision embedding analyzer (DINOv2/SigLIP)"
+version = "0.2.0"
+description = "Shot quality analyzer for portrait crop regions (blur, exposure, bokeh, composition, LAION aesthetic)"
 requires-python = ">=3.10"
 dependencies = [
     "vpx-sdk",
     "vpx-face-detect",
+    "opencv-python",
+]
+
+[project.optional-dependencies]
+aesthetic = [
     "torch>=2.0",
-    "torchvision>=0.15",
+    "open-clip-torch>=2.24",
 ]
 
 [project.entry-points."visualpath.modules"]
-"face.embed" = "vpx.vision_embed:FaceEmbedAnalyzer"
-"body.embed" = "vpx.vision_embed:BodyEmbedAnalyzer"
+"shot.quality" = "vpx.vision_embed:ShotQualityAnalyzer"
 
 [build-system]
 requires = ["hatchling"]

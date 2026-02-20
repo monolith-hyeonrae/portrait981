@@ -90,11 +90,6 @@ class AnalyzerVisualizer:
         except ImportError:
             pass
         try:
-            from vpx.body_pose.analyzer import PoseAnalyzer
-            self._modules["body.pose"] = PoseAnalyzer(pose_backend=None)
-        except ImportError:
-            pass
-        try:
             from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
             self._modules["face.classify"] = FaceClassifierAnalyzer()
         except ImportError:
@@ -232,8 +227,6 @@ class DebugVisualizer:
         return self.create_debug_view(
             frame=ctx.frame,
             face_obs=ctx.observations.get("face.detect"),
-            pose_obs=ctx.observations.get("body.pose"),
-            gesture_obs=ctx.observations.get("hand.gesture"),
             quality_obs=ctx.observations.get("frame.quality"),
             classifier_obs=ctx.classifier_obs,
             fusion_result=ctx.fusion_result,
@@ -244,6 +237,7 @@ class DebugVisualizer:
             monitor_stats=ctx.monitor_stats,
             backend_label=ctx.backend_label,
             expression_obs=ctx.observations.get("face.expression"),
+            shot_quality_obs=ctx.observations.get("shot.quality"),
             face_au_obs=ctx.observations.get("face.au"),
             head_pose_obs=ctx.observations.get("head.pose"),
         )
@@ -254,8 +248,6 @@ class DebugVisualizer:
         self,
         frame: Frame,
         face_obs: Optional[Observation] = None,
-        pose_obs: Optional[Observation] = None,
-        gesture_obs: Optional[Observation] = None,
         quality_obs: Optional[Observation] = None,
         classifier_obs: Optional[Observation] = None,
         fusion_result: Optional[Observation] = None,
@@ -267,8 +259,7 @@ class DebugVisualizer:
         backend_label: str = "",
         score_result: Optional[ScoreResult] = None,
         expression_obs: Optional[Observation] = None,
-        face_embed_obs: Optional[Observation] = None,
-        body_embed_obs: Optional[Observation] = None,
+        shot_quality_obs: Optional[Observation] = None,
         embed_stats: Optional[Dict[str, float]] = None,
         face_au_obs: Optional[Observation] = None,
         head_pose_obs: Optional[Observation] = None,
@@ -287,18 +278,12 @@ class DebugVisualizer:
         observations: Dict[str, Observation] = {}
         if face_obs is not None:
             observations["face.detect"] = face_obs
-        if pose_obs is not None:
-            observations["body.pose"] = pose_obs
-        if gesture_obs is not None:
-            observations["hand.gesture"] = gesture_obs
         if classifier_obs is not None:
             observations["face.classify"] = classifier_obs
         if expression_obs is not None:
             observations["face.expression"] = expression_obs
-        if face_embed_obs is not None:
-            observations["face.embed"] = face_embed_obs
-        if body_embed_obs is not None:
-            observations["body.embed"] = body_embed_obs
+        if shot_quality_obs is not None:
+            observations["shot.quality"] = shot_quality_obs
         if face_au_obs is not None:
             observations["face.au"] = face_au_obs
         if head_pose_obs is not None:

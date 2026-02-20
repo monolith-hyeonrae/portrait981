@@ -67,8 +67,7 @@ def _frame_to_dict(frame) -> dict:
         "quality_score": round(frame.quality_score, 4),
         "stable_score": round(frame.stable_score, 4),
         "novelty_score": round(frame.novelty_score, 4),
-        "face_crop_box": frame.face_crop_box,
-        "body_crop_box": frame.body_crop_box,
+        "head_crop_box": frame.head_crop_box,
         "image_size": frame.image_size,
     }
     if frame.pivot_name is not None:

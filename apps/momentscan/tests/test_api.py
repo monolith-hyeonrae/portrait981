@@ -88,8 +88,8 @@ class TestConfigureModules:
         modules = app.configure_modules([])
         names = [m.name for m in modules]
         assert "face.detect" in names
-        assert "body.pose" in names
-        assert "hand.gesture" in names
+        assert "shot.quality" in names
+        assert "hand.gesture" not in names
         assert "face.classify" in names  # auto-injected
 
     def test_face_classifier_auto_inject(self):
@@ -170,8 +170,8 @@ class TestMomentscanApp:
         names = [m.name for m in resolved]
         assert "face.detect" in names
         assert "face.expression" in names
-        assert "body.pose" in names
-        assert "hand.gesture" in names
+        assert "shot.quality" in names
+        assert "hand.gesture" not in names
         assert "face.classify" in names
 
     def test_after_run_returns_ms_result(self):

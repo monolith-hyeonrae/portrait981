@@ -46,8 +46,8 @@ class TimelinePanel:
         self._anchor_times: List[int] = []
         # Embedding tracks
         self._face_identity_history: List[float] = []
-        self._face_change_history: List[float] = []
-        self._body_change_history: List[float] = []
+        self._face_identity_history_q: List[float] = []  # alias kept for compat
+        self._head_aesthetic_history: List[float] = []
 
     def reset(self) -> None:
         self._happy_history.clear()
@@ -57,8 +57,8 @@ class TimelinePanel:
         self._trigger_times.clear()
         self._anchor_times.clear()
         self._face_identity_history.clear()
-        self._face_change_history.clear()
-        self._body_change_history.clear()
+        self._face_identity_history_q.clear()
+        self._head_aesthetic_history.clear()
 
     @property
     def trigger_count(self) -> int:
@@ -103,12 +103,12 @@ class TimelinePanel:
         # Embedding tracks
         if embed_stats:
             self._face_identity_history.append(embed_stats.get("face_identity", 0.0))
-            self._face_change_history.append(embed_stats.get("face_change", 0.0))
-            self._body_change_history.append(embed_stats.get("body_change", 0.0))
+            self._face_identity_history_q.append(embed_stats.get("face_identity", 0.0))
+            self._head_aesthetic_history.append(embed_stats.get("head_aesthetic", 0.0))
         else:
             self._face_identity_history.append(0.0)
-            self._face_change_history.append(0.0)
-            self._body_change_history.append(0.0)
+            self._face_identity_history_q.append(0.0)
+            self._head_aesthetic_history.append(0.0)
 
         # Anchor update marker
         if embed_stats and embed_stats.get("anchor_updated", 0.0) > 0:
@@ -125,8 +125,8 @@ class TimelinePanel:
             self._spike_history.pop(0)
             self._gate_history.pop(0)
             self._face_identity_history.pop(0)
-            self._face_change_history.pop(0)
-            self._body_change_history.pop(0)
+            self._face_identity_history_q.pop(0)
+            self._head_aesthetic_history.pop(0)
             self._trigger_times = [t - 1 for t in self._trigger_times if t > 1]
             self._anchor_times = [t - 1 for t in self._anchor_times if t > 1]
 
@@ -216,33 +216,19 @@ class TimelinePanel:
                 if self._face_identity_history[i] > 0 or self._face_identity_history[i - 1] > 0:
                     cv2.line(canvas, pts_q[i - 1], pts_q[i], COLOR_ID, 1)
 
-        # face_change (cyan line, spiky = face visual change)
-        COLOR_FC = (200, 200, 0)  # cyan-ish
-        if self._face_change_history:
-            pts_fc = [
+        # head_aesthetic (orange line, LAION aesthetic score [0,1])
+        COLOR_AES = (0, 140, 255)  # orange BGR
+        if self._head_aesthetic_history:
+            pts_aes = [
                 (
                     x + int(i * width / self._max_history),
-                    y + height - int(min(1.0, v / 0.3) * height),
+                    y + height - int(v * height),
                 )
-                for i, v in enumerate(self._face_change_history)
+                for i, v in enumerate(self._head_aesthetic_history)
             ]
-            for i in range(1, len(pts_fc)):
-                if self._face_change_history[i] > 0 or self._face_change_history[i - 1] > 0:
-                    cv2.line(canvas, pts_fc[i - 1], pts_fc[i], COLOR_FC, 1)
-
-        # body_change (magenta line, spiky = body visual change)
-        COLOR_BC = (200, 0, 200)  # magenta
-        if self._body_change_history:
-            pts_bc = [
-                (
-                    x + int(i * width / self._max_history),
-                    y + height - int(min(1.0, v / 0.3) * height),
-                )
-                for i, v in enumerate(self._body_change_history)
-            ]
-            for i in range(1, len(pts_bc)):
-                if self._body_change_history[i] > 0 or self._body_change_history[i - 1] > 0:
-                    cv2.line(canvas, pts_bc[i - 1], pts_bc[i], COLOR_BC, 1)
+            for i in range(1, len(pts_aes)):
+                if self._head_aesthetic_history[i] > 0 or self._head_aesthetic_history[i - 1] > 0:
+                    cv2.line(canvas, pts_aes[i - 1], pts_aes[i], COLOR_AES, 1)
 
         # Trigger markers
         for t in self._trigger_times:
@@ -263,9 +249,8 @@ class TimelinePanel:
         # Legend
         cv2.putText(canvas, "Happy", (x + 5, y + 12), FONT, 0.3, COLOR_HAPPY_BGR, 1)
         cv2.putText(canvas, "ID", (x + 45, y + 12), FONT, 0.3, COLOR_ID, 1)
-        cv2.putText(canvas, "FC", (x + 62, y + 12), FONT, 0.3, COLOR_FC, 1)
-        cv2.putText(canvas, "BC", (x + 80, y + 12), FONT, 0.3, COLOR_BC, 1)
-        cv2.putText(canvas, "base", (x + 100, y + 12), FONT, 0.3, COLOR_GRAY_BGR, 1)
+        cv2.putText(canvas, "Aes", (x + 60, y + 12), FONT, 0.3, COLOR_AES, 1)
+        cv2.putText(canvas, "base", (x + 85, y + 12), FONT, 0.3, COLOR_GRAY_BGR, 1)
         cv2.putText(
             canvas, f"th={threshold:.2f}", (x + width - 50, y + 12),
             FONT, 0.25, COLOR_GRAY_BGR, 1,

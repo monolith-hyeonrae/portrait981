@@ -38,15 +38,8 @@ class FrameRecord:
     head_roll: float = 0.0
 
     # Expression features (from vpx-face-expression)
-    mouth_open_ratio: float = 0.0
     eye_open_ratio: float = 0.0
     smile_intensity: float = 0.0
-
-    # Pose features (from vpx-body-pose)
-    wrist_raise: float = 0.0
-    elbow_angle_change: float = 0.0
-    torso_rotation: float = 0.0
-    hand_near_face: float = 0.0
 
     # Quality features (from frame.quality)
     blur_score: float = 0.0
@@ -56,13 +49,13 @@ class FrameRecord:
     # Face classifier (from face.classify)
     main_face_confidence: float = 0.0
 
-    # Embedding features (from face.embed, body.embed + face.detect ArcFace)
+    # ArcFace identity (from face.detect)
     face_identity: float = 0.0   # ArcFace anchor similarity (quality)
-    face_change: float = 0.0     # DINOv2 face crop temporal delta (impact)
-    body_change: float = 0.0     # DINOv2 body crop temporal delta (impact)
 
-    # Frame scoring (from frame.scoring)
-    frame_score: float = 0.0
+    # Shot quality (from shot.quality — portrait crop region metrics)
+    head_blur: float = 0.0           # head_crop Laplacian variance (face sharpness)
+    head_exposure: float = 0.0       # head_crop mean brightness
+    head_aesthetic: float = 0.0      # LAION aesthetic score for head_crop [0,1]
 
 
 @dataclass
@@ -97,19 +90,17 @@ class HighlightConfig:
     gate_exposure_max: float = 220.0
 
     # Quality score weights (§6 Step 2)
-    quality_blur_weight: float = 0.35
-    quality_face_size_weight: float = 0.25
-    quality_face_identity_weight: float = 0.40  # ArcFace anchor similarity (frontalness 대체)
-    quality_frontalness_weight: float = 0.30   # fallback (ArcFace 없을 때만 사용)
+    quality_head_blur_weight: float = 0.30       # head_crop sharpness (portrait-specific)
+    quality_face_size_weight: float = 0.20
+    quality_face_identity_weight: float = 0.30   # ArcFace anchor similarity
+    quality_frontalness_weight: float = 0.25     # fallback (ArcFace 없을 때만 사용)
+    quality_head_aesthetic_weight: float = 0.10  # LAION aesthetic (0 when unavailable)
 
     # Impact score weights (§6 Step 3) — Top-K weighted mean
     impact_top_k: int = 3  # 상위 K개 시그널만 사용
-    impact_face_change_weight: float = 0.20         # DINOv2 face temporal delta
-    impact_body_change_weight: float = 0.15         # DINOv2 body temporal delta
     impact_smile_intensity_weight: float = 0.30
-    impact_head_yaw_delta_weight: float = 0.15
-    impact_head_velocity_weight: float = 0.10
-    impact_torso_rotation_weight: float = 0.10
+    impact_head_yaw_delta_weight: float = 0.20   # 증가: head_change 제거 보완
+    impact_head_aesthetic_weight: float = 0.15   # LAION aesthetic (절대값 기준, per-video min-max)
 
     # Delta computation
     delta_alpha: float = 0.1           # EMA baseline alpha (for temporal deltas)
@@ -186,11 +177,12 @@ class HighlightResult:
                 # raw features
                 "face_detected", "face_confidence", "face_area_ratio",
                 "head_yaw", "head_pitch",
-                "mouth_open_ratio", "eye_open_ratio", "smile_intensity",
-                "wrist_raise", "torso_rotation",
+                "eye_open_ratio", "smile_intensity",
                 "blur_score", "brightness",
-                # embedding features
-                "face_identity", "face_change", "body_change",
+                # identity
+                "face_identity",
+                # shot quality
+                "head_blur", "head_exposure", "head_aesthetic",
             ]
             writer.writerow(header)
 
@@ -209,16 +201,14 @@ class HighlightResult:
                     f"{r.face_area_ratio:.4f}",
                     f"{r.head_yaw:.1f}",
                     f"{r.head_pitch:.1f}",
-                    f"{r.mouth_open_ratio:.3f}",
                     f"{r.eye_open_ratio:.3f}",
                     f"{r.smile_intensity:.3f}",
-                    f"{r.wrist_raise:.3f}",
-                    f"{r.torso_rotation:.3f}",
                     f"{r.blur_score:.1f}",
                     f"{r.brightness:.1f}",
                     f"{r.face_identity:.4f}",
-                    f"{r.face_change:.4f}",
-                    f"{r.body_change:.4f}",
+                    f"{r.head_blur:.1f}",
+                    f"{r.head_exposure:.1f}",
+                    f"{r.head_aesthetic:.4f}",
                 ])
 
         logger.info("Exported timeseries CSV: %s (%d rows)", csv_path, len(records))

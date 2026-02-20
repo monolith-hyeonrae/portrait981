@@ -42,16 +42,6 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from vpx.body_pose.analyzer import PoseAnalyzer
-        modules["body.pose"] = PoseAnalyzer(pose_backend=None)
-    except ImportError:
-        pass
-    try:
-        from vpx.hand_gesture.analyzer import GestureAnalyzer
-        modules["hand.gesture"] = GestureAnalyzer(hand_backend=None)
-    except ImportError:
-        pass
-    try:
         from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
         modules["face.classify"] = FaceClassifierAnalyzer()
     except ImportError:
@@ -67,9 +57,8 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from vpx.vision_embed.analyzer import FaceEmbedAnalyzer, BodyEmbedAnalyzer
-        modules["face.embed"] = FaceEmbedAnalyzer(backend=None)
-        modules["body.embed"] = BodyEmbedAnalyzer(backend=None)
+        from vpx.vision_embed.analyzer import ShotQualityAnalyzer
+        modules["shot.quality"] = ShotQualityAnalyzer()
     except ImportError:
         pass
     return modules
@@ -77,8 +66,6 @@ def _build_default_modules() -> Dict[str, object]:
 
 # Layer mapping: module name -> DebugLayer
 _LAYER_MAP = {
-    "body.pose": DebugLayer.POSE,
-    "hand.gesture": DebugLayer.GESTURE,
     "face.detect": DebugLayer.FACE,
     "face.expression": DebugLayer.FACE,
     "face.au": DebugLayer.FACE,
@@ -132,10 +119,9 @@ class VideoPanel:
         if roi is not None and (layers is None or layers[DebugLayer.ROI]):
             self._draw_roi(output, roi)
 
-        # Draw order: background (embed, pose, gesture) -> foreground (face)
+        # Draw order: background (shot.quality) -> foreground (face)
         draw_order = [
-            "face.embed", "body.embed",
-            "body.pose", "hand.gesture",
+            "shot.quality",
             "face.detect", "face.expression",
             "face.au", "head.pose",
             "face.classify",
@@ -179,21 +165,21 @@ class VideoPanel:
         observations: Optional[Dict[str, Observation]],
         embed_stats: Dict[str, float],
     ) -> None:
-        """Draw embedding indicators next to the main face bbox.
+        """Draw shot quality indicators next to the main face bbox.
 
         Shows small horizontal bars below the face bbox:
         - face_identity: Green=high anchor similarity, Red=low
-        - face_change: Cyan bar (face visual change magnitude)
-        - body_change: Magenta bar (body visual change magnitude)
+        - head_blur: Cyan bar (head crop sharpness, Laplacian variance)
+        - scene_bg_separation: Green bar (head sharper than background ratio)
         """
         identity = embed_stats.get("face_identity", 0.0)
-        face_delta = embed_stats.get("face_change", 0.0)
-        body_delta = embed_stats.get("body_change", 0.0)
+        head_blur = embed_stats.get("head_blur", 0.0)
+        bg_sep = embed_stats.get("scene_bg_separation", 0.0)
 
-        if identity <= 0 and face_delta <= 0 and body_delta <= 0:
+        if identity <= 0 and head_blur <= 0 and bg_sep <= 0:
             return
 
-        # Find main face bbox from face.detect (face.classify wraps faces differently)
+        # Find main face bbox from face.detect
         face_obs = observations.get("face.detect") if observations else None
         if face_obs is None:
             return
@@ -231,23 +217,23 @@ class VideoPanel:
             )
             py += 8
 
-        # Face change bar (cyan)
-        if face_delta > 0:
-            fc_color = (200, 200, 0)  # cyan-ish BGR
-            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, face_delta / 0.3), fc_color)
+        # Head blur bar (cyan) — Laplacian variance, scaled to 500
+        if head_blur > 0:
+            blr_color = (200, 200, 0)  # cyan-ish BGR
+            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, head_blur / 500.0), blr_color)
             cv2.putText(
-                image, f"FC:{face_delta:.3f}", (px + bar_w + 3, py + 4),
-                FONT, 0.25, fc_color, 1,
+                image, f"BLR:{head_blur:.0f}", (px + bar_w + 3, py + 4),
+                FONT, 0.25, blr_color, 1,
             )
             py += 7
 
-        # Body change bar (magenta)
-        if body_delta > 0:
-            bc_color = (200, 0, 200)  # magenta BGR
-            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, body_delta / 0.3), bc_color)
+        # BG separation bar (green) — ratio head_blur/scene_blur, scaled to 3.0
+        if bg_sep > 0:
+            sep_color = (0, 200, 100)  # green-ish BGR
+            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, bg_sep / 3.0), sep_color)
             cv2.putText(
-                image, f"BC:{body_delta:.3f}", (px + bar_w + 3, py + 4),
-                FONT, 0.25, bc_color, 1,
+                image, f"SEP:{bg_sep:.2f}", (px + bar_w + 3, py + 4),
+                FONT, 0.25, sep_color, 1,
             )
 
     # --- ROI ---

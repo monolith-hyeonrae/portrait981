@@ -74,11 +74,8 @@ def extract_identity_record(
     # frame.quality
     _extract_quality(record, obs_by_source.get("frame.quality"))
 
-    # face.embed → DINOv2 face embedding + crop box
-    _extract_face_embed(record, obs_by_source.get("face.embed"))
-
-    # body.embed → DINOv2 body embedding + crop box
-    _extract_body_embed(record, obs_by_source.get("body.embed"))
+    # shot.quality → portrait crop box coordinates
+    _extract_shot_quality(record, obs_by_source.get("shot.quality"))
 
     # face.au → AU intensities
     _extract_face_au(record, obs_by_source.get("face.au"))
@@ -131,42 +128,29 @@ def _extract_quality(record: IdentityRecord, obs: Any) -> None:
     record.brightness = float(signals.get("brightness", 0.0))
 
 
-def _extract_face_embed(record: IdentityRecord, obs: Any) -> None:
-    """face.embed: DINOv2 face embedding + crop box."""
+def _extract_shot_quality(record: IdentityRecord, obs: Any) -> None:
+    """shot.quality: portrait crop box coordinates for identity crops."""
     if obs is None:
         return
     data = getattr(obs, "data", None)
     if data is None:
         return
 
-    e_face = getattr(data, "e_face", None)
-    if e_face is not None:
-        record.e_face = np.asarray(e_face, dtype=np.float32)
-
-    record.face_crop_box = getattr(data, "face_crop_box", None)
-    if record.image_size is None:
-        record.image_size = getattr(data, "image_size", None)
-
-
-def _extract_body_embed(record: IdentityRecord, obs: Any) -> None:
-    """body.embed: DINOv2 body embedding + crop box."""
-    if obs is None:
-        return
-    data = getattr(obs, "data", None)
-    if data is None:
-        return
-
-    e_body = getattr(data, "e_body", None)
-    if e_body is not None:
-        record.e_body = np.asarray(e_body, dtype=np.float32)
-
-    record.body_crop_box = getattr(data, "body_crop_box", None)
+    record.head_crop_box = getattr(data, "head_crop_box", None)
     if record.image_size is None:
         record.image_size = getattr(data, "image_size", None)
 
 
 def _extract_face_au(record: IdentityRecord, obs: Any) -> None:
-    """face.au → AU intensities dict."""
+    """face.au → AU intensities dict + smile_intensity 보정.
+
+    AU12(Lip Corner Puller)로 em_happy보다 직접적인 미소 측정값 사용.
+    DISFA 0-5 스케일: min(AU12 / 3.0, 1.0)으로 정규화.
+
+    max() 전략: AU12 > em_happy 이면 AU12 사용, 아니면 em_happy 유지.
+    촬영 환경(조명, 각도)에 따라 AU12가 em_happy보다 낮게 나올 수 있으므로
+    face.au는 smile 신호를 개선만 할 수 있고 저하시키면 안 된다.
+    """
     if obs is None:
         return
     data = getattr(obs, "data", None)
@@ -175,6 +159,10 @@ def _extract_face_au(record: IdentityRecord, obs: Any) -> None:
     au_list = getattr(data, "au_intensities", None)
     if au_list and len(au_list) > 0:
         record.au_intensities = au_list[0]  # main face
+        au12 = record.au_intensities.get("AU12", None)
+        if au12 is not None:
+            smile_from_au12 = min(1.0, float(au12) / 3.0)
+            record.smile_intensity = max(record.smile_intensity, smile_from_au12)
 
 
 def _extract_head_pose(record: IdentityRecord, obs: Any) -> None:

@@ -1,39 +1,35 @@
-"""Output types for face/body embedding analyzers."""
+"""Output types for shot quality analyzer."""
 
 from dataclasses import dataclass
 from typing import Optional
 
-import numpy as np
-
 
 @dataclass
-class FaceEmbedOutput:
-    """Output from FaceEmbedAnalyzer.
+class ShotQualityOutput:
+    """Output from ShotQualityAnalyzer.
 
     Attributes:
-        e_face: L2-normalized face embedding (384,) or None if no face.
-        face_crop_box: Face crop bounding box (x, y, w, h) in pixels or None.
+        head_crop_box: Head crop bounding box (x, y, w, h) in pixels or None.
         image_size: (width, height) of the source frame in pixels.
+
+        Layer 1 — CV-based (always computed when face detected):
+            head_blur: Laplacian variance of head_crop (sharpness).
+            head_exposure: Mean brightness of head_crop (0-255).
+
+        Layer 2 — LAION aesthetic (optional, requires open-clip-torch + weights):
+            head_aesthetic: LAION aesthetic score for head_crop, normalized [0, 1].
+            Defaults to 0.0 when weights are unavailable.
     """
 
-    e_face: Optional[np.ndarray] = None  # (384,) L2-normalized
-    face_crop_box: Optional[tuple[int, int, int, int]] = None
-    image_size: Optional[tuple[int, int]] = None  # (w, h)
+    head_crop_box: Optional[tuple] = None
+    image_size: Optional[tuple] = None  # (w, h)
+
+    # Layer 1: CV-based quality
+    head_blur: float = 0.0
+    head_exposure: float = 0.0
+
+    # Layer 2: LAION aesthetic (optional)
+    head_aesthetic: float = 0.0
 
 
-@dataclass
-class BodyEmbedOutput:
-    """Output from BodyEmbedAnalyzer.
-
-    Attributes:
-        e_body: L2-normalized body embedding (384,) or None if no body pose.
-        body_crop_box: Body crop bounding box (x, y, w, h) in pixels or None.
-        image_size: (width, height) of the source frame in pixels.
-    """
-
-    e_body: Optional[np.ndarray] = None  # (384,) L2-normalized
-    body_crop_box: Optional[tuple[int, int, int, int]] = None
-    image_size: Optional[tuple[int, int]] = None  # (w, h)
-
-
-__all__ = ["FaceEmbedOutput", "BodyEmbedOutput"]
+__all__ = ["ShotQualityOutput"]

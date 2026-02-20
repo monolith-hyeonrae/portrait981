@@ -75,7 +75,7 @@ class BatchHighlightEngine:
         quality_scores = self._compute_quality_scores(arrays, normed)
 
         # 6. Impact score
-        impact_scores = self._compute_impact_scores(normed)
+        impact_scores = self._compute_impact_scores(arrays, normed)
 
         # 7. Final score = quality × impact (gate 통과 프레임만)
         final_scores = np.where(gate_mask, quality_scores * impact_scores, 0.0)
@@ -128,8 +128,10 @@ class BatchHighlightEngine:
         for derived in PIPELINE_DERIVED_FIELDS:
             fields.update(derived.source_fields)
         # scoring에 필요하지만 delta/derived에 없는 추가 필드
-        fields.update(("blur_score", "eye_open_ratio", "face_confidence",
-                        "face_identity", "face_change", "body_change"))
+        fields.update((
+            "blur_score", "eye_open_ratio", "face_confidence", "face_identity",
+            "head_blur", "head_aesthetic",
+        ))
 
         return {
             field: np.array([getattr(r, field) for r in records])
@@ -150,21 +152,6 @@ class BatchHighlightEngine:
             arr = arrays[spec.record_field]
             ema = self._compute_ema(arr, cfg.delta_alpha)
             deltas[spec.record_field] = np.abs(arr - ema)
-
-        # face_change / body_change are already deltas → pass-through
-        for key in ("face_change", "body_change"):
-            if key in arrays:
-                deltas[key] = arrays[key]
-
-        # Derived fields
-        for derived in PIPELINE_DERIVED_FIELDS:
-            if derived.name == "head_velocity":
-                yaw = arrays["head_yaw"]
-                pitch = arrays["head_pitch"]
-                dt = 1.0 / cfg.fps
-                dyaw = np.abs(np.diff(yaw, prepend=yaw[0])) / dt
-                dpitch = np.abs(np.diff(pitch, prepend=pitch[0])) / dt
-                deltas["head_velocity"] = np.sqrt(dyaw**2 + dpitch**2)
 
         return deltas
 
@@ -244,68 +231,87 @@ class BatchHighlightEngine:
     ) -> np.ndarray:
         """연속 품질 점수.
 
-        ArcFace face_identity 사용 시:
-          quality = blur * w_blur + face_size * w_size + face_identity * w_identity
-        ArcFace 없는 프레임은 frontalness fallback.
+        shot.quality 필드 우선, 없으면 frame-level fallback.
+        ArcFace face_identity 없으면 frontalness fallback.
 
         highlight_rules.md §6 Step 2
         """
         cfg = self.config
 
-        # Per-video 정규화된 blur (높을수록 좋음 → 0~1 clamp)
-        blur = arrays["blur_score"]
-        blur_normed = self._minmax_normalize(blur)
+        # Sharpness: head_blur(shot.quality) 우선, fallback → frame blur_score
+        head_blur = arrays["head_blur"]
+        has_head_blur = head_blur > 0
+        blur_source = np.where(has_head_blur, head_blur, arrays["blur_score"])
+        blur_normed = self._minmax_normalize(blur_source)
 
-        # Face size (face_area_ratio, 높을수록 좋음)
+        # Face size
         face_size_normed = self._minmax_normalize(arrays["face_area_ratio"])
 
         # ArcFace face_identity (already 0~1 range)
         face_id = arrays["face_identity"]
-
-        # Frontalness fallback (1 - |yaw|/max_yaw, 정면에 가까울수록 1)
         frontalness = np.clip(1.0 - np.abs(arrays["head_yaw"]) / cfg.frontalness_max_yaw, 0.0, 1.0)
-
-        # Per-frame: use face_identity where available, frontalness as fallback
         has_identity = face_id > 0
         face_quality = np.where(has_identity, face_id, frontalness)
         recog_weight = np.where(has_identity, cfg.quality_face_identity_weight, cfg.quality_frontalness_weight)
 
-        # Rebalance: blur + face_size weights must adjust with recog weight
-        total_other = cfg.quality_blur_weight + cfg.quality_face_size_weight
-        total = total_other + recog_weight
+        # LAION aesthetic (shot.quality, optional — 0 when unavailable)
+        head_aesthetic = arrays["head_aesthetic"]
+        has_aesthetic = head_aesthetic > 0
+
+        # Build weighted sum dynamically
+        w_blur = cfg.quality_head_blur_weight
+        w_size = cfg.quality_face_size_weight
+        w_aes = np.where(has_aesthetic, cfg.quality_head_aesthetic_weight, 0.0)
+        total = w_blur + w_size + recog_weight + w_aes
+
         quality = (
-            (cfg.quality_blur_weight / total) * blur_normed
-            + (cfg.quality_face_size_weight / total) * face_size_normed
-            + (recog_weight / total) * face_quality
-        )
+            w_blur * blur_normed
+            + w_size * face_size_normed
+            + recog_weight * face_quality
+            + w_aes * head_aesthetic
+        ) / (total + 1e-8)
+
         return np.clip(quality, 0.0, 1.0)
 
     # ── Step 6: Impact score ──
 
-    def _compute_impact_scores(self, normed: dict[str, np.ndarray]) -> np.ndarray:
+    def _compute_impact_scores(
+        self,
+        arrays: dict[str, np.ndarray],
+        normed: dict[str, np.ndarray],
+    ) -> np.ndarray:
         """감정/동작 변화 점수 (Top-K weighted mean).
 
         highlight_rules.md §6 Step 3
 
         각 시그널의 가중 기여도를 계산한 뒤, 프레임별로 상위 K개만
         선택하여 평균. 노이즈 누적을 방지하고 두드러진 변화에 집중.
+
+        smile_intensity는 예외:
+        - head_yaw/velocity 등 모션 시그널은 '변화량' delta가 의미 있음
+        - smile은 '절대값이 높은 프레임' = 가장 웃는 순간이 좋은 사진
+        - delta 방식은 베이스라인(평상시 smile)이 높을 때 피크 delta가 작아져
+          smile이 가득한 영상에서 impact가 0.3 이하로 낮아지는 문제 발생
+        - per-video min-max 정규화 절대값을 사용해 '이 영상에서 가장 웃는 순간' 포착
         """
         cfg = self.config
 
         def relu(x: np.ndarray) -> np.ndarray:
             return np.maximum(x, 0.0)
 
-        # (signal_name, weight, values) — 활성 시그널만 수집
+        # smile: delta가 아닌 per-video min-max 절대값 사용
+        smile_abs = self._minmax_normalize(arrays["smile_intensity"])
+
+        # head_aesthetic: 절대값 기준 (가장 미학적인 순간이 좋은 사진)
+        # smile_intensity와 동일한 이유로 delta 대신 per-video min-max 절대값 사용
+        aes_abs = self._minmax_normalize(arrays["head_aesthetic"])
+
+        # (signal_name, weight, values)
         channels: list[tuple[str, float, np.ndarray]] = [
-            ("smile_intensity", cfg.impact_smile_intensity_weight, relu(normed["smile_intensity"])),
+            ("smile_intensity", cfg.impact_smile_intensity_weight, smile_abs),
             ("head_yaw", cfg.impact_head_yaw_delta_weight, relu(normed["head_yaw"])),
-            ("head_velocity", cfg.impact_head_velocity_weight, relu(normed["head_velocity"])),
-            ("torso_rotation", cfg.impact_torso_rotation_weight, relu(normed["torso_rotation"])),
+            ("head_aesthetic", cfg.impact_head_aesthetic_weight, aes_abs),
         ]
-        if "face_change" in normed:
-            channels.append(("face_change", cfg.impact_face_change_weight, relu(normed["face_change"])))
-        if "body_change" in normed:
-            channels.append(("body_change", cfg.impact_body_change_weight, relu(normed["body_change"])))
 
         n = len(normed["smile_intensity"])
         k = min(cfg.impact_top_k, len(channels))
@@ -314,13 +320,17 @@ class BatchHighlightEngine:
         weights_arr = np.array([w for _, w, _ in channels])   # (C,)
         weighted = np.array([w * v for _, w, v in channels])  # (C, N)
 
-        # Per-frame top-K: select top K channels, normalize by their weights
+        # 고정 denominator: K개 최대 가중치의 합 (e.g., k=3 → 0.30+0.20+0.15=0.65)
+        # 기여가 없는 채널의 weight이 분모에 섞이는 것을 방지.
+        # 의미: "top-K 채널 모두 v=1.0일 때 최대 impact=1.0"
+        max_achievable = float(np.sort(weights_arr)[::-1][:k].sum())
+
+        # Per-frame top-K: select K channels by weighted contribution
         top_k_indices = np.argsort(-weighted, axis=0)[:k]  # (K, N)
         top_k_values = np.take_along_axis(weighted, top_k_indices, axis=0)  # (K, N)
 
-        # sum(w_i × v_i) / sum(w_i) for selected channels → [0, 1] range
-        top_k_weights = weights_arr[top_k_indices]  # (K, N)
-        impact = top_k_values.sum(axis=0) / (top_k_weights.sum(axis=0) + 1e-8)
+        # sum(w_i × v_i for top-K) / max_achievable → [0, 1] range
+        impact = top_k_values.sum(axis=0) / (max_achievable + 1e-8)
 
         return impact
 
@@ -339,6 +349,13 @@ class BatchHighlightEngine:
         """scipy.signal.find_peaks 기반 peak detection.
 
         highlight_rules.md §7
+
+        prominence 계산 방식:
+        - 절대값 기준 (기존): np.percentile(positive, pct) — 점수 floor가 높을 때
+          threshold도 높아져 피크를 놓침 (모두 웃는 영상에서 문제)
+        - 상대값 기준 (추가): score_range × relative_factor — floor에 무관하게
+          영상 내 변화폭의 일정 비율을 threshold로 사용
+        두 값의 min을 사용: 어느 쪽이든 더 관대한 기준으로 피크 허용.
         """
         from scipy.signal import find_peaks
 
@@ -347,14 +364,22 @@ class BatchHighlightEngine:
         if min_distance < 1:
             min_distance = 1
 
-        # Prominence: per-video 상대적 (상위 percentile)
         positive_scores = smoothed[smoothed > 0]
         if len(positive_scores) == 0:
             return np.array([], dtype=int)
 
-        prominence = np.percentile(positive_scores, cfg.peak_prominence_percentile)
-        if prominence <= 0:
-            prominence = np.max(smoothed) * 0.1
+        # 절대값 기준: 기존 percentile 방식
+        abs_prominence = np.percentile(positive_scores, cfg.peak_prominence_percentile)
+        if abs_prominence <= 0:
+            abs_prominence = np.max(smoothed) * 0.1
+
+        # 상대값 기준: 영상 내 score 변화폭의 30%
+        # score floor가 높을 때 절대값 threshold가 너무 커지는 문제 보완
+        score_range = float(np.max(smoothed)) - float(np.percentile(positive_scores, 10))
+        range_prominence = score_range * 0.30
+
+        # 두 기준 중 관대한(작은) 값 선택
+        prominence = min(abs_prominence, range_prominence) if range_prominence > 1e-6 else abs_prominence
 
         peaks, _ = find_peaks(
             smoothed,
