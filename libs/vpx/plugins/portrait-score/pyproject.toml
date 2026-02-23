@@ -1,7 +1,7 @@
 [project]
-name = "vpx-vision-embed"
-version = "0.2.0"
-description = "Shot quality analyzer for portrait crop regions (blur, exposure, bokeh, composition, LAION aesthetic)"
+name = "vpx-portrait-score"
+version = "0.3.0"
+description = "Portrait score analyzer — CLIP-based portrait quality scoring"
 requires-python = ">=3.10"
 dependencies = [
     "vpx-sdk",
@@ -14,9 +14,14 @@ aesthetic = [
     "torch>=2.0",
     "open-clip-torch>=2.24",
 ]
+caption = [
+    "torch>=2.0",
+    "open-clip-torch>=2.24",
+    "transformers>=4.30,<5",
+]
 
 [project.entry-points."visualpath.modules"]
-"shot.quality" = "vpx.vision_embed:ShotQualityAnalyzer"
+"portrait.score" = "vpx.portrait_score:PortraitScoreAnalyzer"
 
 [build-system]
 requires = ["hatchling"]

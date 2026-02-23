@@ -127,6 +127,10 @@ Examples:
         "-v", "--verbose", action="store_true",
         help="Enable verbose logging (show all third-party and internal messages)"
     )
+    debug_parser.add_argument(
+        "--caption", action="store_true",
+        help="Enable CoCa text captioner (shows generated captions in overlay)"
+    )
 
     # process command
     proc_parser = subparsers.add_parser("process", help="Process video and extract highlight clips")

@@ -237,7 +237,7 @@ class DebugVisualizer:
             monitor_stats=ctx.monitor_stats,
             backend_label=ctx.backend_label,
             expression_obs=ctx.observations.get("face.expression"),
-            shot_quality_obs=ctx.observations.get("shot.quality"),
+            portrait_score_obs=ctx.observations.get("portrait.score"),
             face_au_obs=ctx.observations.get("face.au"),
             head_pose_obs=ctx.observations.get("head.pose"),
         )
@@ -259,7 +259,7 @@ class DebugVisualizer:
         backend_label: str = "",
         score_result: Optional[ScoreResult] = None,
         expression_obs: Optional[Observation] = None,
-        shot_quality_obs: Optional[Observation] = None,
+        portrait_score_obs: Optional[Observation] = None,
         embed_stats: Optional[Dict[str, float]] = None,
         face_au_obs: Optional[Observation] = None,
         head_pose_obs: Optional[Observation] = None,
@@ -282,8 +282,8 @@ class DebugVisualizer:
             observations["face.classify"] = classifier_obs
         if expression_obs is not None:
             observations["face.expression"] = expression_obs
-        if shot_quality_obs is not None:
-            observations["shot.quality"] = shot_quality_obs
+        if portrait_score_obs is not None:
+            observations["portrait.score"] = portrait_score_obs
         if face_au_obs is not None:
             observations["face.au"] = face_au_obs
         if head_pose_obs is not None:

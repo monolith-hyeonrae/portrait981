@@ -216,7 +216,7 @@ class TimelinePanel:
                 if self._face_identity_history[i] > 0 or self._face_identity_history[i - 1] > 0:
                     cv2.line(canvas, pts_q[i - 1], pts_q[i], COLOR_ID, 1)
 
-        # head_aesthetic (orange line, LAION aesthetic score [0,1])
+        # head_aesthetic (orange line, CLIP portrait quality [0,1])
         COLOR_AES = (0, 140, 255)  # orange BGR
         if self._head_aesthetic_history:
             pts_aes = [

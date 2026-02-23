@@ -422,7 +422,7 @@ class StatsPanel:
         Shows:
         - face_identity: ArcFace similarity to anchor
         - head_blur: head crop sharpness (Laplacian variance)
-        - head_aesthetic: LAION aesthetic score for head crop [0,1]
+        - head_aesthetic: CLIP portrait quality score [0,1]
         - anchor_conf: confidence of the anchor face
         """
         identity = embed_stats.get("face_identity", 0.0)
@@ -467,7 +467,7 @@ class StatsPanel:
             )
             y += bar_h + 4
 
-        # head_aesthetic bar (orange, LAION aesthetic score [0,1])
+        # head_aesthetic bar (orange, CLIP portrait quality [0,1])
         if head_aesthetic > 0:
             aes_color = (0, 140, 255)  # orange BGR
             cv2.putText(canvas, "AES:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)

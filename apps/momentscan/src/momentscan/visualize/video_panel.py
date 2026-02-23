@@ -57,8 +57,13 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from vpx.vision_embed.analyzer import ShotQualityAnalyzer
-        modules["shot.quality"] = ShotQualityAnalyzer()
+        from vpx.portrait_score.analyzer import PortraitScoreAnalyzer
+        modules["portrait.score"] = PortraitScoreAnalyzer()
+    except ImportError:
+        pass
+    try:
+        from momentscan.algorithm.analyzers.face_quality import FaceQualityAnalyzer
+        modules["face.quality"] = FaceQualityAnalyzer()
     except ImportError:
         pass
     return modules
@@ -119,9 +124,9 @@ class VideoPanel:
         if roi is not None and (layers is None or layers[DebugLayer.ROI]):
             self._draw_roi(output, roi)
 
-        # Draw order: background (shot.quality) -> foreground (face)
+        # Draw order: background (portrait.score, face.quality) -> foreground (face)
         draw_order = [
-            "shot.quality",
+            "portrait.score", "face.quality",
             "face.detect", "face.expression",
             "face.au", "head.pose",
             "face.classify",

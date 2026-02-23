@@ -4,8 +4,8 @@ highlight_rules.md 설계를 따르는 배치 분석 엔진:
 1. Numeric feature delta 계산
 2. Per-video 정규화 (MAD z-score)
 3. QualityGate (hard filter)
-4. Scoring: quality_score × impact_score
-5. Temporal smoothing + peak detection
+4. Scoring: quality_blend × quality + impact_blend × impact (가산)
+5. Temporal smoothing (gate-pass only EMA) + peak detection
 6. Window 생성 + best frame 선택
 """
 
@@ -77,13 +77,19 @@ class BatchHighlightEngine:
         # 6. Impact score
         impact_scores = self._compute_impact_scores(arrays, normed)
 
-        # 7. Final score = quality × impact (gate 통과 프레임만)
-        final_scores = np.where(gate_mask, quality_scores * impact_scores, 0.0)
-        logger.info("[5/7] Scoring complete (quality × impact)")
+        # 7. Final score = quality_blend × quality + impact_blend × impact (gate 통과만)
+        wq = cfg.final_quality_blend
+        wi = cfg.final_impact_blend
+        final_scores = np.where(
+            gate_mask,
+            wq * quality_scores + wi * impact_scores,
+            0.0,
+        )
+        logger.info("[5/7] Scoring complete (%.2f×quality + %.2f×impact)", wq, wi)
 
-        # 8. Temporal smoothing (EMA)
-        smoothed = self._smooth_ema(final_scores, alpha=cfg.smoothing_alpha)
-        logger.info("[6/7] Temporal smoothing (EMA α=%.2f)", cfg.smoothing_alpha)
+        # 8. Temporal smoothing (gate-pass only EMA)
+        smoothed = self._smooth_ema_gated(final_scores, gate_mask, alpha=cfg.smoothing_alpha)
+        logger.info("[6/7] Temporal smoothing (gate-pass only EMA α=%.2f)", cfg.smoothing_alpha)
 
         # 9. Peak detection
         peaks = self._detect_peaks(smoothed)
@@ -130,7 +136,11 @@ class BatchHighlightEngine:
         # scoring에 필요하지만 delta/derived에 없는 추가 필드
         fields.update((
             "blur_score", "eye_open_ratio", "face_confidence", "face_identity",
-            "head_blur", "head_aesthetic",
+            "head_blur",
+            # CLIP 4축 (portrait_best = max of 4)
+            "clip_disney_smile", "clip_charisma", "clip_wild_roar", "clip_playful_cute",
+            # composites (info only)
+            "duchenne_smile", "wild_intensity", "chill_score",
         ))
 
         return {
@@ -231,14 +241,14 @@ class BatchHighlightEngine:
     ) -> np.ndarray:
         """연속 품질 점수.
 
-        shot.quality 필드 우선, 없으면 frame-level fallback.
+        face.quality 필드 우선, 없으면 frame-level fallback.
         ArcFace face_identity 없으면 frontalness fallback.
 
         highlight_rules.md §6 Step 2
         """
         cfg = self.config
 
-        # Sharpness: head_blur(shot.quality) 우선, fallback → frame blur_score
+        # Sharpness: head_blur(face.quality) 우선, fallback → frame blur_score
         head_blur = arrays["head_blur"]
         has_head_blur = head_blur > 0
         blur_source = np.where(has_head_blur, head_blur, arrays["blur_score"])
@@ -254,21 +264,15 @@ class BatchHighlightEngine:
         face_quality = np.where(has_identity, face_id, frontalness)
         recog_weight = np.where(has_identity, cfg.quality_face_identity_weight, cfg.quality_frontalness_weight)
 
-        # LAION aesthetic (shot.quality, optional — 0 when unavailable)
-        head_aesthetic = arrays["head_aesthetic"]
-        has_aesthetic = head_aesthetic > 0
-
         # Build weighted sum dynamically
         w_blur = cfg.quality_head_blur_weight
         w_size = cfg.quality_face_size_weight
-        w_aes = np.where(has_aesthetic, cfg.quality_head_aesthetic_weight, 0.0)
-        total = w_blur + w_size + recog_weight + w_aes
+        total = w_blur + w_size + recog_weight
 
         quality = (
             w_blur * blur_normed
             + w_size * face_size_normed
             + recog_weight * face_quality
-            + w_aes * head_aesthetic
         ) / (total + 1e-8)
 
         return np.clip(quality, 0.0, 1.0)
@@ -302,15 +306,19 @@ class BatchHighlightEngine:
         # smile: delta가 아닌 per-video min-max 절대값 사용
         smile_abs = self._minmax_normalize(arrays["smile_intensity"])
 
-        # head_aesthetic: 절대값 기준 (가장 미학적인 순간이 좋은 사진)
-        # smile_intensity와 동일한 이유로 delta 대신 per-video min-max 절대값 사용
-        aes_abs = self._minmax_normalize(arrays["head_aesthetic"])
+        # Portrait: CLIP 4축 중 프레임별 최상위 1개만 채택
+        portrait_best = np.maximum.reduce([
+            self._minmax_normalize(arrays["clip_disney_smile"]),
+            self._minmax_normalize(arrays["clip_charisma"]),
+            self._minmax_normalize(arrays["clip_wild_roar"]),
+            self._minmax_normalize(arrays["clip_playful_cute"]),
+        ])
 
         # (signal_name, weight, values)
         channels: list[tuple[str, float, np.ndarray]] = [
             ("smile_intensity", cfg.impact_smile_intensity_weight, smile_abs),
             ("head_yaw", cfg.impact_head_yaw_delta_weight, relu(normed["head_yaw"])),
-            ("head_aesthetic", cfg.impact_head_aesthetic_weight, aes_abs),
+            ("portrait_best", cfg.impact_portrait_weight, portrait_best),
         ]
 
         n = len(normed["smile_intensity"])
@@ -336,12 +344,23 @@ class BatchHighlightEngine:
 
     # ── Step 8: Smoothing ──
 
-    def _smooth_ema(self, scores: np.ndarray, alpha: float) -> np.ndarray:
-        """EMA smoothing for spike noise removal.
+    def _smooth_ema_gated(
+        self, scores: np.ndarray, gate_mask: np.ndarray, alpha: float,
+    ) -> np.ndarray:
+        """Gate-pass only EMA smoothing.
 
-        highlight_rules.md §7
+        gate_mask=0 프레임은 EMA에 0을 주입하지 않고 이전 smoothed 값을 유지.
+        이렇게 하면 gate-fail 구간이 피크를 과도하게 감쇄하는 문제가 해소된다.
         """
-        return self._compute_ema(scores, alpha)
+        n = len(scores)
+        smoothed = np.zeros(n)
+        smoothed[0] = scores[0]
+        for i in range(1, n):
+            if gate_mask[i]:
+                smoothed[i] = alpha * scores[i] + (1 - alpha) * smoothed[i - 1]
+            else:
+                smoothed[i] = smoothed[i - 1]
+        return smoothed
 
     # ── Step 9: Peak detection ──
 

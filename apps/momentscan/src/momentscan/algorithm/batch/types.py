@@ -52,10 +52,30 @@ class FrameRecord:
     # ArcFace identity (from face.detect)
     face_identity: float = 0.0   # ArcFace anchor similarity (quality)
 
-    # Shot quality (from shot.quality — portrait crop region metrics)
+    # Face quality (from face.quality — head crop region metrics)
     head_blur: float = 0.0           # head_crop Laplacian variance (face sharpness)
     head_exposure: float = 0.0       # head_crop mean brightness
-    head_aesthetic: float = 0.0      # LAION aesthetic score for head_crop [0,1]
+    head_aesthetic: float = 0.0      # CLIP portrait quality score [0,1]
+
+    # CLIP axis scores (from portrait.score → metadata._clip_axes)
+    clip_disney_smile: float = 0.0
+    clip_charisma: float = 0.0
+    clip_wild_roar: float = 0.0
+    clip_playful_cute: float = 0.0
+
+    # AU features (from face.au)
+    au6_cheek_raiser: float = 0.0   # AU6: 눈가 주름 (Duchenne marker)
+    au12_lip_corner: float = 0.0    # AU12: 입꼬리 올림 (smile)
+    au25_lips_part: float = 0.0     # AU25: 입술 벌림
+    au26_jaw_drop: float = 0.0      # AU26: 턱 벌림
+
+    # Expression neutral (from face.expression)
+    em_neutral: float = 0.0         # HSEmotion neutral probability
+
+    # Cross-analyzer composites (derived in extract.py)
+    duchenne_smile: float = 0.0     # disney_smile × (AU6 + AU12) — genuine warm smile
+    wild_intensity: float = 0.0     # wild_roar × max(AU25, AU26) — 실제로 입 벌림 확인
+    chill_score: float = 0.0        # neutral_high × all_axes_low — 무표정 탑승
 
 
 @dataclass
@@ -78,7 +98,7 @@ class HighlightWindow:
 class HighlightConfig:
     """배치 하이라이트 분석 설정.
 
-    highlight_rules.md §6 Scoring: Gate × Impact 곱 구조.
+    highlight_rules.md §6 Scoring: Gate → 가산 (quality + impact).
     """
 
     # Quality gate thresholds (§6 Step 1)
@@ -94,13 +114,16 @@ class HighlightConfig:
     quality_face_size_weight: float = 0.20
     quality_face_identity_weight: float = 0.30   # ArcFace anchor similarity
     quality_frontalness_weight: float = 0.25     # fallback (ArcFace 없을 때만 사용)
-    quality_head_aesthetic_weight: float = 0.10  # LAION aesthetic (0 when unavailable)
+
+    # Final score = quality_blend × quality + impact_blend × impact (가산)
+    final_quality_blend: float = 0.35
+    final_impact_blend: float = 0.65
 
     # Impact score weights (§6 Step 3) — Top-K weighted mean
-    impact_top_k: int = 3  # 상위 K개 시그널만 사용
-    impact_smile_intensity_weight: float = 0.30
-    impact_head_yaw_delta_weight: float = 0.20   # 증가: head_change 제거 보완
-    impact_head_aesthetic_weight: float = 0.15   # LAION aesthetic (절대값 기준, per-video min-max)
+    impact_top_k: int = 3  # 상위 K개 시그널만 사용 (현재 3채널: smile, yaw, portrait)
+    impact_smile_intensity_weight: float = 0.25       # 미소 강도 (절대값)
+    impact_head_yaw_delta_weight: float = 0.15        # 머리 회전 변화량
+    impact_portrait_weight: float = 0.25              # portrait.score 최상위 1개 (duchenne/wild/charisma/chill 중 max)
 
     # Delta computation
     delta_alpha: float = 0.1           # EMA baseline alpha (for temporal deltas)
@@ -183,6 +206,16 @@ class HighlightResult:
                 "face_identity",
                 # shot quality
                 "head_blur", "head_exposure", "head_aesthetic",
+                # CLIP axes
+                "clip_disney_smile", "clip_charisma",
+                "clip_wild_roar", "clip_playful_cute",
+                # AU features
+                "au6_cheek_raiser", "au12_lip_corner",
+                "au25_lips_part", "au26_jaw_drop",
+                # expression neutral
+                "em_neutral",
+                # composites
+                "duchenne_smile", "wild_intensity", "chill_score",
             ]
             writer.writerow(header)
 
@@ -209,6 +242,22 @@ class HighlightResult:
                     f"{r.head_blur:.1f}",
                     f"{r.head_exposure:.1f}",
                     f"{r.head_aesthetic:.4f}",
+                    # CLIP axes
+                    f"{r.clip_disney_smile:.4f}",
+                    f"{r.clip_charisma:.4f}",
+                    f"{r.clip_wild_roar:.4f}",
+                    f"{r.clip_playful_cute:.4f}",
+                    # AU features
+                    f"{r.au6_cheek_raiser:.3f}",
+                    f"{r.au12_lip_corner:.3f}",
+                    f"{r.au25_lips_part:.3f}",
+                    f"{r.au26_jaw_drop:.3f}",
+                    # expression neutral
+                    f"{r.em_neutral:.3f}",
+                    # composites
+                    f"{r.duchenne_smile:.4f}",
+                    f"{r.wild_intensity:.4f}",
+                    f"{r.chill_score:.4f}",
                 ])
 
         logger.info("Exported timeseries CSV: %s (%d rows)", csv_path, len(records))

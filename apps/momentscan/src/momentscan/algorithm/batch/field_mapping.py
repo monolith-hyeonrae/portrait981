@@ -56,13 +56,14 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
                  rationale="머리 기울기 참고. 현재 scoring 미사용"),
     FieldMapping("face.detect", "face_identity", "얼굴 동일성", "quality", "quality_face_identity_weight",
                  rationale="ArcFace anchor 대비 cosine similarity. 정면/선명/가림없음을 통합적으로 평가"),
-    # shot.quality (3)
-    FieldMapping("shot.quality", "head_blur", "헤드샷 선명도 (Laplacian)", "quality", "quality_head_blur_weight",
+    # face.quality (2)
+    FieldMapping("face.quality", "head_blur", "헤드샷 선명도 (Laplacian)", "quality", "quality_head_blur_weight",
                  rationale="portrait crop 내 얼굴 선명도. 전체 프레임 blur보다 portrait 목적에 직접적"),
-    FieldMapping("shot.quality", "head_exposure", "헤드샷 밝기 (0-255)", "info",
+    FieldMapping("face.quality", "head_exposure", "헤드샷 밝기 (0-255)", "info",
                  rationale="얼굴 crop 내 노출 참고용"),
-    FieldMapping("shot.quality", "head_aesthetic", "헤드샷 미학 점수 (LAION)", "quality", "quality_head_aesthetic_weight",
-                 rationale="LAION Aesthetic score for head_crop. quality score에 가중합 반영; impact score에도 per-video min-max 절대값으로 기여 (impact_head_aesthetic_weight). 0이면 shot.quality 미실행"),
+    # portrait.score (1)
+    FieldMapping("portrait.score", "head_aesthetic", "포트레이트 품질 점수 (CLIP)", "info",
+                 rationale="CLIP aggregate portrait quality. 4축 개별 점수(disney_smile, charisma, wild_roar, playful_cute)와 복합 시그널이 scoring 담당. 참고용"),
     # face.expression (2)
     FieldMapping("face.expression", "eye_open_ratio", "눈 개방도 proxy", "gate",
                  rationale="눈 감은 사진은 인물 사진으로 부적합. 0.15 미만이면 탈락"),
@@ -70,7 +71,7 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
                  rationale="face.au 실행 시 LibreFace AU12(Lip Corner Puller) 직접 측정(DISFA 0-5 → min(AU12/3.0, 1.0)). face.au 없으면 HSEmotion em_happy 폴백. 표현 메트릭이므로 face.expression 패널에 표시"),
     # frame.quality (3)
     FieldMapping("frame.quality", "blur_score", "선명도 (Laplacian 분산)", "gate",
-                 rationale="모션블러가 심한 프레임은 사진 품질 열화. Laplacian 50 미만 탈락 (gate_blur_min). 품질 점수는 shot.quality head_blur 사용"),
+                 rationale="모션블러가 심한 프레임은 사진 품질 열화. Laplacian 50 미만 탈락 (gate_blur_min). 품질 점수는 face.quality head_blur 사용"),
     FieldMapping("frame.quality", "brightness", "평균 밝기 (0-255)", "gate",
                  rationale="너무 밝거나 너무 어두우면 후보정으로도 복구 어려움. 40-220 범위만 통과"),
     FieldMapping("frame.quality", "contrast", "대비 (표준편차)", "info",
@@ -78,6 +79,34 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
     # face.classify (1)
     FieldMapping("face.classify", "main_face_confidence", "주탑승자 분류 신뢰도", "info",
                  rationale="주탑승자 분류 신뢰도 참고용"),
+    # CLIP axes (4) — portrait.score에서 추출, portrait_best 서브시그널
+    FieldMapping("portrait.score", "clip_disney_smile", "디즈니 미소 축 점수", "info",
+                 rationale="따뜻한 Duchenne 미소 분위기. duchenne_smile 복합 시그널 구성 → portrait_best에 기여"),
+    FieldMapping("portrait.score", "clip_charisma", "카리스마 축 점수", "info",
+                 rationale="시크/당당한 분위기. portrait_best에 직접 기여"),
+    FieldMapping("portrait.score", "clip_wild_roar", "포효 축 점수", "info",
+                 rationale="호탕한 함성/환호 분위기. wild_intensity 복합 시그널 구성 → portrait_best에 기여"),
+    FieldMapping("portrait.score", "clip_playful_cute", "장난기 축 점수", "info",
+                 rationale="혀내밀기/볼부풀리기 등. portrait_best 후보 (CLIP 4축 중 max 선택)"),
+    # face.au — 개별 AU (4)
+    FieldMapping("face.au", "au6_cheek_raiser", "AU6 볼 올림 (Duchenne)", "info",
+                 rationale="Duchenne smile 복합 시그널 구성 요소"),
+    FieldMapping("face.au", "au12_lip_corner", "AU12 입꼬리 올림", "info",
+                 rationale="Duchenne smile + smile_intensity 보정 근거"),
+    FieldMapping("face.au", "au25_lips_part", "AU25 입술 벌림", "info",
+                 rationale="wild_intensity 복합 시그널 구성 요소"),
+    FieldMapping("face.au", "au26_jaw_drop", "AU26 턱 벌림", "info",
+                 rationale="wild_intensity 복합 시그널 구성 요소"),
+    # face.expression — neutral
+    FieldMapping("face.expression", "em_neutral", "무표정 확률 (HSEmotion)", "info",
+                 rationale="chill 복합 시그널 구성 요소. eye_open_ratio 산출 근거"),
+    # Cross-analyzer composites (3) — portrait_best 서브시그널 (프레임별 최상위 1개만 Impact 반영)
+    FieldMapping("portrait.score", "duchenne_smile", "Duchenne 미소 (CLIP×AU)", "info",
+                 rationale="disney_smile × (AU6+AU12). portrait_best 후보 (프레임별 max 선택)"),
+    FieldMapping("portrait.score", "wild_intensity", "포효 강도 (CLIP×AU)", "info",
+                 rationale="wild_roar × max(AU25,AU26). portrait_best 후보 (프레임별 max 선택)"),
+    FieldMapping("portrait.score", "chill_score", "무표정 탑승 (neutral×low_axes)", "info",
+                 rationale="neutral 높음 + CLIP 축 낮음. portrait_best 후보 (프레임별 max 선택)"),
 )
 
 PIPELINE_DELTA_SPECS: tuple[DeltaSpec, ...] = (
@@ -85,6 +114,8 @@ PIPELINE_DELTA_SPECS: tuple[DeltaSpec, ...] = (
     DeltaSpec("head_yaw"),
     DeltaSpec("face_area_ratio"),
     DeltaSpec("brightness"),
+    DeltaSpec("duchenne_smile"),
+    DeltaSpec("wild_intensity"),
 )
 
 PIPELINE_DERIVED_FIELDS: tuple[DerivedField, ...] = (

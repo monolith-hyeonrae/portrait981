@@ -189,8 +189,9 @@ class TestBatchHighlightEngine:
     def test_impact_smile_high_baseline(self):
         """대부분 웃는 영상에서도 smile 피크의 impact가 충분히 높아야 한다.
 
-        기존 delta 방식: EMA baseline이 0.7에 수렴 → 피크 delta = 0.3 → impact ≈ 0.3
-        수정 후 절대값 방식: 피크 smile이 영상 내 최고값 → min-max = 1.0 → impact ≈ 0.46
+        smile_intensity weight=0.20, top-k=4 → max_achievable=top4 weights 합.
+        smile만 활성일 때: 0.20 / max_achievable ≈ 0.27.
+        duchenne/CLIP 결합 시 더 높아짐 (그게 설계 의도).
         """
         records = _make_records(200)
         # 대부분 웃는 baseline (0.7)
@@ -205,9 +206,9 @@ class TestBatchHighlightEngine:
         result = engine.analyze(records)
         ts = result._timeseries
 
-        # 피크 프레임의 impact score가 0.40 이상이어야 한다
+        # smile 단독 채널: weight=0.20 / top-4 max_achievable ≈ 0.25+
         peak_impact = ts["impact_scores"][100]
-        assert peak_impact >= 0.40, f"impact at smile peak = {peak_impact:.3f} (expected >= 0.40)"
+        assert peak_impact >= 0.25, f"impact at smile peak = {peak_impact:.3f} (expected >= 0.25)"
 
     def test_high_baseline_smile_peaks_detected(self):
         """대부분 웃는 영상에서도 피크가 검출되어야 한다.

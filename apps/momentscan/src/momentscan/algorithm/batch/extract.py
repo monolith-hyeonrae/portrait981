@@ -9,7 +9,8 @@ on_frame() 콜백에서 호출되어,
 - face.au: AU12 → smile_intensity 보정 (max 전략)
 - frame.quality: Observation.signals (blur, brightness, contrast)
 - face.classify: Observation.signals (main_confidence)
-- shot.quality: ShotQualityOutput (head_blur, exposure, bg_sep, composition, aesthetic)
+- face.quality: FaceQualityOutput (head_blur, head_exposure)
+- portrait.score: PortraitScoreOutput (head_aesthetic, CLIP axes)
 """
 
 from __future__ import annotations
@@ -65,7 +66,10 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
     _extract_face_au(record, obs_by_source.get("face.au"))
     _extract_quality(record, obs_by_source.get("frame.quality"))
     _extract_face_classify(record, obs_by_source.get("face.classify"))
-    _extract_shot_quality(record, obs_by_source.get("shot.quality"))
+    _extract_face_quality(record, obs_by_source.get("face.quality"))
+    _extract_portrait_score(record, obs_by_source.get("portrait.score"))
+
+    _compute_composites(record)
 
     return record
 
@@ -129,6 +133,7 @@ def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
         face_signals = getattr(face, "signals", {}) or {}
         neutral = float(face_signals.get("em_neutral", 1.0))
         record.eye_open_ratio = 1.0 - neutral
+        record.em_neutral = neutral
         record.smile_intensity = float(face_signals.get("em_happy", 0.0))
         return
 
@@ -138,9 +143,10 @@ def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
 
 
 def _extract_face_au(record: FrameRecord, obs: Any) -> None:
-    """face.au: AU12(Lip Corner Puller)로 smile_intensity를 보정한다.
+    """face.au: 개별 AU 강도 추출 + AU12로 smile_intensity 보정.
 
-    max() 전략: AU12 > em_happy 이면 AU12 사용, 아니면 em_happy 유지.
+    AU6/AU12/AU25/AU26을 FrameRecord에 저장하고,
+    AU12는 기존 max() 전략으로 smile_intensity도 보정.
     """
     if obs is None:
         return
@@ -151,6 +157,14 @@ def _extract_face_au(record: FrameRecord, obs: Any) -> None:
     if not au_list:
         return
     au = au_list[0]  # main face
+
+    # 개별 AU 강도 저장 (DISFA 0-5 스케일)
+    record.au6_cheek_raiser = float(au.get("AU6", 0.0))
+    record.au12_lip_corner = float(au.get("AU12", 0.0))
+    record.au25_lips_part = float(au.get("AU25", 0.0))
+    record.au26_jaw_drop = float(au.get("AU26", 0.0))
+
+    # 기존 smile_intensity max 보정 유지
     au12 = au.get("AU12", None)
     if au12 is not None:
         smile_from_au12 = min(1.0, float(au12) / 3.0)
@@ -177,8 +191,8 @@ def _extract_face_classify(record: FrameRecord, obs: Any) -> None:
     record.main_face_confidence = float(signals.get("main_confidence", 0.0))
 
 
-def _extract_shot_quality(record: FrameRecord, obs: Any) -> None:
-    """shot.quality: ShotQualityOutput에서 portrait crop 품질 수치 추출."""
+def _extract_face_quality(record: FrameRecord, obs: Any) -> None:
+    """face.quality: FaceQualityOutput에서 얼굴 crop 품질 수치 추출."""
     if obs is None:
         return
 
@@ -188,4 +202,49 @@ def _extract_shot_quality(record: FrameRecord, obs: Any) -> None:
 
     record.head_blur = float(getattr(data, "head_blur", 0.0))
     record.head_exposure = float(getattr(data, "head_exposure", 0.0))
+
+
+def _extract_portrait_score(record: FrameRecord, obs: Any) -> None:
+    """portrait.score: PortraitScoreOutput에서 CLIP portrait 품질 수치 추출."""
+    if obs is None:
+        return
+
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+
     record.head_aesthetic = float(getattr(data, "head_aesthetic", 0.0))
+
+    # CLIP axis scores (metadata._clip_axes)
+    metadata = getattr(obs, "metadata", None) or {}
+    clip_axes = metadata.get("_clip_axes")
+    if clip_axes:
+        for ax in clip_axes:
+            field_name = f"clip_{ax.name}"
+            if hasattr(record, field_name):
+                setattr(record, field_name, float(ax.score))
+
+
+def _compute_composites(record: FrameRecord) -> None:
+    """Cross-analyzer composite signals 계산.
+
+    extract_frame_record() 마지막에 호출.
+    모든 개별 필드가 채워진 후 조합.
+    """
+    # Duchenne smile: disney_smile 분위기 × AU 근육 증거
+    # AU6(눈주름) + AU12(입꼬리) → 0~5 스케일 → /5.0으로 정규화 → clamp [0,1]
+    au_duchenne = min(1.0, (record.au6_cheek_raiser + record.au12_lip_corner) / 5.0)
+    record.duchenne_smile = record.clip_disney_smile * au_duchenne
+
+    # Wild intensity: 함성 분위기 × 실제 입벌림
+    au_mouth_open = min(1.0, max(record.au25_lips_part, record.au26_jaw_drop) / 3.0)
+    record.wild_intensity = record.clip_wild_roar * au_mouth_open
+
+    # Chill: 무표정 + 모든 CLIP 축 비활성
+    axes_max = max(
+        record.clip_disney_smile, record.clip_charisma,
+        record.clip_wild_roar, record.clip_playful_cute,
+    )
+    neutral_high = max(0.0, record.em_neutral - 0.5) * 2.0  # 0.5+ → [0,1]
+    axes_low = max(0.0, 1.0 - axes_max * 2.0)  # 0.5 이하일 때만 양수
+    record.chill_score = neutral_high * axes_low if record.face_detected else 0.0

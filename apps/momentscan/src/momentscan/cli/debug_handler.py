@@ -100,10 +100,10 @@ class DebugFrameHandler:
         # Build monitor_stats from observation timing data
         monitor_stats = self._build_monitor_stats(observations)
 
-        # Embedding tracking (ArcFace quality + DINOv2 delta)
+        # Embedding tracking (ArcFace quality + portrait score)
         embed_stats = self.embed_tracker.update(
             face_obs=observations.get("face.detect"),
-            shot_quality_obs=observations.get("shot.quality"),
+            portrait_score_obs=observations.get("portrait.score"),
         )
 
         # Render debug view
@@ -121,7 +121,7 @@ class DebugFrameHandler:
             backend_label=self.backend_label,
             score_result=score_result,
             expression_obs=observations.get("face.expression"),
-            shot_quality_obs=observations.get("shot.quality"),
+            portrait_score_obs=observations.get("portrait.score"),
             embed_stats=embed_stats,
             face_au_obs=observations.get("face.au"),
             head_pose_obs=observations.get("head.pose"),

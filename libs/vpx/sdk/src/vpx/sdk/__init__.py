@@ -22,6 +22,9 @@ from visualpath.core.graph import toposort_modules
 # Model path utilities
 from vpx.sdk.paths import get_home_dir, get_models_dir
 
+# Crop utilities
+from vpx.sdk.crop import CropRatio, face_crop, BBoxSmoother
+
 # Declarative visualization marks
 from vpx.sdk.marks import (
     DrawStyle,
@@ -54,6 +57,10 @@ __all__ = [
     # Model paths
     "get_home_dir",
     "get_models_dir",
+    # Crop utilities
+    "CropRatio",
+    "face_crop",
+    "BBoxSmoother",
     # Visualization marks
     "DrawStyle",
     "Mark",

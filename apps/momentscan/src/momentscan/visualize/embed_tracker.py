@@ -1,7 +1,7 @@
 """Real-time quality tracker for debug visualization.
 
 Mirrors the batch extract.py logic but runs per-frame during debug mode,
-producing face_identity (ArcFace) and shot.quality metrics for immediate
+producing face_identity (ArcFace) and portrait.score metrics for immediate
 visual feedback.
 """
 
@@ -13,12 +13,12 @@ import numpy as np
 
 
 class EmbedTracker:
-    """Tracks ArcFace anchor and shot.quality metrics for debug display.
+    """Tracks ArcFace anchor and portrait.score metrics for debug display.
 
     Usage::
 
         tracker = EmbedTracker()
-        stats = tracker.update(face_obs, shot_quality_obs)
+        stats = tracker.update(face_obs, portrait_score_obs)
         # stats = {"face_identity": 0.92, "head_blur": 320.0, ...}
     """
 
@@ -35,13 +35,13 @@ class EmbedTracker:
     def update(
         self,
         face_obs: Any = None,
-        shot_quality_obs: Any = None,
+        portrait_score_obs: Any = None,
     ) -> dict[str, float]:
         """Compute quality stats for this frame.
 
         Args:
             face_obs: face.detect Observation (ArcFace embedding → face_identity).
-            shot_quality_obs: shot.quality Observation (ShotQualityOutput fields).
+            portrait_score_obs: portrait.score Observation (PortraitScoreOutput fields).
 
         Returns:
             Dict with face_identity, head_blur, head_aesthetic, anchor_conf.
@@ -57,8 +57,8 @@ class EmbedTracker:
         if face_obs is not None:
             self._update_arcface(face_obs, stats)
 
-        if shot_quality_obs is not None:
-            self._update_shot_quality(shot_quality_obs, stats)
+        if portrait_score_obs is not None:
+            self._update_portrait_score(portrait_score_obs, stats)
 
         stats["anchor_conf"] = self._anchor_conf
         return stats
@@ -95,11 +95,10 @@ class EmbedTracker:
             sim = float(np.dot(emb, self._anchor_emb))
             stats["face_identity"] = max(0.0, sim)
 
-    def _update_shot_quality(self, shot_quality_obs: Any, stats: dict) -> None:
-        """Pass through shot.quality metrics from ShotQualityOutput."""
-        data = getattr(shot_quality_obs, "data", None)
+    def _update_portrait_score(self, portrait_score_obs: Any, stats: dict) -> None:
+        """Pass through portrait.score metrics from PortraitScoreOutput."""
+        data = getattr(portrait_score_obs, "data", None)
         if data is None:
             return
 
-        stats["head_blur"] = float(getattr(data, "head_blur", 0.0))
         stats["head_aesthetic"] = float(getattr(data, "head_aesthetic", 0.0))

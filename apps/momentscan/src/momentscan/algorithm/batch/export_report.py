@@ -37,10 +37,15 @@ JPEG_QUALITY = 70
 _MODULE_PALETTES: Dict[str, List[str]] = {
     "face.detect": ["#2e7d32", "#e65100", "#1565c0", "#6a1b9a", "#c62828", "#00838f"],
     "face.expression": ["#d84315", "#1565c0", "#2e7d32"],
-    "face.au": ["#f57f17", "#e65100"],       # AU intensity channels (amber)
+    "face.au": ["#f57f17", "#e65100", "#ff8f00", "#ef6c00"],  # AU6/AU12/AU25/AU26 (amber)
     "head.pose": ["#7b1fa2", "#1565c0", "#2e7d32"],  # precise yaw/pitch/roll (purple)
     "hand.gesture": ["#6a1b9a", "#e65100", "#00838f", "#c62828"],
-    "shot.quality": ["#2e7d32", "#00838f"],
+    "face.quality": ["#2e7d32", "#00838f"],  # head_blur, head_exposure
+    "portrait.score": [
+        "#e91e63",  # head_aesthetic
+        "#e91e63", "#9c27b0", "#ff5722", "#ff9800",  # CLIP axes (disney, charisma, wild, playful)
+        "#c62828", "#d84315", "#607d8b",  # composites (duchenne, wild_intensity, chill)
+    ],
     "frame.quality": ["#1565c0", "#e65100", "#2e7d32"],
     "face.classify": ["#f9a825"],
     "frame.scoring": ["#757575"],
@@ -52,7 +57,8 @@ _MODULE_LABELS: Dict[str, str] = {
     "face.au": "Face AU",
     "head.pose": "Head Pose",
     "hand.gesture": "Hand Gesture",
-    "shot.quality": "Shot Quality",
+    "face.quality": "Face Quality (crop)",
+    "portrait.score": "Portrait Score",
     "frame.quality": "Frame Quality",
     "face.classify": "Face Classifier",
     "frame.scoring": "Frame Scoring",
@@ -61,8 +67,9 @@ _MODULE_LABELS: Dict[str, str] = {
 _DEFAULT_PALETTE = ["#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"]
 
 # Boolean fields: excluded from module subplot traces (redundant with gate_mask)
-# head_aesthetic: 수치 범위가 0~1로 head_blur/head_exposure와 달라 별도 auxiliary 차트로 분리
-_SKIP_CHART_FIELDS = {"face_detected", "head_aesthetic"}
+_SKIP_CHART_FIELDS = {
+    "face_detected",
+}
 
 
 # ── Public API ──
@@ -370,14 +377,11 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # 하위 호환: normed_smile_intensity도 절대값으로 채움 (legacy JS 참조)
     data["normed_smile_intensity"] = smile_abs.tolist()
 
-    # head_aesthetic: impact 계산과 동일한 per-video min-max 절대값
-    raw_aes = arrays.get("head_aesthetic", np.array([r.head_aesthetic for r in records]))
-    mn_aes, mx_aes = float(raw_aes.min()), float(raw_aes.max())
-    if mx_aes - mn_aes > 1e-8:
-        aes_abs = np.clip((raw_aes - mn_aes) / (mx_aes - mn_aes), 0.0, 1.0)
-    else:
-        aes_abs = np.zeros(n)
-    data["head_aesthetic_abs"] = aes_abs.tolist()
+    # CLIP 4축 + composites: per-video min-max 절대값
+    for key in ("clip_disney_smile", "clip_charisma", "clip_wild_roar", "clip_playful_cute",
+                "duchenne_smile", "wild_intensity", "chill_score"):
+        raw = arrays.get(key, np.array([getattr(r, key) for r in records]))
+        data[f"{key}_abs"] = _minmax(raw).tolist()
 
     # ── Per-gate-condition boolean arrays (for hover panel) ──
     data["gate_face_detected"] = [int(r.face_detected) for r in records]
@@ -408,14 +412,15 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         "face_size": cfg.quality_face_size_weight,
         "face_identity": cfg.quality_face_identity_weight,
         "frontalness": cfg.quality_frontalness_weight,
-        "head_aesthetic": cfg.quality_head_aesthetic_weight,
     }
     data["cfg_impact_weights"] = {
         "smile_intensity": cfg.impact_smile_intensity_weight,
         "head_yaw": cfg.impact_head_yaw_delta_weight,
-        "head_aesthetic": cfg.impact_head_aesthetic_weight,
+        "portrait_best": cfg.impact_portrait_weight,
     }
     data["cfg_impact_top_k"] = cfg.impact_top_k
+    data["cfg_final_quality_blend"] = cfg.final_quality_blend
+    data["cfg_final_impact_blend"] = cfg.final_impact_blend
 
     # ── Threshold values (for hover panel) ──
     data["thresholds"] = {
@@ -1018,37 +1023,43 @@ _JS_MAIN = r"""
     } else {
       h += '  frontalness   ' + fmtN(qw.frontalness,2)+ ' \u00d7 ' + fmtN(frV,3) + ' = ' + fmtN(qw.frontalness*frV,3) + ' <span style="color:#999">(fallback)</span>\n';
     }
-    var aesRaw = D.head_aesthetic ? D.head_aesthetic[pi] : 0;
-    if (aesRaw > 0 && qw.head_aesthetic) {
-      h += '  head_aes      ' + fmtN(qw.head_aesthetic,2) + ' \u00d7 ' + fmtN(aesRaw,3) + ' = ' + fmtN(qw.head_aesthetic*aesRaw,3) + '\n';
-    }
-
     // Impact
     var is_ = D.impact_scores[pi];
     var topK = D.cfg_impact_top_k || 3;
-    var aesAbs = D.head_aesthetic_abs ? D.head_aesthetic_abs[pi] : 0;
+    // Portrait best: max of CLIP 4 axes
+    var pSubs = [
+      ['disney',   D.clip_disney_smile_abs  ? D.clip_disney_smile_abs[pi]  : 0],
+      ['charisma', D.clip_charisma_abs      ? D.clip_charisma_abs[pi]      : 0],
+      ['wild',     D.clip_wild_roar_abs     ? D.clip_wild_roar_abs[pi]     : 0],
+      ['playful',  D.clip_playful_cute_abs  ? D.clip_playful_cute_abs[pi]  : 0]
+    ];
+    pSubs.sort(function(a,b) { return b[1] - a[1]; });
+    var pBestVal = pSubs[0][1];
+    var pBestName = pSubs[0][0];
     var impF = [
-      ['smile       ', 'smile_intensity', D.normed_smile_intensity[pi]],
-      ['yaw_\u0394       ', 'head_yaw',        D.normed_head_yaw[pi]],
-      ['head_aes    ', 'head_aesthetic',  aesAbs]
+      ['smile       ', 'smile_intensity',  D.normed_smile_intensity[pi]],
+      ['yaw_\u0394       ', 'head_yaw',         D.normed_head_yaw[pi]],
+      ['portrait    ', 'portrait_best',    pBestVal]
     ];
     // Compute weighted values and sort for top-K display
     var impWV = impF.map(function(f) {
       var w = iw[f[1]] || 0;
       return {label: f[0], key: f[1], raw: f[2], w: w, wv: w * f[2]};
     }).sort(function(a,b) { return b.wv - a.wv; });
-    h += '\n<span class="section-label">\u2500\u2500 Impact: ' + fmtN(is_,3) + ' (top-' + topK + ') \u2500\u2500</span>\n';
+    h += '\n<span class="section-label">\u2500\u2500 Impact: ' + fmtN(is_,3) + ' \u2500\u2500</span>\n';
     for (var j = 0; j < impWV.length; j++) {
       var e = impWV[j];
-      var mark = j < topK ? '\u25cf' : ' ';
-      h += '  ' + mark + ' ' + e.label + ' ' + fmtN(e.w,2) + ' \u00d7 ' + fmtN(e.raw,3) + ' = ' + fmtN(e.wv,3) + '\n';
+      var suffix = (e.key === 'portrait_best') ? ' \u2190' + pBestName : '';
+      h += '  ' + e.label + ' ' + fmtN(e.w,2) + ' \u00d7 ' + fmtN(e.raw,3) + ' = ' + fmtN(e.wv,3) + suffix + '\n';
     }
 
-    // Final
+    // Final (additive: wq × quality + wi × impact)
     var fs = D.final_scores[pi];
     var sm = D.smoothed[pi];
+    var wq = D.cfg_final_quality_blend || 0.35;
+    var wi = D.cfg_final_impact_blend || 0.65;
     h += '\n<span class="section-label">\u2500\u2500 Final \u2500\u2500</span>\n';
-    h += '  ' + fmtN(qs,3) + ' \u00d7 ' + fmtN(is_,3) + ' = ' + fmtN(fs,3) + '\n';
+    h += '  ' + fmtN(wq,2) + '\u00d7Q(' + fmtN(qs,3) + ') + ' + fmtN(wi,2) + '\u00d7I(' + fmtN(is_,3) + ') = ' + fmtN(fs,3) + '\n';
     h += '  smoothed: ' + fmtN(sm,3) + '\n';
 
     pipelineDetail.innerHTML = h;
@@ -1096,28 +1107,7 @@ _JS_MAIN = r"""
     yaxis:{title:{text:'Pitch (\u00b0)', font:axFont}, gridcolor:gridColor, zeroline:true, zerolinecolor:'#ddd', tickfont:axFont, scaleanchor:'x'}
   }, {responsive:true, displayModeBar:false});
 
-  // ── Auxiliary: Head Aesthetic (LAION) — 별도 차트 (blur/exposure와 y축 범위 분리) ──
-  if (DATA.head_aesthetic && DATA.head_aesthetic.some(function(v){return v>0;})) {
-    var aesTraces = [
-      {x:t, y:DATA.head_aesthetic, name:'raw [0-1]', type:'scatter', mode:'lines',
-        line:{color:'#e65100', width:1.5},
-        hovertemplate:'%{y:.3f}<extra>raw</extra>'},
-      {x:t, y:DATA.head_aesthetic_abs, name:'normed (impact용)', type:'scatter', mode:'lines',
-        line:{color:'#ffb74d', width:1, dash:'dot'},
-        hovertemplate:'%{y:.3f}<extra>normed</extra>'}
-    ];
-    Plotly.newPlot('shotAestheticDiv', aesTraces, {
-      height:220, margin:{l:50,r:20,t:24,b:36},
-      paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'#fff',
-      font:{family:'Inter, sans-serif', color:'#666', size:11},
-      showlegend:true,
-      legend:{orientation:'h', y:1.15, x:0.5, xanchor:'center', font:{size:10, color:'#999'}},
-      hovermode:'x unified',
-      xaxis:{title:{text:'Time (s)', font:axFont}, gridcolor:gridColor, zeroline:false, tickfont:axFont},
-      yaxis:{title:{text:'Aesthetic Score', font:axFont}, gridcolor:gridColor,
-             zeroline:false, tickfont:axFont, range:[0,1]}
-    }, {responsive:true, displayModeBar:false});
-  }
+  // (Portrait Quality timeline is now included in the dynamic module subplots above)
 })();
 """
 
@@ -1172,8 +1162,6 @@ def _build_html(
         '    <div id="headPoseDiv"></div>\n'
         '    <div id="faceDistDiv"></div>\n'
         '  </div>\n'
-        '  <h2>Head Aesthetic (LAION)</h2>\n'
-        '  <div id="shotAestheticDiv"></div>\n'
         '  <h2>Highlight Windows</h2>\n' + window_detail_html + '\n'
         '  <h2>Field Reference</h2>\n' + field_ref_html + '\n'
         '  <h2>Configuration</h2>\n' + config_table_html + '\n'

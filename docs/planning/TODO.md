@@ -1,58 +1,42 @@
 # TODO — 미결 작업 목록
 
-## Scoring Formula 재검토 (우선순위 높음)
+## ~~Scoring Formula 재검토~~ ✓ 완료
 
-**문제**: `final_score = quality × impact` 곱 구조에서
-- Impact Score가 0.8+ 인 순간에도 Final Score가 0.5를 넘지 않음
-- 원인: quality 전형값 0.55~0.65 × impact 0.8 = 0.44~0.52
-
-**세부 원인 분석**:
-1. `blur_normed`, `face_size_normed`가 영상 내 min-max라 평균이 ~0.5로 수렴
-2. 고감정 순간 (강한 미소, 머리 움직임) = 기술 품질과 역상관 경향
-3. EMA smoothing이 gate_mask=0인 프레임(final=0)을 포함해 계산 → 피크 과도 감쇠
-
-**검토할 개선 방향**:
-
-### 옵션 A: 비대칭 지수 가중
-```python
-final = quality ** 0.4 * impact ** 0.6  # impact에 더 높은 가중
-```
-
-### 옵션 B: 가산 방식
-```python
-final = 0.35 * quality + 0.65 * impact
-```
-
-### 옵션 C: Gate-pass only smoothing
-```python
-# gate=0 프레임을 0으로 채우지 않고 보간 (혹은 gate 통과 프레임만 EMA)
-smoothed = EMA(final_scores, alpha=cfg.smoothing_alpha, mask=gate_mask)
-```
-
-### 옵션 D: Quality gate를 softgate로 전환
-- hard gate (mask=0/1) 대신 quality penalty (-20%~-50%)로 전환
-- gate 실패 프레임이 EMA에 0으로 포함되는 문제 해소
-
-**검증 기준**: report.html Score Pipeline에서 high-impact 순간이
-smoothed score 0.5 이상으로 표시되어야 함.
+**적용**: 옵션 B + C
+- `final = 0.35 × quality + 0.65 × impact` (가산 방식)
+- Gate-pass only EMA (gate_fail 프레임은 이전 smoothed 값 유지)
+- `HighlightConfig.final_quality_blend=0.35, final_impact_blend=0.65`
 
 ---
 
-## head_aesthetic ROI 튜닝 검토
+## ~~head_aesthetic ROI 튜닝~~ ✓ 완료 → scoring 제거
 
-**현황**: `aesthetic_expand=2.5` (어깨 포함 포트레이트 크롭)으로 변경
+**적용**: `aesthetic_expand=1.8, aesthetic_y_shift=0.3, crop_ratio=4:5`
+- `face_crop()`에 `y_shift` 파라미터 추가
+- 정수리 바로 위 ~ 어깨 라인까지 포트레이트 크롭
 
-**확인 필요**:
-- 실제 영상에서 head_aes 값 분산이 증가했는지 report.html로 확인
-- 크롭이 너무 넓으면 배경 비중이 높아져 얼굴 미학 평가가 희석될 수 있음
-- 필요 시 `y_shift` 파라미터 추가로 크롭 중심 하향 이동 (어깨 비중 추가)
+**후속 결정 (2026-02-23)**:
+- `head_aesthetic` (CLIP aggregate score)는 미학적 구분 근거 부족으로 **scoring에서 제거** → info-only
+- CLIP 4축 개별 점수(disney_smile, charisma, wild_roar, playful_cute)가 `portrait_best`로 Impact에 기여
 
-**튜닝 파라미터 위치**: `ShotQualityAnalyzer(aesthetic_expand=2.5)` in
-`libs/vpx/plugins/vision-embed/src/vpx/vision_embed/analyzer.py`
+---
+
+## ~~vision-embed → portrait-score + face.quality 분리~~ ✓ 완료
+
+- `vpx-vision-embed` → `vpx-portrait-score` 리네임 (CLIP scoring 전용)
+- `face.quality` 신규 (momentscan 내부, blur/exposure)
+- `face_crop()`, `BBoxSmoother` → `vpx.sdk.crop` 공유 유틸리티로 이동
+
+---
+
+## ~~portrait_best Impact 병합~~ ✓ 완료
+
+- portrait.score 4축(disney_smile, charisma, wild_roar, playful_cute) 중 프레임별 max → 단일 `portrait_best` 채널
+- Impact 채널: smile_intensity(0.25), head_yaw(0.15), portrait_best(0.25)
 
 ---
 
 ## 메모
 
-- Scoring 공식 변경 시 `test_batch_highlight.py`의 score expectation 확인
-- `highlight_rules.md §6` 함께 업데이트 필요
+- `highlight_rules.md §6` 가산 공식으로 업데이트 필요
+- planning docs(momentscan.md, identity_builder.md, highlight_vector.md)에 `shot.quality` 참조 잔존 — 히스토리 기록으로 유지

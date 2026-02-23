@@ -17,6 +17,7 @@ def face_crop(
     expand: float = 1.5,
     output_size: int = 224,
     crop_ratio: CropRatio = "1:1",
+    y_shift: float = 0.0,
 ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     """Extract an expanded face crop from the image.
 
@@ -28,6 +29,10 @@ def face_crop(
         crop_ratio: Aspect ratio of the crop window and output image.
             "1:1" → square (output_size × output_size).
             "4:5" → portrait (output_size × output_size×5//4).
+        y_shift: Vertical shift of crop center as a fraction of bbox height.
+            Positive = downward (e.g., 0.3 shifts by 30% of face height).
+            Useful for portrait crops that should cover head-to-shoulders
+            rather than being centered on the nose.
 
     Returns:
         Tuple of (crop, actual_box):
@@ -37,9 +42,9 @@ def face_crop(
     h, w = image.shape[:2]
     bx, by, bw, bh = bbox
 
-    # Expand around center
+    # Expand around center (optionally shifted downward)
     cx = bx + bw / 2
-    cy = by + bh / 2
+    cy = by + bh / 2 + y_shift * bh
     side = max(bw, bh) * expand
     half = side / 2
 

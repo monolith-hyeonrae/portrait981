@@ -168,8 +168,8 @@ class MockOutput:
 
 
 @dataclass
-class MockShotQualityOutput:
-    """Mimics ShotQualityOutput (crop boxes only — no embeddings)."""
+class MockFaceQualityOutput:
+    """Mimics FaceQualityOutput (crop boxes only — no embeddings)."""
     head_crop_box: Optional[tuple] = None
     image_size: Optional[tuple] = None
     head_blur: float = 0.0
@@ -229,20 +229,20 @@ class TestExtractIdentityRecord:
         # e_id should be L2-normalized
         assert abs(np.linalg.norm(record.e_id) - 1.0) < 1e-5
 
-    def test_shot_quality_crop_extraction(self):
-        """shot.quality provides crop box coordinates for identity crops."""
+    def test_face_quality_crop_extraction(self):
+        """face.quality provides crop box coordinates for identity crops."""
         emb_id = _make_embedding(512, seed=1)
         face = MockFace(embedding=emb_id)
         face_output = MockOutput(faces=[face])
         face_obs = MockObs(source="face.detect", data=face_output)
 
-        shot_data = MockShotQualityOutput(
+        fq_data = MockFaceQualityOutput(
             head_crop_box=(10, 20, 100, 120),
             image_size=(640, 480),
         )
-        shot_obs = MockObs(source="shot.quality", data=shot_data)
+        fq_obs = MockObs(source="face.quality", data=fq_data)
 
-        flow = MockFlowData(observations=[face_obs, shot_obs])
+        flow = MockFlowData(observations=[face_obs, fq_obs])
         frame = MockFrame()
 
         record = extract_identity_record(frame, [flow])

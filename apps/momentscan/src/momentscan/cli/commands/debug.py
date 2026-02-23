@@ -67,6 +67,12 @@ def run_debug(args):
     app = MomentscanApp()
     resolved = app.configure_modules(analyzer_names)
 
+    # Enable CoCa captioner on portrait.score if --caption
+    if getattr(args, 'caption', False):
+        for module in resolved:
+            if module.name == "portrait.score":
+                module._enable_caption = True
+
     if distributed:
         venv_paths = _collect_venv_paths(args, analyzer_names)
         isolation_config = build_distributed_config(resolved, venv_paths=venv_paths)
@@ -457,7 +463,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
     """
     if 'all' in selected:
         return ['face.detect', 'face.expression', 'face.au', 'head.pose',
-                'shot.quality', 'frame.quality']
+                'face.quality', 'portrait.score', 'frame.quality']
 
     names = []
     for s in selected:
@@ -467,7 +473,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
             names.append('face.expression')
 
     return names if names else ['face.detect', 'face.expression', 'face.au', 'head.pose',
-                                'shot.quality', 'frame.quality']
+                                'portrait.score', 'face.quality', 'frame.quality']
 
 
 # ---------------------------------------------------------------------------

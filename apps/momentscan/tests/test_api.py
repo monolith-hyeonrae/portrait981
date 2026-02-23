@@ -88,7 +88,7 @@ class TestConfigureModules:
         modules = app.configure_modules([])
         names = [m.name for m in modules]
         assert "face.detect" in names
-        assert "shot.quality" in names
+        assert "portrait.score" in names
         assert "hand.gesture" not in names
         assert "face.classify" in names  # auto-injected
 
@@ -170,7 +170,7 @@ class TestMomentscanApp:
         names = [m.name for m in resolved]
         assert "face.detect" in names
         assert "face.expression" in names
-        assert "shot.quality" in names
+        assert "portrait.score" in names
         assert "hand.gesture" not in names
         assert "face.classify" in names
 

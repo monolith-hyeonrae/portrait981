@@ -1,4 +1,4 @@
-"""Tests for ShotQualityAnalyzer.
+"""Tests for PortraitScoreAnalyzer.
 
 Tests run WITHOUT GPU or LAION weights — all optional backend calls are
 either skipped or mocked.
@@ -7,9 +7,9 @@ either skipped or mocked.
 import numpy as np
 import pytest
 
-from vpx.vision_embed.types import ShotQualityOutput
-from vpx.vision_embed.crop import CropRatio, face_crop, BBoxSmoother
-from vpx.vision_embed.analyzer import ShotQualityAnalyzer
+from vpx.portrait_score.types import PortraitScoreOutput
+from vpx.sdk.crop import CropRatio, face_crop, BBoxSmoother
+from vpx.portrait_score.analyzer import PortraitScoreAnalyzer
 from vpx.face_detect.types import FaceObservation
 from vpx.face_detect.output import FaceDetectOutput
 from vpx.sdk import Observation, Capability
@@ -52,30 +52,28 @@ def _make_face_obs(face_count=1, image_size=(640, 480)):
 
 
 # ============================================================
-# ShotQualityOutput tests
+# PortraitScoreOutput tests
 # ============================================================
 
 
-class TestShotQualityOutput:
+class TestPortraitScoreOutput:
     def test_default_values(self):
-        out = ShotQualityOutput()
-        assert out.head_crop_box is None
+        out = PortraitScoreOutput()
+        assert out.portrait_crop_box is None
         assert out.image_size is None
-        assert out.head_blur == 0.0
-        assert out.head_exposure == 0.0
         assert out.head_aesthetic == 0.0
 
-    def test_with_quality_values(self):
-        out = ShotQualityOutput(
-            head_crop_box=(10, 20, 100, 120),
-            head_blur=250.5,
+    def test_with_values(self):
+        out = PortraitScoreOutput(
+            portrait_crop_box=(10, 20, 100, 120),
+            head_aesthetic=0.85,
         )
-        assert out.head_crop_box == (10, 20, 100, 120)
-        assert out.head_blur == 250.5
+        assert out.portrait_crop_box == (10, 20, 100, 120)
+        assert out.head_aesthetic == 0.85
 
 
 # ============================================================
-# BBoxSmoother tests
+# BBoxSmoother tests (imported from vpx.sdk.crop)
 # ============================================================
 
 
@@ -127,7 +125,7 @@ class TestBBoxSmoother:
 
 
 # ============================================================
-# face_crop tests
+# face_crop tests (imported from vpx.sdk.crop)
 # ============================================================
 
 
@@ -183,55 +181,47 @@ class TestFaceCrop:
 
 
 # ============================================================
-# ShotQualityAnalyzer tests
+# PortraitScoreAnalyzer tests
 # ============================================================
 
 
-class TestShotQualityAnalyzer:
+class TestPortraitScoreAnalyzer:
     def test_name(self):
-        analyzer = ShotQualityAnalyzer()
-        assert analyzer.name == "shot.quality"
+        analyzer = PortraitScoreAnalyzer()
+        assert analyzer.name == "portrait.score"
 
     def test_depends(self):
-        assert ShotQualityAnalyzer.depends == ["face.detect"]
-        assert ShotQualityAnalyzer.optional_depends == []
+        assert PortraitScoreAnalyzer.depends == ["face.detect"]
+        assert PortraitScoreAnalyzer.optional_depends == []
 
     def test_capabilities(self):
-        analyzer = ShotQualityAnalyzer()
+        analyzer = PortraitScoreAnalyzer()
         caps = analyzer.capabilities
         assert Capability.STATEFUL in caps.flags
-        # No GPU requirement for Layer 1 (CV only)
-        assert Capability.GPU not in caps.flags
 
     def test_process_with_face(self):
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
         analyzer.initialize()
 
         frame = MockFrame(frame_id=42, t_src_ns=1000, w=640, h=480)
-        # Non-zero image so head_exposure > 0 → has_quality = True
         frame.data = np.ones((480, 640, 3), dtype=np.uint8) * 128
         deps = {"face.detect": _make_face_obs(face_count=1)}
 
         result = analyzer.process(frame, deps)
 
         assert result is not None
-        assert result.source == "shot.quality"
+        assert result.source == "portrait.score"
         assert result.frame_id == 42
         assert result.t_ns == 1000
-        assert result.signals["has_quality"] is True
 
-        output: ShotQualityOutput = result.data
-        assert output.head_crop_box is not None
-        # CV metrics should be computed
-        assert output.head_blur >= 0.0
-        assert output.head_exposure >= 0.0
-        # aesthetic disabled → aesthetic stays 0
+        output: PortraitScoreOutput = result.data
+        # aesthetic disabled → stays 0
         assert output.head_aesthetic == 0.0
 
         analyzer.cleanup()
 
     def test_process_no_face_detect_returns_none(self):
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -241,7 +231,7 @@ class TestShotQualityAnalyzer:
         analyzer.cleanup()
 
     def test_process_no_faces_detected(self):
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -250,13 +240,12 @@ class TestShotQualityAnalyzer:
         result = analyzer.process(frame, deps)
         # Returns observation with zero quality (no faces)
         assert result is not None
-        assert result.signals["has_quality"] is False
-        assert result.data.head_blur == 0.0
+        assert result.data.head_aesthetic == 0.0
 
         analyzer.cleanup()
 
     def test_process_not_initialized_raises(self):
-        analyzer = ShotQualityAnalyzer()
+        analyzer = PortraitScoreAnalyzer()
         frame = MockFrame()
         deps = {"face.detect": _make_face_obs()}
 
@@ -264,7 +253,7 @@ class TestShotQualityAnalyzer:
             analyzer.process(frame, deps)
 
     def test_context_manager(self):
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
 
         with analyzer:
             frame = MockFrame()
@@ -273,7 +262,7 @@ class TestShotQualityAnalyzer:
             assert result is not None
 
     def test_reset_clears_smoothers(self):
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -286,7 +275,7 @@ class TestShotQualityAnalyzer:
         analyzer.cleanup()
 
     def test_metrics_populated(self):
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -294,40 +283,12 @@ class TestShotQualityAnalyzer:
         result = analyzer.process(frame, deps)
 
         assert "_metrics" in result.metadata
-        assert "head_blur" in result.metadata["_metrics"]
 
-        analyzer.cleanup()
-
-    def test_crop_ratio_default_is_4_5(self):
-        """Default crop_ratio is "4:5"."""
-        analyzer = ShotQualityAnalyzer()
-        assert analyzer._crop_ratio == "4:5"
-
-    def test_crop_ratio_1_1(self):
-        """crop_ratio="1:1" is accepted and stored."""
-        analyzer = ShotQualityAnalyzer(crop_ratio="1:1")
-        assert analyzer._crop_ratio == "1:1"
-
-    def test_crop_ratio_1_1_process(self):
-        """crop_ratio="1:1" produces quality metrics without error."""
-        analyzer = ShotQualityAnalyzer(crop_ratio="1:1", enable_aesthetic=False)
-        analyzer.initialize()
-
-        frame = MockFrame(w=640, h=480)
-        # Non-zero image so head_exposure > 0 → has_quality = True
-        frame.data = np.ones((480, 640, 3), dtype=np.uint8) * 128
-        deps = {"face.detect": _make_face_obs(face_count=1)}
-        result = analyzer.process(frame, deps)
-
-        assert result is not None
-        assert result.signals["has_quality"] is True
         analyzer.cleanup()
 
     def test_annotate_returns_marks(self):
-        """annotate() returns marks for head/scene crop boxes."""
-        from vpx.sdk.marks import BBoxMark
-
-        analyzer = ShotQualityAnalyzer(enable_aesthetic=False)
+        """annotate() returns marks for portrait crop region."""
+        analyzer = PortraitScoreAnalyzer(enable_aesthetic=False)
         analyzer.initialize()
 
         frame = MockFrame()
@@ -335,14 +296,12 @@ class TestShotQualityAnalyzer:
         result = analyzer.process(frame, deps)
 
         marks = analyzer.annotate(result)
-        # At least head crop mark
-        bbox_marks = [m for m in marks if isinstance(m, BBoxMark)]
-        assert len(bbox_marks) >= 1
+        # Without aesthetic, no marks expected (portrait_crop_box is None when CLIP disabled)
+        assert isinstance(marks, list)
 
         analyzer.cleanup()
 
     def test_annotate_none_obs_returns_empty(self):
         """annotate(None) returns empty list."""
-        analyzer = ShotQualityAnalyzer()
+        analyzer = PortraitScoreAnalyzer()
         assert analyzer.annotate(None) == []
-
