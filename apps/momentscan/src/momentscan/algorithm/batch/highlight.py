@@ -206,31 +206,12 @@ class BatchHighlightEngine:
     # ── Step 4: Quality gate ──
 
     def _apply_quality_gate(self, records: List[FrameRecord]) -> np.ndarray:
-        """Hard filter: gate를 통과하지 못하면 score=0.
+        """FrameRecord.gate_passed를 읽어 gate mask 생성.
 
-        highlight_rules.md §6 Step 1
+        Gate 판정은 face.gate analyzer가 DAG에서 수행 (main face 기준).
+        Gate 미실행(gate_passed=True default) 시 모든 프레임 통과.
         """
-        cfg = self.config
-        mask = np.ones(len(records), dtype=bool)
-
-        for i, r in enumerate(records):
-            if not r.face_detected:
-                mask[i] = False
-            elif r.face_confidence < cfg.gate_face_confidence:
-                mask[i] = False
-            elif r.face_area_ratio < cfg.gate_face_area_ratio:
-                mask[i] = False
-            elif r.blur_score > 0 and r.blur_score < cfg.gate_blur_min:
-                # blur_score=0은 미측정 → 통과
-                mask[i] = False
-            elif r.brightness > 0 and not (cfg.gate_exposure_min <= r.brightness <= cfg.gate_exposure_max):
-                # brightness=0은 미측정 → 통과
-                mask[i] = False
-            elif r.eye_open_ratio > 0 and r.eye_open_ratio < cfg.gate_eye_open_min:
-                # eye_open_ratio=0은 미측정 → 통과
-                mask[i] = False
-
-        return mask
+        return np.array([r.gate_passed for r in records], dtype=bool)
 
     # ── Step 5: Quality score ──
 

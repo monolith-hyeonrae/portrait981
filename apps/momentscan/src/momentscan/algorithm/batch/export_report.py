@@ -40,7 +40,7 @@ _MODULE_PALETTES: Dict[str, List[str]] = {
     "face.au": ["#f57f17", "#e65100", "#ff8f00", "#ef6c00"],  # AU6/AU12/AU25/AU26 (amber)
     "head.pose": ["#7b1fa2", "#1565c0", "#2e7d32"],  # precise yaw/pitch/roll (purple)
     "hand.gesture": ["#6a1b9a", "#e65100", "#00838f", "#c62828"],
-    "face.quality": ["#2e7d32", "#00838f"],  # head_blur, head_exposure
+    "face.quality": ["#2e7d32", "#00838f", "#ff6f00", "#c62828", "#4527a0", "#546e7a"],  # blur, exposure, contrast, clipped, crushed, mask
     "portrait.score": [
         "#e91e63",  # head_aesthetic
         "#e91e63", "#9c27b0", "#ff5722", "#ff9800",  # CLIP axes (disney, charisma, wild, playful)
@@ -49,6 +49,7 @@ _MODULE_PALETTES: Dict[str, List[str]] = {
     "frame.quality": ["#1565c0", "#e65100", "#2e7d32"],
     "face.classify": ["#f9a825"],
     "frame.scoring": ["#757575"],
+    "face.gate": ["#2e7d32", "#c62828"],
 }
 
 _MODULE_LABELS: Dict[str, str] = {
@@ -62,6 +63,7 @@ _MODULE_LABELS: Dict[str, str] = {
     "frame.quality": "Frame Quality",
     "face.classify": "Face Classifier",
     "frame.scoring": "Frame Scoring",
+    "face.gate": "Face Gate",
 }
 
 _DEFAULT_PALETTE = ["#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"]
@@ -69,6 +71,12 @@ _DEFAULT_PALETTE = ["#546e7a", "#607d8b", "#78909c", "#90a4ae", "#b0bec5"]
 # Boolean fields: excluded from module subplot traces (redundant with gate_mask)
 _SKIP_CHART_FIELDS = {
     "face_detected",
+    "gate_passed",
+    "gate_fail_reasons",
+    "passenger_detected",
+    "passenger_gate_passed",
+    "passenger_gate_fail_reasons",
+    "mask_method",
 }
 
 
@@ -299,6 +307,8 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
             if fm.record_field not in data:
                 if isinstance(default_val, bool):
                     data[fm.record_field] = [int(v) for v in vals]
+                elif isinstance(default_val, str):
+                    data[fm.record_field] = vals
                 else:
                     data[fm.record_field] = [float(v) for v in vals]
 
@@ -332,12 +342,19 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     data["modules"] = modules_meta
 
     # ── Gate thresholds (for reference lines on module subplots) ──
+    from momentscan.algorithm.analyzers.face_gate.output import FaceGateConfig
+    gate_cfg = FaceGateConfig()
     data["gate_thresholds"] = {
-        "face_confidence": [cfg.gate_face_confidence],
-        "face_area_ratio": [cfg.gate_face_area_ratio],
-        "eye_open_ratio": [cfg.gate_eye_open_min],
-        "blur_score": [cfg.gate_blur_min],
-        "brightness": [cfg.gate_exposure_min, cfg.gate_exposure_max],
+        "face_confidence": [gate_cfg.face_confidence_min],
+        "face_area_ratio": [gate_cfg.face_area_ratio_min],
+        "blur_score": [gate_cfg.frame_blur_min],
+        "brightness": [gate_cfg.exposure_min, gate_cfg.exposure_max],
+        "head_blur": [gate_cfg.head_blur_min],
+        "head_yaw": [gate_cfg.head_yaw_max],
+        "head_pitch": [gate_cfg.head_pitch_max],
+        "head_contrast": [gate_cfg.contrast_min],
+        "clipped_ratio": [gate_cfg.clipped_max],
+        "crushed_ratio": [gate_cfg.crushed_max],
     }
 
     # ── Quality decomposition arrays (for hover panel) ──
@@ -386,23 +403,56 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # ── Per-gate-condition boolean arrays (for hover panel) ──
     data["gate_face_detected"] = [int(r.face_detected) for r in records]
     data["gate_face_confidence_pass"] = [
-        int(r.face_confidence >= cfg.gate_face_confidence) for r in records
+        int(r.face_confidence >= gate_cfg.face_confidence_min) for r in records
     ]
     data["gate_face_area_pass"] = [
-        int(r.face_area_ratio >= cfg.gate_face_area_ratio) for r in records
+        int(r.face_area_ratio >= gate_cfg.face_area_ratio_min) for r in records
     ]
     data["gate_blur_pass"] = [
-        int(r.blur_score <= 0 or r.blur_score >= cfg.gate_blur_min) for r in records
-    ]
-    data["gate_brightness_pass"] = [
         int(
-            r.brightness <= 0
-            or (cfg.gate_exposure_min <= r.brightness <= cfg.gate_exposure_max)
+            (r.head_blur <= 0 and r.blur_score <= 0)
+            or (r.head_blur > 0 and r.head_blur >= gate_cfg.head_blur_min)
+            or (r.head_blur <= 0 and r.blur_score >= gate_cfg.frame_blur_min)
         )
         for r in records
     ]
-    data["gate_eye_open_pass"] = [
-        int(r.eye_open_ratio <= 0 or r.eye_open_ratio >= cfg.gate_eye_open_min)
+    data["gate_brightness_pass"] = [
+        int(
+            (r.head_exposure <= 0 and r.brightness <= 0)
+            or (r.head_exposure > 0 and gate_cfg.exposure_min <= r.head_exposure <= gate_cfg.exposure_max)
+            or (r.head_exposure <= 0 and gate_cfg.exposure_min <= r.brightness <= gate_cfg.exposure_max)
+        )
+        for r in records
+    ]
+    data["gate_head_yaw_pass"] = [
+        int(r.head_yaw == 0.0 or abs(r.head_yaw) <= gate_cfg.head_yaw_max)
+        for r in records
+    ]
+    data["gate_head_pitch_pass"] = [
+        int(r.head_pitch == 0.0 or abs(r.head_pitch) <= gate_cfg.head_pitch_max)
+        for r in records
+    ]
+    data["gate_fail_reasons"] = [r.gate_fail_reasons for r in records]
+
+    # ── Passenger gate per-condition arrays ──
+    data["passenger_detected"] = [int(r.passenger_detected) for r in records]
+    data["passenger_gate_passed_arr"] = [int(r.passenger_gate_passed) for r in records]
+    data["passenger_gate_fail_reasons"] = [r.passenger_gate_fail_reasons for r in records]
+    data["passenger_face_area_ratio"] = [float(r.passenger_face_area_ratio) for r in records]
+    data["passenger_head_blur"] = [float(r.passenger_head_blur) for r in records]
+    data["passenger_head_exposure"] = [float(r.passenger_head_exposure) for r in records]
+    data["passenger_gate_blur_pass"] = [
+        int(
+            r.passenger_head_blur <= 0
+            or r.passenger_head_blur >= gate_cfg.passenger_blur_min
+        )
+        for r in records
+    ]
+    data["passenger_gate_brightness_pass"] = [
+        int(
+            r.passenger_head_exposure <= 0
+            or (gate_cfg.exposure_min <= r.passenger_head_exposure <= gate_cfg.exposure_max)
+        )
         for r in records
     ]
 
@@ -424,12 +474,19 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
 
     # ── Threshold values (for hover panel) ──
     data["thresholds"] = {
-        "gate_face_confidence": cfg.gate_face_confidence,
-        "gate_face_area_ratio": cfg.gate_face_area_ratio,
-        "gate_eye_open_min": cfg.gate_eye_open_min,
-        "gate_blur_min": cfg.gate_blur_min,
-        "gate_exposure_min": cfg.gate_exposure_min,
-        "gate_exposure_max": cfg.gate_exposure_max,
+        "gate_face_confidence": gate_cfg.face_confidence_min,
+        "gate_face_area_ratio": gate_cfg.face_area_ratio_min,
+        "gate_head_blur_min": gate_cfg.head_blur_min,
+        "gate_frame_blur_min": gate_cfg.frame_blur_min,
+        "gate_exposure_min": gate_cfg.exposure_min,
+        "gate_exposure_max": gate_cfg.exposure_max,
+        "gate_head_yaw_max": gate_cfg.head_yaw_max,
+        "gate_head_pitch_max": gate_cfg.head_pitch_max,
+        "passenger_area_ratio_min": gate_cfg.passenger_area_ratio_min,
+        "passenger_blur_min": gate_cfg.passenger_blur_min,
+        "gate_contrast_min": gate_cfg.contrast_min,
+        "gate_clipped_max": gate_cfg.clipped_max,
+        "gate_crushed_max": gate_cfg.crushed_max,
     }
 
     return data
@@ -999,17 +1056,59 @@ _JS_MAIN = r"""
     var qw = D.cfg_quality_weights;
     var iw = D.cfg_impact_weights;
 
-    // Gate
+    // Gate — Main
     var gp = D.gate_mask[pi];
-    var h = '<span class="section-label">\u2500\u2500 Gate: ' +
+    var h = '<span class="section-label">\u2500\u2500 Gate: Main ' +
       (gp ? '<span class="gate-pass">PASS</span>' : '<span class="gate-fail">FAIL</span>') +
       ' \u2500\u2500</span>\n';
     h += '  ' + gIcon(D.gate_face_detected[pi])       + ' face_detected\n';
-    h += '  ' + gIcon(D.gate_face_confidence_pass[pi]) + ' face_conf    ' + fmtN(D.face_confidence[pi],3) + ' > ' + fmtN(th.gate_face_confidence,3) + '\n';
-    h += '  ' + gIcon(D.gate_face_area_pass[pi])       + ' face_area    ' + fmtN(D.face_area_ratio[pi],3) + ' > ' + fmtN(th.gate_face_area_ratio,3) + '\n';
-    h += '  ' + gIcon(D.gate_blur_pass[pi])            + ' blur         ' + fmtN(D.blur_score[pi],1)      + ' > ' + fmtN(th.gate_blur_min,1) + '\n';
-    h += '  ' + gIcon(D.gate_brightness_pass[pi])      + ' brightness   ' + fmtN(D.brightness[pi],1)      + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
-    h += '  ' + gIcon(D.gate_eye_open_pass[pi])       + ' eye_open     ' + fmtN(D.eye_open_ratio[pi],3)   + ' > ' + fmtN(th.gate_eye_open_min,3) + '\n';
+    h += '  ' + gIcon(D.gate_face_confidence_pass[pi]) + ' face_conf    ' + fmtN(D.face_confidence[pi],3) + ' \u2265 ' + fmtN(th.gate_face_confidence,3) + '\n';
+    h += '  face_area    ' + fmtN(D.face_area_ratio[pi],3) + '\n';
+    var hBlur = D.head_blur ? D.head_blur[pi] : 0;
+    var fBlur = D.blur_score ? D.blur_score[pi] : 0;
+    var useFaceBlur = hBlur > 0;
+    var blurTh = useFaceBlur ? th.gate_head_blur_min : th.gate_frame_blur_min;
+    var blurSrc = useFaceBlur ? 'face' : 'frame';
+    var blurShow = useFaceBlur ? hBlur : fBlur;
+    h += '  ' + gIcon(D.gate_blur_pass[pi]) + ' blur <span style="color:#999">(' + blurSrc + ')</span> ' + fmtN(blurShow,1) + ' \u2265 ' + fmtN(blurTh,1) + '\n';
+    var hContrast = D.head_contrast ? D.head_contrast[pi] : 0;
+    var hClipped = D.clipped_ratio ? D.clipped_ratio[pi] : 0;
+    var hCrushed = D.crushed_ratio ? D.crushed_ratio[pi] : 0;
+    var hExp = (D.head_exposure && D.head_exposure[pi] > 0) ? D.head_exposure[pi] : 0;
+    var fExp = D.brightness ? D.brightness[pi] : 0;
+    if (hContrast > 0) {
+      h += '  ' + gIcon(D.gate_brightness_pass[pi]) + ' contrast    ' + fmtN(hContrast,3) + ' \u2265 ' + fmtN(th.gate_contrast_min,3) + '\n';
+      h += '    clipped     ' + fmtN(hClipped,3) + ' \u2264 ' + fmtN(th.gate_clipped_max,3) + '\n';
+      h += '    crushed     ' + fmtN(hCrushed,3) + ' \u2264 ' + fmtN(th.gate_crushed_max,3) + '\n';
+    } else {
+      var useFaceExp = hExp > 0;
+      var expSrc = useFaceExp ? 'face' : 'frame';
+      var expVal = useFaceExp ? hExp : fExp;
+      h += '  ' + gIcon(D.gate_brightness_pass[pi]) + ' exposure <span style="color:#999">(' + expSrc + ')</span> ' + fmtN(expVal,1) + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
+    }
+    var maskMethod = D.mask_method ? D.mask_method[pi] : '';
+    if (maskMethod) h += '  mask: ' + maskMethod + '\n';
+    h += '  head_yaw     ' + fmtN(D.head_yaw[pi],1) + '\u00b0\n';
+    h += '  head_pitch   ' + fmtN(D.head_pitch[pi],1) + '\u00b0\n';
+    if (D.gate_fail_reasons && D.gate_fail_reasons[pi]) {
+      h += '  <span class="gate-fail">reasons: ' + D.gate_fail_reasons[pi] + '</span>\n';
+    }
+
+    // Gate — Passenger
+    if (D.passenger_detected && D.passenger_detected[pi]) {
+      var pgp = D.passenger_gate_passed_arr[pi];
+      h += '\n<span class="section-label">\u2500\u2500 Gate: Passenger ' +
+        (pgp ? '<span class="gate-pass">PASS</span>' : '<span class="gate-fail">FAIL</span>') +
+        ' \u2500\u2500</span>\n';
+      h += '  face_area    ' + fmtN(D.passenger_face_area_ratio[pi],3) + '\n';
+      var pBlur = D.passenger_head_blur[pi];
+      h += '  ' + gIcon(D.passenger_gate_blur_pass[pi]) + ' blur <span style="color:#999">(face)</span> ' + fmtN(pBlur,1) + ' \u2265 ' + fmtN(th.passenger_blur_min,1) + '\n';
+      var pExp = D.passenger_head_exposure[pi];
+      h += '  ' + gIcon(D.passenger_gate_brightness_pass[pi]) + ' exposure <span style="color:#999">(face)</span> ' + fmtN(pExp,1) + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
+      if (D.passenger_gate_fail_reasons && D.passenger_gate_fail_reasons[pi]) {
+        h += '  <span class="gate-fail">reasons: ' + D.passenger_gate_fail_reasons[pi] + '</span>\n';
+      }
+    }
 
     // Quality
     var qs = D.quality_scores[pi];

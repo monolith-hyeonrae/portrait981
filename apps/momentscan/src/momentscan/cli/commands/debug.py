@@ -84,7 +84,7 @@ def run_debug(args):
             backend = 'worker'
 
     # ROI
-    roi = _parse_roi(getattr(args, 'roi', None)) or (0.3, 0.1, 0.7, 0.6)
+    roi = _parse_roi(getattr(args, 'roi', None)) or (0.20, 0.05, 0.80, 0.85)
 
     # Observability
     trace_level = getattr(args, 'trace', 'off')
@@ -463,7 +463,8 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
     """
     if 'all' in selected:
         return ['face.detect', 'face.expression', 'face.au', 'head.pose',
-                'face.quality', 'portrait.score', 'frame.quality']
+                'face.parse', 'face.quality', 'portrait.score', 'frame.quality',
+                'face.gate']
 
     names = []
     for s in selected:
@@ -472,8 +473,13 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
         if s == 'face.detect' and 'face.expression' not in selected:
             names.append('face.expression')
 
+    # face.gate는 face.detect가 있으면 항상 추가
+    if 'face.detect' in names and 'face.gate' not in names:
+        names.append('face.gate')
+
     return names if names else ['face.detect', 'face.expression', 'face.au', 'head.pose',
-                                'portrait.score', 'face.quality', 'frame.quality']
+                                'face.parse', 'portrait.score', 'face.quality', 'frame.quality',
+                                'face.gate']
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +563,7 @@ def _parse_analyzer_arg(arg: str) -> List[str]:
         return ['raw']
 
     parts = [p.strip().lower() for p in arg.split(',')]
-    valid = {'face.detect', 'face.au', 'head.pose', 'body.pose', 'frame.quality', 'face.embed', 'body.embed', 'all', 'raw', 'none'}
+    valid = {'face.detect', 'face.au', 'head.pose', 'face.parse', 'body.pose', 'frame.quality', 'face.embed', 'body.embed', 'all', 'raw', 'none'}
     for p in parts:
         if p not in valid:
             print(f"Warning: Unknown analyzer '{p}', valid: {valid}")

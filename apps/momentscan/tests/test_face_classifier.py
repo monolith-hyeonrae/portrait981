@@ -79,15 +79,15 @@ class TestFaceClassifierAnalyzer:
         assert len(data.passenger_faces) == 0
 
     def test_two_faces_main_and_passenger(self, classifier):
-        """Two faces: larger becomes main, smaller becomes passenger."""
+        """Two faces: closer to camera origin (1.0, 1.0) becomes main."""
         classifier.initialize()
 
         for i in range(5):
             frame = make_frame(i)
-            # Larger face in center -> main
-            face1 = make_face(1, (0.35, 0.2, 0.25, 0.35))
-            # Smaller face on side -> passenger
-            face2 = make_face(2, (0.65, 0.3, 0.15, 0.25))
+            # Face closer to camera origin (right-bottom) -> main
+            face1 = make_face(1, (0.60, 0.4, 0.25, 0.35))
+            # Face farther from camera origin (left-top) -> passenger
+            face2 = make_face(2, (0.15, 0.1, 0.15, 0.25))
             deps = {"face.detect": make_face_detect_obs([face1, face2], i)}
             obs = classifier.process(frame, deps)
 

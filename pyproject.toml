@@ -12,6 +12,7 @@ members = [
     "libs/vpx/plugins/portrait-score",
     "libs/vpx/plugins/face-au",
     "libs/vpx/plugins/head-pose",
+    "libs/vpx/plugins/face-parse",
     "libs/vpx/sdk",
     "libs/vpx/runner",
     "libs/vpx/viz",

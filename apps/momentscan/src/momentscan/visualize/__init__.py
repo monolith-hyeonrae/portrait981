@@ -160,14 +160,17 @@ class AnalyzerVisualizer:
         return output
 
     def draw_quality_observation(self, image: np.ndarray, observation: Observation) -> np.ndarray:
-        """Draw quality metrics (legacy API)."""
+        """Draw quality metrics (legacy API).
+
+        Note: Gate status is now provided by face.gate analyzer,
+        not frame.quality. Gate display is handled by StatsPanel.
+        """
         output = image.copy()
         h, w = output.shape[:2]
 
         blur = observation.signals.get("blur_quality", 0)
         bright = observation.signals.get("brightness_quality", 0)
         contrast = observation.signals.get("contrast_quality", 0)
-        gate = observation.signals.get("quality_gate", 0)
 
         bar_x, bar_w, bar_h = w - 120, 80, 12
         for i, (name, val) in enumerate([("Blur", blur), ("Bright", bright), ("Contrast", contrast)]):
@@ -177,12 +180,6 @@ class AnalyzerVisualizer:
             cv2.rectangle(output, (bar_x, y), (bar_x + bar_w, y + bar_h), COLOR_DARK_BGR, -1)
             cv2.rectangle(output, (bar_x, y), (bar_x + int(bar_w * min(1.0, val)), y + bar_h), color, -1)
 
-        gate_y = 30 + 3 * 25 + 10
-        gate_color = COLOR_GREEN_BGR if gate > 0.5 else COLOR_GRAY_BGR
-        cv2.putText(
-            output, "GATE: OPEN" if gate > 0.5 else "GATE: CLOSED",
-            (bar_x - 55, gate_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, gate_color, 2,
-        )
         return output
 
 
@@ -240,6 +237,8 @@ class DebugVisualizer:
             portrait_score_obs=ctx.observations.get("portrait.score"),
             face_au_obs=ctx.observations.get("face.au"),
             head_pose_obs=ctx.observations.get("head.pose"),
+            gate_obs=ctx.observations.get("face.gate"),
+            face_parse_obs=ctx.observations.get("face.parse"),
         )
 
     # --- Legacy API (backward compatible) ---
@@ -263,6 +262,8 @@ class DebugVisualizer:
         embed_stats: Optional[Dict[str, float]] = None,
         face_au_obs: Optional[Observation] = None,
         head_pose_obs: Optional[Observation] = None,
+        gate_obs: Optional[Observation] = None,
+        face_parse_obs: Optional[Observation] = None,
     ) -> np.ndarray:
         """Create combined debug visualization with panel layout."""
         h, w = frame.data.shape[:2]
@@ -288,6 +289,10 @@ class DebugVisualizer:
             observations["face.au"] = face_au_obs
         if head_pose_obs is not None:
             observations["head.pose"] = head_pose_obs
+        if gate_obs is not None:
+            observations["face.gate"] = gate_obs
+        if face_parse_obs is not None:
+            observations["face.parse"] = face_parse_obs
 
         # 3. Video panel: annotate the frame (respects layers)
         video_frame = self._video_panel.draw(

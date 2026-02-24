@@ -27,6 +27,7 @@ members = [
     "vpx-face-au",
     "vpx-face-detect",
     "vpx-face-expression",
+    "vpx-face-parse",
     "vpx-hand-gesture",
     "vpx-head-pose",
     "vpx-portrait-score",
@@ -2499,6 +2500,9 @@ face-detect = [
 face-expression = [
     { name = "vpx-face-expression" },
 ]
+face-parse = [
+    { name = "vpx-face-parse", extra = ["onnx"] },
+]
 hand-gesture = [
     { name = "vpx-hand-gesture" },
 ]
@@ -2510,6 +2514,7 @@ local = [
     { name = "vpx-body-pose" },
     { name = "vpx-face-detect" },
     { name = "vpx-face-expression" },
+    { name = "vpx-face-parse", extra = ["onnx"] },
     { name = "vpx-hand-gesture" },
     { name = "vpx-portrait-score", extra = ["aesthetic", "caption"] },
 ]
@@ -2523,7 +2528,7 @@ viz = [
 [package.metadata]
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.5" },
-    { name = "momentscan", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "portrait-score"], marker = "extra == 'local'", editable = "apps/momentscan" },
+    { name = "momentscan", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "portrait-score", "face-parse"], marker = "extra == 'local'", editable = "apps/momentscan" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
     { name = "pandas", specifier = ">=2.0.0" },
@@ -2538,11 +2543,12 @@ requires-dist = [
     { name = "vpx-body-pose", marker = "extra == 'body-pose'", editable = "libs/vpx/plugins/body-pose" },
     { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/plugins/face-detect" },
     { name = "vpx-face-expression", marker = "extra == 'face-expression'", editable = "libs/vpx/plugins/face-expression" },
+    { name = "vpx-face-parse", extras = ["onnx"], marker = "extra == 'face-parse'", editable = "libs/vpx/plugins/face-parse" },
     { name = "vpx-hand-gesture", marker = "extra == 'hand-gesture'", editable = "libs/vpx/plugins/hand-gesture" },
     { name = "vpx-portrait-score", extras = ["aesthetic", "caption"], marker = "extra == 'portrait-score'", editable = "libs/vpx/plugins/portrait-score" },
     { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
-provides-extras = ["viz", "face-detect", "face-expression", "body-pose", "hand-gesture", "portrait-score", "local", "dev"]
+provides-extras = ["viz", "face-detect", "face-expression", "body-pose", "hand-gesture", "portrait-score", "face-parse", "local", "dev"]
 
 [[package]]
 name = "mpmath"
@@ -6087,6 +6093,33 @@ requires-dist = [
     { name = "vpx-face-detect", editable = "libs/vpx/plugins/face-detect" },
     { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
+
+[[package]]
+name = "vpx-face-parse"
+version = "0.1.0"
+source = { editable = "libs/vpx/plugins/face-parse" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python" },
+    { name = "vpx-face-detect" },
+    { name = "vpx-sdk" },
+]
+
+[package.optional-dependencies]
+onnx = [
+    { name = "onnxruntime", marker = "sys_platform != 'linux'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "onnxruntime", marker = "extra == 'onnx'", specifier = ">=1.16.0" },
+    { name = "opencv-python", specifier = ">=4.8" },
+    { name = "vpx-face-detect", editable = "libs/vpx/plugins/face-detect" },
+    { name = "vpx-sdk", editable = "libs/vpx/sdk" },
+]
+provides-extras = ["onnx"]
 
 [[package]]
 name = "vpx-hand-gesture"

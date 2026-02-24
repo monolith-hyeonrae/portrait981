@@ -66,16 +66,23 @@ class FaceClassifierAnalyzer(Module):
         min_confidence: float = 0.3,
         main_zone: tuple[float, float] = (0.3, 0.7),
         edge_margin: float = 0.05,
+        camera_origin: tuple[float, float] = (1.0, 1.0),
     ):
         self._min_track_frames = min_track_frames
         self._min_area_ratio = min_area_ratio
         self._min_confidence = min_confidence
         self._main_zone = main_zone
         self._edge_margin = edge_margin
+        self._camera_origin = camera_origin  # 카메라 위치 (normalized), 가까울수록 주탑승자
 
         # Tracking state: face_id -> history
         self._track_history: Dict[int, List[FaceObservation]] = defaultdict(list)
         self._track_stats: Dict[int, Dict] = {}
+
+        # Lock-in state: prevent main role reversal
+        self._locked_main_id: Optional[int] = None
+        self._locked_main_frames: int = 0
+        self._LOCK_THRESHOLD: int = 10
 
         # Step timing tracking (auto-populated by @processing_step decorator)
         self._step_timings: Optional[Dict[str, float]] = None
@@ -98,11 +105,15 @@ class FaceClassifierAnalyzer(Module):
     def initialize(self) -> None:
         self._track_history.clear()
         self._track_stats.clear()
+        self._locked_main_id = None
+        self._locked_main_frames = 0
         logger.info("FaceClassifierAnalyzer initialized")
 
     def cleanup(self) -> None:
         self._track_history.clear()
         self._track_stats.clear()
+        self._locked_main_id = None
+        self._locked_main_frames = 0
         logger.info("FaceClassifierAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
@@ -156,21 +167,67 @@ class FaceClassifierAnalyzer(Module):
         depends_on=["classify"],
     )
     def _assign_roles(self, classified_faces: List[ClassifiedFace]) -> Dict:
-        """Assign unique roles ensuring 1 main and at most 1 passenger."""
+        """Assign unique roles ensuring 1 main and at most 1 passenger.
+
+        Uses lock-in to prevent main role reversal: once a face_id has been
+        main for LOCK_THRESHOLD consecutive frames, it stays main as long as
+        it is present in the current frame.
+
+        Scoring balances camera_proximity (40), area (20), track_length (0.5),
+        and position_stability (20). Camera proximity is the primary signal:
+        the face closer to camera_origin is the main rider.
+        """
         candidates = []
         transient_faces = []
         noise_faces = []
 
+        current_ids = {cf.face.face_id for cf in classified_faces}
+        cam_x, cam_y = self._camera_origin
+
         for cf in classified_faces:
             if cf.role in ("main", "passenger"):
-                score = cf.avg_area * 100 + cf.track_length * 0.1
+                stats = self._track_stats.get(cf.face.face_id, {})
+                position_stability = stats.get("position_stability", 0.5)
+
+                # Camera proximity: closer to camera_origin → higher score
+                avg_cx = stats.get("avg_center_x", 0.5)
+                avg_cy = stats.get("avg_center_y", 0.5)
+                dist = ((avg_cx - cam_x) ** 2 + (avg_cy - cam_y) ** 2) ** 0.5
+                max_dist = 2 ** 0.5  # diagonal ~1.414
+                camera_proximity = max(0.0, 1.0 - dist / max_dist)
+
+                score = (
+                    camera_proximity * 40
+                    + cf.avg_area * 20
+                    + cf.track_length * 0.5
+                    + position_stability * 20
+                )
                 candidates.append((score, cf))
             elif cf.role == "transient":
                 transient_faces.append(cf)
             else:
                 noise_faces.append(cf)
 
-        candidates.sort(key=lambda x: x[0], reverse=True)
+        # Lock-in: if locked main is still present, force it to the top
+        locked_idx = None
+        if self._locked_main_id is not None:
+            if self._locked_main_id in current_ids:
+                for i, (score, cf) in enumerate(candidates):
+                    if cf.face.face_id == self._locked_main_id:
+                        locked_idx = i
+                        break
+            else:
+                # Locked face disappeared — release lock
+                self._locked_main_id = None
+                self._locked_main_frames = 0
+
+        if locked_idx is not None:
+            # Move locked face to front
+            locked_entry = candidates.pop(locked_idx)
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            candidates.insert(0, locked_entry)
+        else:
+            candidates.sort(key=lambda x: x[0], reverse=True)
 
         main_face = None
         passenger_faces = []
@@ -185,6 +242,19 @@ class FaceClassifierAnalyzer(Module):
                 track_length=best.track_length,
                 avg_area=best.avg_area,
             )
+
+            # Update lock-in state
+            if self._locked_main_id == best.face.face_id:
+                self._locked_main_frames += 1
+            elif self._locked_main_id is None:
+                # New main candidate — start counting
+                self._locked_main_id = best.face.face_id
+                self._locked_main_frames = 1
+            else:
+                # Different face became main (lock not yet active)
+                if self._locked_main_frames < self._LOCK_THRESHOLD:
+                    self._locked_main_id = best.face.face_id
+                    self._locked_main_frames = 1
 
             if len(candidates) > 1:
                 second = candidates[1][1]

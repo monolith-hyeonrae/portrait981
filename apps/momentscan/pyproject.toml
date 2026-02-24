@@ -26,12 +26,13 @@ face-expression = ["vpx-face-expression"]
 body-pose = ["vpx-body-pose"]
 hand-gesture = ["vpx-hand-gesture"]
 portrait-score = ["vpx-portrait-score[aesthetic,caption]"]
+face-parse = ["vpx-face-parse[onnx]"]
 
 # === Local development ===
 # For running everything in a single environment.
 # The workspace root override-dependencies blocks CPU onnxruntime.
 local = [
-    "momentscan[face-detect,face-expression,body-pose,hand-gesture,portrait-score]",
+    "momentscan[face-detect,face-expression,body-pose,hand-gesture,portrait-score,face-parse]",
     "pyzmq>=25.0.0",
     "pyqt6>=6.10.2",
     "supervision>=0.19.0",
@@ -51,6 +52,7 @@ momentscan = "momentscan.cli:main"
 "frame.quality" = "momentscan.algorithm.analyzers.quality:QualityAnalyzer"
 "frame.scoring" = "momentscan.algorithm.analyzers.frame_scoring:FrameScoringAnalyzer"
 "face.quality" = "momentscan.algorithm.analyzers.face_quality:FaceQualityAnalyzer"
+"face.gate" = "momentscan.algorithm.analyzers.face_gate:FaceGateAnalyzer"
 
 [build-system]
 requires = ["hatchling"]
@@ -76,3 +78,4 @@ vpx-face-expression = { workspace = true }
 vpx-body-pose = { workspace = true }
 vpx-hand-gesture = { workspace = true }
 vpx-portrait-score = { workspace = true }
+vpx-face-parse = { workspace = true }

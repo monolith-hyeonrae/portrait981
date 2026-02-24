@@ -52,7 +52,7 @@ class DebugFrameHandler:
         self.show_window = show_window
         self.output_path = output_path
         self.fps = fps
-        self.roi = roi or (0.3, 0.1, 0.7, 0.6)
+        self.roi = roi or (0.20, 0.05, 0.80, 0.85)
         self.backend_label = backend_label
 
         self.visualizer = DebugVisualizer()
@@ -106,6 +106,13 @@ class DebugFrameHandler:
             portrait_score_obs=observations.get("portrait.score"),
         )
 
+        # Extract gate status from face.gate observation
+        gate_obs = observations.get("face.gate")
+        if gate_obs is not None:
+            is_gate_open = bool(gate_obs.signals.get("gate_passed", True))
+        else:
+            is_gate_open = True  # default: open if face.gate not in pipeline
+
         # Render debug view
         face_obs = observations.get("face.detect")
         debug_image = self.visualizer.create_debug_view(
@@ -114,7 +121,7 @@ class DebugFrameHandler:
             quality_obs=observations.get("frame.quality"),
             classifier_obs=classifier_obs,
             fusion_result=None,
-            is_gate_open=False,
+            is_gate_open=is_gate_open,
             in_cooldown=False,
             roi=self.roi,
             monitor_stats=monitor_stats,
@@ -125,6 +132,8 @@ class DebugFrameHandler:
             embed_stats=embed_stats,
             face_au_obs=observations.get("face.au"),
             head_pose_obs=observations.get("head.pose"),
+            gate_obs=gate_obs,
+            face_parse_obs=observations.get("face.parse"),
         )
 
         # Video writer

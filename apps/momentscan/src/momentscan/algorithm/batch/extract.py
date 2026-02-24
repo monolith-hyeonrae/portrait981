@@ -62,12 +62,14 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
 
     face_obs = obs_by_source.get("face.detect")
     _extract_face_detect(record, face_obs)
+    _extract_head_pose(record, obs_by_source.get("head.pose"))
     _extract_face_expression(record, obs_by_source.get("face.expression"))
     _extract_face_au(record, obs_by_source.get("face.au"))
     _extract_quality(record, obs_by_source.get("frame.quality"))
     _extract_face_classify(record, obs_by_source.get("face.classify"))
     _extract_face_quality(record, obs_by_source.get("face.quality"))
     _extract_portrait_score(record, obs_by_source.get("portrait.score"))
+    _extract_face_gate(record, obs_by_source.get("face.gate"))
 
     _compute_composites(record)
 
@@ -202,6 +204,60 @@ def _extract_face_quality(record: FrameRecord, obs: Any) -> None:
 
     record.head_blur = float(getattr(data, "head_blur", 0.0))
     record.head_exposure = float(getattr(data, "head_exposure", 0.0))
+    record.head_contrast = float(getattr(data, "head_contrast", 0.0))
+    record.clipped_ratio = float(getattr(data, "clipped_ratio", 0.0))
+    record.crushed_ratio = float(getattr(data, "crushed_ratio", 0.0))
+    record.mask_method = str(getattr(data, "mask_method", ""))
+
+
+def _extract_head_pose(record: FrameRecord, obs: Any) -> None:
+    """head.pose: 6DRepNet 정밀 yaw/pitch/roll로 face.detect 기하학적 추정값 덮어쓰기.
+
+    _extract_face_detect 이후 호출되어야 한다.
+    """
+    if obs is None:
+        return
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+    estimates = getattr(data, "estimates", None)
+    if not estimates:
+        return
+    est = estimates[0]  # main face
+    yaw = getattr(est, "yaw", None)
+    if yaw is not None:
+        record.head_yaw = float(yaw)
+    pitch = getattr(est, "pitch", None)
+    if pitch is not None:
+        record.head_pitch = float(pitch)
+    roll = getattr(est, "roll", None)
+    if roll is not None:
+        record.head_roll = float(roll)
+
+
+def _extract_face_gate(record: FrameRecord, obs: Any) -> None:
+    """face.gate: per-face gate 판정 결과 추출 (main + passenger)."""
+    if obs is None:
+        return
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+    record.gate_passed = bool(getattr(data, "main_gate_passed", True))
+    reasons = getattr(data, "main_fail_reasons", ())
+    record.gate_fail_reasons = ",".join(reasons) if reasons else ""
+
+    # Passenger gate
+    results = getattr(data, "results", [])
+    for r in results:
+        if getattr(r, "role", "") == "passenger":
+            record.passenger_detected = True
+            record.passenger_gate_passed = bool(r.gate_passed)
+            fail_r = getattr(r, "fail_reasons", ())
+            record.passenger_gate_fail_reasons = ",".join(fail_r) if fail_r else ""
+            record.passenger_face_area_ratio = float(getattr(r, "face_area_ratio", 0.0))
+            record.passenger_head_blur = float(getattr(r, "head_blur", 0.0))
+            record.passenger_head_exposure = float(getattr(r, "head_exposure", 0.0))
+            break
 
 
 def _extract_portrait_score(record: FrameRecord, obs: Any) -> None:

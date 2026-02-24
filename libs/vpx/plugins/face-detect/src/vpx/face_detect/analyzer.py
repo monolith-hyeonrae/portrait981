@@ -54,7 +54,7 @@ class FaceDetectionAnalyzer(Module):
         self._device = device
         self._track_faces = track_faces
         self._iou_threshold = iou_threshold
-        self._roi = roi if roi is not None else (0.3, 0.1, 0.7, 0.6)
+        self._roi = roi if roi is not None else (0.20, 0.05, 0.80, 0.85)
         self._initialized = False
         self._face_backend = face_backend
         self._models_dir = models_dir

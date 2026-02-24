@@ -43,9 +43,11 @@ class TestFrameRecord:
 class TestHighlightConfig:
     def test_default_config(self):
         cfg = HighlightConfig()
-        assert cfg.gate_face_confidence == 0.7
         assert cfg.smoothing_alpha == 0.25
         assert cfg.peak_min_distance_sec == 2.5
+        # Gate thresholds moved to FaceGateConfig (face.gate analyzer)
+        assert not hasattr(cfg, "gate_face_confidence")
+        assert not hasattr(cfg, "gate_eye_open_min")
 
     def test_custom_config(self):
         cfg = HighlightConfig(fps=30.0, peak_min_distance_sec=1.0)
@@ -105,14 +107,14 @@ class TestBatchHighlightEngine:
         assert len(result.windows) == 0
 
     def test_quality_gate_filters_bad_frames(self):
-        """blur가 낮은 프레임은 gate에서 걸러진다."""
+        """gate_passed=False 프레임은 gate에서 걸러진다."""
         records = _make_records(50)
         _inject_spike(records, 25)
-        # blur를 gate 미달로 설정
-        records[25].blur_score = 10.0
+        # face.gate analyzer가 판정한 결과를 FrameRecord에 설정
+        records[25].gate_passed = False
+        records[25].gate_fail_reasons = "blur"
 
-        cfg = HighlightConfig(gate_blur_min=50.0)
-        engine = BatchHighlightEngine(config=cfg)
+        engine = BatchHighlightEngine()
         result = engine.analyze(records)
 
         # spike 프레임이 gate에서 걸렸으므로 해당 프레임의 최종 점수는 0
@@ -176,10 +178,12 @@ class TestBatchHighlightEngine:
             assert isinstance(result.windows[0].reason, dict)
 
     def test_no_face_frames_excluded(self):
-        """얼굴이 없는 프레임은 gate에서 제외된다."""
+        """gate_passed=False 프레임은 모두 0점이 되어 peak 없음."""
         records = _make_records(50)
         for r in records:
             r.face_detected = False
+            r.gate_passed = False
+            r.gate_fail_reasons = "face_detected"
 
         engine = BatchHighlightEngine()
         result = engine.analyze(records)

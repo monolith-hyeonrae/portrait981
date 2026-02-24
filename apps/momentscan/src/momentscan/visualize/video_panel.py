@@ -5,14 +5,15 @@ render_marks() to draw them. App-specific overlays (ROI, trigger
 flash) are drawn directly.
 """
 
-from typing import Dict, Optional, Tuple
+from dataclasses import replace
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
 
 from vpx.sdk import Observation
+from vpx.sdk.marks import AxisMark, BarMark, BBoxMark, DrawStyle, KeypointsMark, LabelMark
 from vpx.viz.renderer import render_marks
-from vpx.sdk.marks import DrawStyle
 from momentscan.visualize.components import (
     COLOR_RED_BGR,
     COLOR_GREEN_BGR,
@@ -62,8 +63,18 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
+        from vpx.face_parse.analyzer import FaceParseAnalyzer
+        modules["face.parse"] = FaceParseAnalyzer(parse_backend=None)
+    except ImportError:
+        pass
+    try:
         from momentscan.algorithm.analyzers.face_quality import FaceQualityAnalyzer
         modules["face.quality"] = FaceQualityAnalyzer()
+    except ImportError:
+        pass
+    try:
+        from momentscan.algorithm.analyzers.face_gate import FaceGateAnalyzer
+        modules["face.gate"] = FaceGateAnalyzer()
     except ImportError:
         pass
     return modules
@@ -76,6 +87,8 @@ _LAYER_MAP = {
     "face.au": DebugLayer.FACE,
     "head.pose": DebugLayer.FACE,
     "face.classify": DebugLayer.FACE,
+    "face.gate": DebugLayer.FACE,
+    "face.parse": DebugLayer.FACE,
 }
 
 
@@ -124,13 +137,24 @@ class VideoPanel:
         if roi is not None and (layers is None or layers[DebugLayer.ROI]):
             self._draw_roi(output, roi)
 
+        # Face parse mask overlay (background — rendered below marks)
+        if (observations and observations.get("face.parse")
+                and (layers is None or layers[DebugLayer.FACE])):
+            self._draw_face_parse_overlay(output, observations)
+
         # Draw order: background (portrait.score, face.quality) -> foreground (face)
         draw_order = [
-            "portrait.score", "face.quality",
+            "portrait.score", "face.quality", "face.parse",
             "face.detect", "face.expression",
             "face.au", "head.pose",
-            "face.classify",
+            "face.classify", "face.gate",
         ]
+
+        active_bboxes = self._get_active_bboxes(observations)
+        emphasized_bboxes = (
+            self._get_emphasized_bboxes(active_bboxes, observations, roi)
+            if active_bboxes is not None else None
+        )
 
         for name in draw_order:
             obs = observations.get(name) if observations else None
@@ -149,6 +173,20 @@ class VideoPanel:
             module = self._modules.get(name)
             if module:
                 marks = module.annotate(obs)
+
+                # 3-level mark treatment (skip face.classify — has own role colors)
+                # emphasized: thick + bright | filtered: thin + bright | non-selected: thin + dim
+                if active_bboxes is not None and name != "face.classify":
+                    styled = []
+                    for m in marks:
+                        if emphasized_bboxes and self._is_near_bboxes(m, emphasized_bboxes):
+                            styled.append(m)  # full emphasis
+                        elif self._is_near_bboxes(m, active_bboxes):
+                            styled.append(self._thin_mark(m))  # gate/ROI filtered
+                        else:
+                            styled.append(self._dim_mark(m))  # non-selected
+                    marks = styled
+
                 style = styles.get(name) if styles else None
                 output = render_marks(output, marks, style=style)
 
@@ -161,6 +199,179 @@ class VideoPanel:
                 self._draw_trigger_flash(output, fusion_result)
 
         return output
+
+    # --- Face dimming helpers ---
+
+    def _get_active_bboxes(
+        self, observations: Optional[Dict[str, Observation]],
+    ) -> Optional[List[Tuple[float, float, float, float]]]:
+        """Extract main+passenger face bboxes from face.classify."""
+        if not observations:
+            return None
+        classify_obs = observations.get("face.classify")
+        if not classify_obs:
+            return None
+        data = getattr(classify_obs, "data", None)
+        if data is None:
+            return None
+        faces = getattr(data, "faces", None)
+        if not faces:
+            return None
+        active = []
+        for cf in faces:
+            if getattr(cf, "role", "") in ("main", "passenger"):
+                face = getattr(cf, "face", None)
+                if face is not None:
+                    active.append(getattr(face, "bbox", (0, 0, 0, 0)))
+        return active if active else None
+
+    def _get_emphasized_bboxes(
+        self,
+        active_bboxes: List[Tuple[float, float, float, float]],
+        observations: Optional[Dict[str, Observation]],
+        roi: Optional[Tuple[float, float, float, float]],
+    ) -> List[Tuple[float, float, float, float]]:
+        """Filter active bboxes to only those passing gate AND inside ROI.
+
+        Returns the subset of active_bboxes that should get full emphasis
+        (thick lines, bright colors). Others are "filtered" (thin lines only).
+        """
+        # Collect gate-passed face bboxes
+        gate_passed_set: Optional[set] = None
+        gate_obs = observations.get("face.gate") if observations else None
+        if gate_obs is not None:
+            gate_data = getattr(gate_obs, "data", None)
+            if gate_data is not None:
+                results = getattr(gate_data, "results", [])
+                if results:
+                    gate_passed_set = set()
+                    for r in results:
+                        if r.gate_passed:
+                            gate_passed_set.add(r.face_bbox)
+
+        emphasized = []
+        for bbox in active_bboxes:
+            # Gate check: if gate data exists, bbox must be in passed set
+            if gate_passed_set is not None and bbox not in gate_passed_set:
+                continue
+            # ROI check: bbox center must be inside ROI
+            if roi is not None:
+                rx1, ry1, rx2, ry2 = roi
+                cx = bbox[0] + bbox[2] / 2
+                cy = bbox[1] + bbox[3] / 2
+                if not (rx1 <= cx <= rx2 and ry1 <= cy <= ry2):
+                    continue
+            emphasized.append(bbox)
+        return emphasized
+
+    def _is_near_bboxes(
+        self,
+        mark: object,
+        bboxes: List[Tuple[float, float, float, float]],
+        margin: float = 0.05,
+    ) -> bool:
+        """Check if a mark's position falls within any of the given bboxes."""
+        if isinstance(mark, BBoxMark):
+            mx = mark.x + mark.w / 2
+            my = mark.y + mark.h / 2
+        elif isinstance(mark, BarMark):
+            mx, my = mark.x, mark.y
+        elif isinstance(mark, LabelMark):
+            mx, my = mark.x, mark.y
+        elif isinstance(mark, AxisMark):
+            mx, my = mark.cx, mark.cy
+        elif isinstance(mark, KeypointsMark):
+            return True  # body keypoints — always active
+        else:
+            return True  # unknown type — treat as active
+
+        for bx, by, bw, bh in bboxes:
+            if (bx - margin <= mx <= bx + bw + margin
+                    and by - margin <= my <= by + bh + margin):
+                return True
+        return False
+
+    def _thin_mark(self, mark: object) -> object:
+        """Return a copy with reduced thickness only (keep original colors)."""
+        if isinstance(mark, BBoxMark):
+            return replace(mark, thickness=1)
+        elif isinstance(mark, AxisMark):
+            return replace(mark, thickness=1)
+        return mark
+
+    def _dim_mark(self, mark: object) -> object:
+        """Return a dimmed copy of the mark (40% brightness, thinner lines)."""
+        def dim_color(c: Optional[Tuple[int, int, int]]) -> Tuple[int, int, int]:
+            if c is None:
+                return (50, 50, 50)
+            return (int(c[0] * 0.4), int(c[1] * 0.4), int(c[2] * 0.4))
+
+        if isinstance(mark, BBoxMark):
+            return replace(mark, color=dim_color(mark.color), thickness=1)
+        elif isinstance(mark, BarMark):
+            return replace(mark, color=dim_color(mark.color))
+        elif isinstance(mark, LabelMark):
+            return replace(mark, color=dim_color(mark.color))
+        elif isinstance(mark, AxisMark):
+            return replace(mark, thickness=1)
+        return mark
+
+    # --- Face parse mask overlay ---
+
+    def _draw_face_parse_overlay(
+        self,
+        image: np.ndarray,
+        observations: Dict[str, Observation],
+    ) -> None:
+        """Draw face.parse results as semi-transparent mask + contour outline."""
+        parse_obs = observations.get("face.parse")
+        if parse_obs is None or parse_obs.data is None:
+            return
+
+        h, w = image.shape[:2]
+        overlay_color = np.array([255, 255, 0], dtype=np.uint8)  # cyan BGR
+        alpha = 0.25
+
+        for result in parse_obs.data.results:
+            if result.crop_box == (0, 0, 0, 0):
+                continue
+            bx, by, bw, bh = result.crop_box
+            if bw <= 0 or bh <= 0:
+                continue
+
+            # Resize mask to crop_box size
+            mask_resized = cv2.resize(
+                result.face_mask, (bw, bh),
+                interpolation=cv2.INTER_NEAREST,
+            )
+
+            # Frame boundary clipping
+            x1, y1 = max(0, bx), max(0, by)
+            x2, y2 = min(w, bx + bw), min(h, by + bh)
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            mx1, my1 = x1 - bx, y1 - by
+            mx2, my2 = mx1 + (x2 - x1), my1 + (y2 - y1)
+
+            # Semi-transparent overlay on face pixels
+            roi = image[y1:y2, x1:x2]
+            mask_region = mask_resized[my1:my2, mx1:mx2]
+            face_pixels = mask_region > 0
+            if face_pixels.any():
+                roi[face_pixels] = (
+                    roi[face_pixels].astype(np.float32) * (1 - alpha)
+                    + overlay_color * alpha
+                ).astype(np.uint8)
+
+            # Contour outline
+            contours, _ = cv2.findContours(
+                mask_region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+            )
+            for c in contours:
+                c[:, :, 0] += x1
+                c[:, :, 1] += y1
+                cv2.drawContours(image, [c], -1, (0, 255, 255), 1)
 
     # --- Embedding quality indicator ---
 
@@ -244,12 +455,22 @@ class VideoPanel:
     # --- ROI ---
 
     def _draw_roi(self, image: np.ndarray, roi: Tuple[float, float, float, float]) -> None:
-        """Draw subtle ROI boundary."""
+        """Draw ROI by dimming the area outside the boundary."""
         h, w = image.shape[:2]
         x1, y1, x2, y2 = roi
         px1, py1 = int(x1 * w), int(y1 * h)
         px2, py2 = int(x2 * w), int(y2 * h)
-        cv2.rectangle(image, (px1, py1), (px2, py2), (80, 80, 80), 1)
+
+        # Dim outside ROI
+        mask = np.zeros((h, w), dtype=np.uint8)
+        mask[:py1, :] = 1      # top
+        mask[py2:, :] = 1      # bottom
+        mask[py1:py2, :px1] = 1  # left
+        mask[py1:py2, px2:] = 1  # right
+        image[mask == 1] = (image[mask == 1] * 0.4).astype(np.uint8)
+
+        # Thin border
+        cv2.rectangle(image, (px1, py1), (px2, py2), (60, 60, 60), 1)
 
     # --- Trigger flash ---
 

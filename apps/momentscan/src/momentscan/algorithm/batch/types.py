@@ -56,6 +56,10 @@ class FrameRecord:
     head_blur: float = 0.0           # head_crop Laplacian variance (face sharpness)
     head_exposure: float = 0.0       # head_crop mean brightness
     head_aesthetic: float = 0.0      # CLIP portrait quality score [0,1]
+    head_contrast: float = 0.0      # CV = std/mean (skin-tone invariant)
+    clipped_ratio: float = 0.0      # overexposed (>250) pixel ratio
+    crushed_ratio: float = 0.0      # underexposed (<5) pixel ratio
+    mask_method: str = ""            # "parsing" | "landmark" | "center_patch"
 
     # CLIP axis scores (from portrait.score → metadata._clip_axes)
     clip_disney_smile: float = 0.0
@@ -76,6 +80,18 @@ class FrameRecord:
     duchenne_smile: float = 0.0     # disney_smile × (AU6 + AU12) — genuine warm smile
     wild_intensity: float = 0.0     # wild_roar × max(AU25, AU26) — 실제로 입 벌림 확인
     chill_score: float = 0.0        # neutral_high × all_axes_low — 무표정 탑승
+
+    # Gate result (from face.gate analyzer — main face)
+    gate_passed: bool = True        # default True: gate 미실행 시 통과로 간주
+    gate_fail_reasons: str = ""     # comma-separated fail condition names
+
+    # Passenger gate (from face.gate analyzer)
+    passenger_detected: bool = False
+    passenger_gate_passed: bool = True
+    passenger_gate_fail_reasons: str = ""
+    passenger_face_area_ratio: float = 0.0
+    passenger_head_blur: float = 0.0
+    passenger_head_exposure: float = 0.0
 
 
 @dataclass
@@ -99,15 +115,8 @@ class HighlightConfig:
     """배치 하이라이트 분석 설정.
 
     highlight_rules.md §6 Scoring: Gate → 가산 (quality + impact).
+    Gate thresholds는 FaceGateConfig (face.gate analyzer)로 이동.
     """
-
-    # Quality gate thresholds (§6 Step 1)
-    gate_face_confidence: float = 0.7
-    gate_face_area_ratio: float = 0.01
-    gate_eye_open_min: float = 0.15  # 눈 감은 사진 필터링 (1 - neutral)
-    gate_blur_min: float = 50.0  # Laplacian variance, TBD from data
-    gate_exposure_min: float = 40.0
-    gate_exposure_max: float = 220.0
 
     # Quality score weights (§6 Step 2)
     quality_head_blur_weight: float = 0.30       # head_crop sharpness (portrait-specific)
@@ -206,6 +215,8 @@ class HighlightResult:
                 "face_identity",
                 # shot quality
                 "head_blur", "head_exposure", "head_aesthetic",
+                "head_contrast", "clipped_ratio", "crushed_ratio",
+                "mask_method",
                 # CLIP axes
                 "clip_disney_smile", "clip_charisma",
                 "clip_wild_roar", "clip_playful_cute",
@@ -216,6 +227,8 @@ class HighlightResult:
                 "em_neutral",
                 # composites
                 "duchenne_smile", "wild_intensity", "chill_score",
+                # gate result
+                "gate_fail_reasons",
             ]
             writer.writerow(header)
 
@@ -242,6 +255,10 @@ class HighlightResult:
                     f"{r.head_blur:.1f}",
                     f"{r.head_exposure:.1f}",
                     f"{r.head_aesthetic:.4f}",
+                    f"{r.head_contrast:.4f}",
+                    f"{r.clipped_ratio:.4f}",
+                    f"{r.crushed_ratio:.4f}",
+                    r.mask_method,
                     # CLIP axes
                     f"{r.clip_disney_smile:.4f}",
                     f"{r.clip_charisma:.4f}",
@@ -258,6 +275,8 @@ class HighlightResult:
                     f"{r.duchenne_smile:.4f}",
                     f"{r.wild_intensity:.4f}",
                     f"{r.chill_score:.4f}",
+                    # gate result
+                    r.gate_fail_reasons,
                 ])
 
         logger.info("Exported timeseries CSV: %s (%d rows)", csv_path, len(records))
