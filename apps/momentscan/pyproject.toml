@@ -52,6 +52,7 @@ momentscan = "momentscan.cli:main"
 "frame.quality" = "momentscan.algorithm.analyzers.quality:QualityAnalyzer"
 "frame.scoring" = "momentscan.algorithm.analyzers.frame_scoring:FrameScoringAnalyzer"
 "face.quality" = "momentscan.algorithm.analyzers.face_quality:FaceQualityAnalyzer"
+"face.baseline" = "momentscan.algorithm.analyzers.face_baseline:FaceBaselineAnalyzer"
 "face.gate" = "momentscan.algorithm.analyzers.face_gate:FaceGateAnalyzer"
 
 [build-system]

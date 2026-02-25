@@ -14,16 +14,12 @@ class FaceGateConfig:
 
     # Main face thresholds
     face_confidence_min: float = 0.7
-    face_area_ratio_min: float = 0.02
     head_blur_min: float = 30.0       # face crop Laplacian variance
     frame_blur_min: float = 50.0      # frame-level fallback
     exposure_min: float = 40.0
     exposure_max: float = 220.0
-    head_yaw_max: float = 70.0        # main only
-    head_pitch_max: float = 50.0      # main only
 
     # Passenger relaxed thresholds
-    passenger_area_ratio_min: float = 0.01
     passenger_blur_min: float = 20.0
 
     # Local contrast exposure thresholds (from face.quality mask-based metrics)

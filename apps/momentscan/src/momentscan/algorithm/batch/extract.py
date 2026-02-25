@@ -70,6 +70,7 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
     _extract_face_quality(record, obs_by_source.get("face.quality"))
     _extract_portrait_score(record, obs_by_source.get("portrait.score"))
     _extract_face_gate(record, obs_by_source.get("face.gate"))
+    _extract_face_baseline(record, obs_by_source.get("face.baseline"))
 
     _compute_composites(record)
 
@@ -258,6 +259,20 @@ def _extract_face_gate(record: FrameRecord, obs: Any) -> None:
             record.passenger_head_blur = float(getattr(r, "head_blur", 0.0))
             record.passenger_head_exposure = float(getattr(r, "head_exposure", 0.0))
             break
+
+
+def _extract_face_baseline(record: FrameRecord, obs: Any) -> None:
+    """face.baseline: per-face identity baseline statistics."""
+    if obs is None:
+        return
+    data = getattr(obs, "data", None)
+    if data is None:
+        return
+    main = getattr(data, "main_profile", None)
+    if main is not None and main.n >= 2:
+        record.baseline_n = main.n
+        record.baseline_area_mean = main.area_ratio_mean
+        record.baseline_area_std = main.area_ratio_std
 
 
 def _extract_portrait_score(record: FrameRecord, obs: Any) -> None:

@@ -392,7 +392,7 @@ class TestFaceGateAnalyzer:
 
     def test_gate_custom_config(self):
         """Custom FaceGateConfig thresholds should be applied."""
-        cfg = FaceGateConfig(face_confidence_min=0.5, face_area_ratio_min=0.01)
+        cfg = FaceGateConfig(face_confidence_min=0.5)
         face = MockFace(face_id=1, confidence=0.4, area_ratio=0.05)
         analyzer = FaceGateAnalyzer(config=cfg)
         analyzer.initialize()

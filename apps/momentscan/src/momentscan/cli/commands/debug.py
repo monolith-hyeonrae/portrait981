@@ -464,7 +464,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
     if 'all' in selected:
         return ['face.detect', 'face.expression', 'face.au', 'head.pose',
                 'face.parse', 'face.quality', 'portrait.score', 'frame.quality',
-                'face.gate']
+                'face.baseline', 'face.gate']
 
     names = []
     for s in selected:
@@ -479,7 +479,7 @@ def _resolve_selected_to_names(selected: List[str], args) -> List[str]:
 
     return names if names else ['face.detect', 'face.expression', 'face.au', 'head.pose',
                                 'face.parse', 'portrait.score', 'face.quality', 'frame.quality',
-                                'face.gate']
+                                'face.baseline', 'face.gate']
 
 
 # ---------------------------------------------------------------------------

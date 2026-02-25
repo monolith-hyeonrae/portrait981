@@ -38,6 +38,7 @@ from vpx.hand_gesture.output import GestureOutput
 from momentscan.algorithm.analyzers.quality import QualityOutput
 from momentscan.algorithm.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
 from momentscan.algorithm.analyzers.frame_scoring import FrameScoringAnalyzer, ScoreResult
+from momentscan.algorithm.analyzers.face_baseline import FaceBaselineAnalyzer, FaceBaselineOutput
 
 __all__ = [
     # Base types (always available)
@@ -62,6 +63,8 @@ __all__ = [
     "QualityAnalyzer",
     "FrameScoringAnalyzer",
     "ScoreResult",
+    "FaceBaselineAnalyzer",
+    "FaceBaselineOutput",
     # Lazy imports (import directly from submodule)
     # "FaceDetectionAnalyzer",  # from vpx.face_detect import FaceDetectionAnalyzer
     # "ExpressionAnalyzer",     # from vpx.face_expression import ExpressionAnalyzer
@@ -87,4 +90,7 @@ def __getattr__(name: str):
     elif name == "GestureAnalyzer":
         from vpx.hand_gesture import GestureAnalyzer
         return GestureAnalyzer
+    elif name == "FaceBaselineAnalyzer":
+        from momentscan.algorithm.analyzers.face_baseline import FaceBaselineAnalyzer
+        return FaceBaselineAnalyzer
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

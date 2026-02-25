@@ -81,6 +81,11 @@ class FrameRecord:
     wild_intensity: float = 0.0     # wild_roar × max(AU25, AU26) — 실제로 입 벌림 확인
     chill_score: float = 0.0        # neutral_high × all_axes_low — 무표정 탑승
 
+    # Face baseline (from face.baseline)
+    baseline_n: int = 0                  # observation count (n < 2 = not converged)
+    baseline_area_mean: float = 0.0      # main face area_ratio mean
+    baseline_area_std: float = 0.0       # main face area_ratio std
+
     # Gate result (from face.gate analyzer — main face)
     gate_passed: bool = True        # default True: gate 미실행 시 통과로 간주
     gate_fail_reasons: str = ""     # comma-separated fail condition names
@@ -227,6 +232,8 @@ class HighlightResult:
                 "em_neutral",
                 # composites
                 "duchenne_smile", "wild_intensity", "chill_score",
+                # baseline
+                "baseline_n", "baseline_area_mean", "baseline_area_std",
                 # gate result
                 "gate_fail_reasons",
             ]
@@ -275,6 +282,10 @@ class HighlightResult:
                     f"{r.duchenne_smile:.4f}",
                     f"{r.wild_intensity:.4f}",
                     f"{r.chill_score:.4f}",
+                    # baseline
+                    r.baseline_n,
+                    f"{r.baseline_area_mean:.4f}",
+                    f"{r.baseline_area_std:.4f}",
                     # gate result
                     r.gate_fail_reasons,
                 ])

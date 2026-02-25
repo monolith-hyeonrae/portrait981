@@ -77,26 +77,22 @@ class BatchHighlightEngine:
         # 6. Impact score
         impact_scores = self._compute_impact_scores(arrays, normed)
 
-        # 7. Final score = quality_blend × quality + impact_blend × impact (gate 통과만)
+        # 7. Final score = quality_blend × quality + impact_blend × impact (전 프레임)
         wq = cfg.final_quality_blend
         wi = cfg.final_impact_blend
-        final_scores = np.where(
-            gate_mask,
-            wq * quality_scores + wi * impact_scores,
-            0.0,
-        )
+        final_scores = wq * quality_scores + wi * impact_scores
         logger.info("[5/7] Scoring complete (%.2f×quality + %.2f×impact)", wq, wi)
 
-        # 8. Temporal smoothing (gate-pass only EMA)
-        smoothed = self._smooth_ema_gated(final_scores, gate_mask, alpha=cfg.smoothing_alpha)
-        logger.info("[6/7] Temporal smoothing (gate-pass only EMA α=%.2f)", cfg.smoothing_alpha)
+        # 8. Temporal smoothing (standard EMA)
+        smoothed = self._smooth_ema(final_scores, alpha=cfg.smoothing_alpha)
+        logger.info("[6/7] Temporal smoothing (EMA α=%.2f)", cfg.smoothing_alpha)
 
-        # 9. Peak detection
-        peaks = self._detect_peaks(smoothed)
+        # 9. Peak detection (gate-passed frames only)
+        peaks = self._detect_peaks(smoothed, gate_mask)
         logger.info("[7/7] Peak detection: %d peaks found", len(peaks))
 
-        # 10. Window 생성 + best frame 선택
-        windows = self._generate_windows(peaks, records, final_scores, normed)
+        # 10. Window 생성 + best frame 선택 (gate 필터 적용)
+        windows = self._generate_windows(peaks, records, final_scores, normed, gate_mask)
 
         result = HighlightResult(
             windows=windows,
@@ -325,27 +321,24 @@ class BatchHighlightEngine:
 
     # ── Step 8: Smoothing ──
 
-    def _smooth_ema_gated(
-        self, scores: np.ndarray, gate_mask: np.ndarray, alpha: float,
+    def _smooth_ema(
+        self, scores: np.ndarray, alpha: float,
     ) -> np.ndarray:
-        """Gate-pass only EMA smoothing.
+        """Standard EMA smoothing.
 
-        gate_mask=0 프레임은 EMA에 0을 주입하지 않고 이전 smoothed 값을 유지.
-        이렇게 하면 gate-fail 구간이 피크를 과도하게 감쇄하는 문제가 해소된다.
+        Gate와 무관하게 전 프레임에 동일한 EMA를 적용.
+        Gate 필터링은 peak detection과 best frame 선택에서 수행.
         """
         n = len(scores)
         smoothed = np.zeros(n)
         smoothed[0] = scores[0]
         for i in range(1, n):
-            if gate_mask[i]:
-                smoothed[i] = alpha * scores[i] + (1 - alpha) * smoothed[i - 1]
-            else:
-                smoothed[i] = smoothed[i - 1]
+            smoothed[i] = alpha * scores[i] + (1 - alpha) * smoothed[i - 1]
         return smoothed
 
     # ── Step 9: Peak detection ──
 
-    def _detect_peaks(self, smoothed: np.ndarray) -> np.ndarray:
+    def _detect_peaks(self, smoothed: np.ndarray, gate_mask: np.ndarray | None = None) -> np.ndarray:
         """scipy.signal.find_peaks 기반 peak detection.
 
         highlight_rules.md §7
@@ -386,6 +379,11 @@ class BatchHighlightEngine:
             distance=min_distance,
             prominence=prominence,
         )
+
+        # Gate 필터: gate-passed 프레임만 peak으로 인정
+        if gate_mask is not None and len(peaks) > 0:
+            peaks = peaks[gate_mask[peaks]]
+
         return peaks
 
     # ── Step 10: Window 생성 ──
@@ -396,8 +394,11 @@ class BatchHighlightEngine:
         records: List[FrameRecord],
         final_scores: np.ndarray,
         normed: dict[str, np.ndarray],
+        gate_mask: np.ndarray | None = None,
     ) -> List[HighlightWindow]:
         """Peak 기준 ±window_half_sec 구간을 생성하고 best frame을 선택.
+
+        gate_mask가 있으면 gate-passed 프레임만 best frame 후보로 사용.
 
         highlight_rules.md §7-§8
         """
@@ -417,14 +418,19 @@ class BatchHighlightEngine:
             # Reason: 정규화된 delta 중 상위 기여 feature
             reason = self._build_reason(normed, peak_idx)
 
-            # Best frame selection within window
-            window_scores = final_scores[start_idx:end_idx + 1]
+            # Best frame selection within window (gate-passed only)
+            window_scores = final_scores[start_idx:end_idx + 1].copy()
+            if gate_mask is not None:
+                window_gate = gate_mask[start_idx:end_idx + 1]
+                window_scores[~window_gate] = -1.0  # gate-failed → 후보 제외
             window_indices = np.argsort(window_scores)[::-1][:cfg.best_frame_count]
 
             selected = []
             for local_idx in window_indices:
                 abs_idx = start_idx + local_idx
                 if final_scores[abs_idx] <= 0:
+                    continue
+                if gate_mask is not None and not gate_mask[abs_idx]:
                     continue
                 r = records[abs_idx]
                 selected.append({

@@ -341,17 +341,24 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
 
     data["modules"] = modules_meta
 
+    # ── Face baseline: converged values for reference lines on face.detect subplot ──
+    last_rec = records[-1]
+    if last_rec.baseline_n >= 2:
+        data["baseline_ref"] = {
+            "mean": last_rec.baseline_area_mean,
+            "upper": last_rec.baseline_area_mean + last_rec.baseline_area_std,
+            "lower": max(0.0, last_rec.baseline_area_mean - last_rec.baseline_area_std),
+            "n": last_rec.baseline_n,
+        }
+
     # ── Gate thresholds (for reference lines on module subplots) ──
     from momentscan.algorithm.analyzers.face_gate.output import FaceGateConfig
     gate_cfg = FaceGateConfig()
     data["gate_thresholds"] = {
         "face_confidence": [gate_cfg.face_confidence_min],
-        "face_area_ratio": [gate_cfg.face_area_ratio_min],
         "blur_score": [gate_cfg.frame_blur_min],
         "brightness": [gate_cfg.exposure_min, gate_cfg.exposure_max],
         "head_blur": [gate_cfg.head_blur_min],
-        "head_yaw": [gate_cfg.head_yaw_max],
-        "head_pitch": [gate_cfg.head_pitch_max],
         "head_contrast": [gate_cfg.contrast_min],
         "clipped_ratio": [gate_cfg.clipped_max],
         "crushed_ratio": [gate_cfg.crushed_max],
@@ -405,9 +412,6 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     data["gate_face_confidence_pass"] = [
         int(r.face_confidence >= gate_cfg.face_confidence_min) for r in records
     ]
-    data["gate_face_area_pass"] = [
-        int(r.face_area_ratio >= gate_cfg.face_area_ratio_min) for r in records
-    ]
     data["gate_blur_pass"] = [
         int(
             (r.head_blur <= 0 and r.blur_score <= 0)
@@ -422,14 +426,6 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
             or (r.head_exposure > 0 and gate_cfg.exposure_min <= r.head_exposure <= gate_cfg.exposure_max)
             or (r.head_exposure <= 0 and gate_cfg.exposure_min <= r.brightness <= gate_cfg.exposure_max)
         )
-        for r in records
-    ]
-    data["gate_head_yaw_pass"] = [
-        int(r.head_yaw == 0.0 or abs(r.head_yaw) <= gate_cfg.head_yaw_max)
-        for r in records
-    ]
-    data["gate_head_pitch_pass"] = [
-        int(r.head_pitch == 0.0 or abs(r.head_pitch) <= gate_cfg.head_pitch_max)
         for r in records
     ]
     data["gate_fail_reasons"] = [r.gate_fail_reasons for r in records]
@@ -475,14 +471,10 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # ── Threshold values (for hover panel) ──
     data["thresholds"] = {
         "gate_face_confidence": gate_cfg.face_confidence_min,
-        "gate_face_area_ratio": gate_cfg.face_area_ratio_min,
         "gate_head_blur_min": gate_cfg.head_blur_min,
         "gate_frame_blur_min": gate_cfg.frame_blur_min,
         "gate_exposure_min": gate_cfg.exposure_min,
         "gate_exposure_max": gate_cfg.exposure_max,
-        "gate_head_yaw_max": gate_cfg.head_yaw_max,
-        "gate_head_pitch_max": gate_cfg.head_pitch_max,
-        "passenger_area_ratio_min": gate_cfg.passenger_area_ratio_min,
         "passenger_blur_min": gate_cfg.passenger_blur_min,
         "gate_contrast_min": gate_cfg.contrast_min,
         "gate_clipped_max": gate_cfg.clipped_max,
@@ -941,6 +933,36 @@ _JS_MAIN = r"""
     });
   });
 
+  // ── Face baseline: horizontal reference on face.detect subplot ──
+  var baselineShapes = [];
+  if (DATA.baseline_ref) {
+    var bRef = DATA.baseline_ref;
+    // Find face.detect subplot row
+    var fdRow = -1;
+    DATA.modules.forEach(function(mod, mi) {
+      if (mod.name === 'face.detect') fdRow = N_FIXED + mi;
+    });
+    if (fdRow >= 0) {
+      var bxa = xRef(fdRow);
+      var bya = yRef(fdRow);
+      // ±1σ band (filled rect)
+      baselineShapes.push({
+        type:'rect', xref: bxa, yref: bya,
+        x0: t[0], x1: t[t.length-1],
+        y0: bRef.lower, y1: bRef.upper,
+        fillcolor: 'rgba(0,105,92,0.08)',
+        line: {width: 0}
+      });
+      // Mean line
+      baselineShapes.push({
+        type:'line', xref: bxa, yref: bya,
+        x0: t[0], x1: t[t.length-1],
+        y0: bRef.mean, y1: bRef.mean,
+        line: {color:'rgba(0,105,92,0.5)', width:1.5, dash:'dash'}
+      });
+    }
+  }
+
   // ── Layout (separate x-axis per row for independent hover zones) ──
   var gridColor = '#eee';
   var axFont = {family:'Inter, sans-serif', size:10, color:'#999'};
@@ -953,7 +975,7 @@ _JS_MAIN = r"""
     showlegend: true,
     legend: {orientation:'h', y:1.02, x:0.5, xanchor:'center', font:{size:10, color:'#999'}},
     hovermode: 'x',
-    shapes: shapes.concat(threshShapes)
+    shapes: shapes.concat(threshShapes, baselineShapes)
   };
 
   // Axis labels

@@ -65,7 +65,7 @@ class MomentscanApp(vp.App):
         names = list(modules) if modules else [
             "face.detect", "face.expression", "face.au", "head.pose",
             "face.parse", "face.quality", "portrait.score", "frame.quality",
-            "face.gate",
+            "face.baseline", "face.gate",
         ]
 
         if "face.detect" in names and "face.classify" not in names:
