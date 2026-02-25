@@ -13,6 +13,7 @@ from typing import List
 import cv2
 import numpy as np
 
+from vpx.sdk.crop import face_crop
 from vpx.sdk.paths import get_models_dir
 from vpx.face_parse.output import FaceParseResult
 
@@ -23,12 +24,19 @@ class BiSeNetBackend:
     """BiSeNet face parsing via ONNX Runtime."""
 
     INPUT_SIZE = 512
-    # Skin, l_brow, r_brow, l_eye, r_eye, nose, mouth, u_lip, l_lip
-    FACE_CLASSES = frozenset({1, 2, 3, 4, 5, 10, 11, 12, 13})
+    # Skin, l_brow, r_brow, l_eye, r_eye, eye_g, nose, mouth, u_lip, l_lip
+    FACE_CLASSES = frozenset({1, 2, 3, 4, 5, 6, 10, 11, 12, 13})
+    CLASS_LABELS: dict[int, str] = {
+        0: "background", 1: "skin", 2: "l_brow", 3: "r_brow",
+        4: "l_eye", 5: "r_eye", 6: "eye_g", 7: "l_ear", 8: "r_ear",
+        9: "ear_r", 10: "nose", 11: "mouth", 12: "u_lip", 13: "l_lip",
+        14: "neck", 15: "neck_l", 16: "cloth", 17: "hair", 18: "hat",
+    }
     MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
-    EXPAND_RATIO = 1.2
+    EXPAND_RATIO = 1.3
+    CROP_RATIO = "1:1"
 
     def __init__(self) -> None:
         self._session = None
@@ -90,7 +98,11 @@ class BiSeNetBackend:
     def _crop_face(
         self, image: np.ndarray, bbox: tuple
     ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
-        """Crop face region with expansion.
+        """Crop face region with expansion (4:5 portrait ratio).
+
+        Uses the shared face_crop utility to match face.quality head crop
+        dimensions, ensuring the crown/top of head is included for better
+        segmentation.
 
         Args:
             image: BGR image (H, W, 3).
@@ -99,21 +111,13 @@ class BiSeNetBackend:
         Returns:
             (crop, (x, y, w, h)) — crop image and pixel-coordinate crop box.
         """
-        img_h, img_w = image.shape[:2]
-        bx, by, bw, bh = bbox
-
-        # Expand by EXPAND_RATIO
-        cx, cy = bx + bw / 2, by + bh / 2
-        ew = bw * self.EXPAND_RATIO
-        eh = bh * self.EXPAND_RATIO
-
-        x1 = max(0, int(cx - ew / 2))
-        y1 = max(0, int(cy - eh / 2))
-        x2 = min(img_w, int(cx + ew / 2))
-        y2 = min(img_h, int(cy + eh / 2))
-
-        crop = image[y1:y2, x1:x2]
-        return crop, (x1, y1, x2 - x1, y2 - y1)
+        crop, actual_box = face_crop(
+            image, bbox,
+            expand=self.EXPAND_RATIO,
+            output_size=self.INPUT_SIZE,
+            crop_ratio=self.CROP_RATIO,
+        )
+        return crop, actual_box
 
     def _preprocess(self, crop: np.ndarray) -> np.ndarray:
         """Resize to 512x512, normalize, NCHW float32."""

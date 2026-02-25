@@ -40,7 +40,7 @@ _MODULE_PALETTES: Dict[str, List[str]] = {
     "face.au": ["#f57f17", "#e65100", "#ff8f00", "#ef6c00"],  # AU6/AU12/AU25/AU26 (amber)
     "head.pose": ["#7b1fa2", "#1565c0", "#2e7d32"],  # precise yaw/pitch/roll (purple)
     "hand.gesture": ["#6a1b9a", "#e65100", "#00838f", "#c62828"],
-    "face.quality": ["#2e7d32", "#00838f", "#ff6f00", "#c62828", "#4527a0", "#546e7a"],  # blur, exposure, contrast, clipped, crushed, mask
+    "face.quality": ["#2e7d32", "#00838f", "#ff6f00", "#c62828", "#4527a0", "#546e7a", "#795548", "#d81b60", "#1a237e", "#4e342e", "#f4511e"],  # blur, exposure, contrast, clipped, crushed, mask, seg_face/eye/mouth/hair, eye_pixel_ratio
     "portrait.score": [
         "#e91e63",  # head_aesthetic
         "#e91e63", "#9c27b0", "#ff5722", "#ff9800",  # CLIP axes (disney, charisma, wild, playful)
@@ -296,6 +296,9 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     default_rec = FrameRecord(frame_idx=0, timestamp_ms=0.0)
     modules_meta: List[Dict[str, Any]] = []
 
+    # Modules whose fields have heterogeneous scales → normalize to [0,1] for display
+    _NORMALIZE_MODULES = {"face.quality"}
+
     for mod_name, mappings in module_groups.items():
         is_active = False
         for fm in mappings:
@@ -315,6 +318,22 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         if not is_active:
             continue
 
+        should_normalize = mod_name in _NORMALIZE_MODULES
+
+        # Per-field min-max normalization for modules with heterogeneous scales
+        norm_ranges: Dict[str, list] = {}
+        if should_normalize:
+            for fm in mappings:
+                if fm.record_field in _SKIP_CHART_FIELDS:
+                    continue
+                if isinstance(getattr(default_rec, fm.record_field), (int, float)):
+                    arr = np.array(data[fm.record_field])
+                    normed_key = f"{fm.record_field}_normed"
+                    data[normed_key] = _minmax(arr).tolist()
+                    norm_ranges[fm.record_field] = [
+                        float(arr.min()), float(arr.max()),
+                    ]
+
         palette = _MODULE_PALETTES.get(mod_name, _DEFAULT_PALETTE)
         label = _MODULE_LABELS.get(mod_name, mod_name)
 
@@ -323,19 +342,24 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         for fm in mappings:
             if fm.record_field in _SKIP_CHART_FIELDS:
                 continue
-            fields_meta.append({
+            fmeta: Dict[str, Any] = {
                 "key": fm.record_field,
                 "label": fm.record_field,
                 "color": palette[ci % len(palette)],
                 "role": fm.scoring_role,
                 "description": fm.description,
                 "rationale": fm.rationale,
-            })
+            }
+            if should_normalize and f"{fm.record_field}_normed" in data:
+                fmeta["display_key"] = f"{fm.record_field}_normed"
+                fmeta["norm_range"] = norm_ranges.get(fm.record_field)
+            fields_meta.append(fmeta)
             ci += 1
 
         modules_meta.append({
             "name": mod_name,
             "label": label,
+            "normalized": should_normalize,
             "fields": fields_meta,
         })
 
@@ -362,6 +386,7 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         "head_contrast": [gate_cfg.contrast_min],
         "clipped_ratio": [gate_cfg.clipped_max],
         "crushed_ratio": [gate_cfg.crushed_max],
+        "parsing_coverage": [gate_cfg.parsing_coverage_min],
     }
 
     # ── Quality decomposition arrays (for hover panel) ──
@@ -412,19 +437,36 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     data["gate_face_confidence_pass"] = [
         int(r.face_confidence >= gate_cfg.face_confidence_min) for r in records
     ]
-    data["gate_blur_pass"] = [
-        int(
-            (r.head_blur <= 0 and r.blur_score <= 0)
-            or (r.head_blur > 0 and r.head_blur >= gate_cfg.head_blur_min)
-            or (r.head_blur <= 0 and r.blur_score >= gate_cfg.frame_blur_min)
-        )
+    data["gate_blur_face_pass"] = [
+        int(r.head_blur <= 0 or r.head_blur >= gate_cfg.head_blur_min)
         for r in records
+    ]
+    data["gate_blur_frame_pass"] = [
+        int(r.blur_score <= 0 or r.blur_score >= gate_cfg.frame_blur_min)
+        for r in records
+    ]
+    data["gate_contrast_pass"] = [
+        int(r.head_contrast <= 0 or r.head_contrast >= gate_cfg.contrast_min)
+        for r in records
+    ]
+    data["gate_white_pass"] = [
+        int(r.clipped_ratio <= gate_cfg.clipped_max) for r in records
+    ]
+    data["gate_black_pass"] = [
+        int(r.crushed_ratio <= gate_cfg.crushed_max) for r in records
     ]
     data["gate_brightness_pass"] = [
         int(
             (r.head_exposure <= 0 and r.brightness <= 0)
             or (r.head_exposure > 0 and gate_cfg.exposure_min <= r.head_exposure <= gate_cfg.exposure_max)
             or (r.head_exposure <= 0 and gate_cfg.exposure_min <= r.brightness <= gate_cfg.exposure_max)
+        )
+        for r in records
+    ]
+    data["gate_parsing_coverage_pass"] = [
+        int(
+            r.parsing_coverage <= 0
+            or r.parsing_coverage >= gate_cfg.parsing_coverage_min
         )
         for r in records
     ]
@@ -479,6 +521,7 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         "gate_contrast_min": gate_cfg.contrast_min,
         "gate_clipped_max": gate_cfg.clipped_max,
         "gate_crushed_max": gate_cfg.crushed_max,
+        "gate_parsing_coverage_min": gate_cfg.parsing_coverage_min,
     }
 
     return data
@@ -899,18 +942,31 @@ _JS_MAIN = r"""
     var ya = yRef(row);
     mod.fields.forEach(function(f) {
       if (!DATA[f.key]) return;
+      var displayKey = f.display_key || f.key;
+      var yVals = DATA[displayKey] || DATA[f.key];
+      var rawVals = DATA[f.key];
       var roleBadge = f.role ? ' [' + f.role + ']' : '';
-      var htempl = '<b>' + f.label + '</b>' + roleBadge +
-        '<br>%{y:.3f}' +
-        '<extra></extra>';
-      traces.push({
-        x: t, y: DATA[f.key], name: f.label,
+      // When normalized, show raw value via customdata
+      var htempl;
+      if (f.display_key) {
+        htempl = '<b>' + f.label + '</b>' + roleBadge +
+          '<br>%{customdata:.3f}' +
+          '<extra></extra>';
+      } else {
+        htempl = '<b>' + f.label + '</b>' + roleBadge +
+          '<br>%{y:.3f}' +
+          '<extra></extra>';
+      }
+      var trace = {
+        x: t, y: yVals, name: f.label,
         type:'scatter', mode:'lines',
         line:{color: f.color, width: 1.2},
         xaxis: xa, yaxis: ya,
         legendgroup: mod.name,
         hovertemplate: htempl
-      });
+      };
+      if (f.display_key) trace.customdata = rawVals;
+      traces.push(trace);
     });
   });
 
@@ -924,9 +980,14 @@ _JS_MAIN = r"""
       var th = DATA.gate_thresholds[f.key];
       if (!th) return;
       th.forEach(function(v) {
+        var displayV = v;
+        if (f.norm_range) {
+          var mn = f.norm_range[0], mx = f.norm_range[1];
+          displayV = (mx - mn > 1e-8) ? (v - mn) / (mx - mn) : 0;
+        }
         threshShapes.push({
           type:'line', xref: xa, yref: ya,
-          x0: t[0], x1: t[t.length-1], y0: v, y1: v,
+          x0: t[0], x1: t[t.length-1], y0: displayV, y1: displayV,
           line:{color: hexAlpha(f.color, 0.35), width:1, dash:'dash'}
         });
       });
@@ -980,7 +1041,9 @@ _JS_MAIN = r"""
 
   // Axis labels
   var yLabels = ['Score', 'Decomposition'];
-  DATA.modules.forEach(function(mod) { yLabels.push(mod.label); });
+  DATA.modules.forEach(function(mod) {
+    yLabels.push(mod.normalized ? mod.label + ' (norm)' : mod.label);
+  });
 
   for (var r = 0; r < nRows; r++) {
     var dom = rowDomain(r);
@@ -1002,6 +1065,11 @@ _JS_MAIN = r"""
       gridcolor: gridColor, zeroline:false, tickfont: axFont
     };
     if (r === 1) layout[yaKey(r)].range = [-0.05, 1.1];
+    // Normalized modules: fix y-axis to [0, 1]
+    var mi = r - N_FIXED;
+    if (mi >= 0 && mi < DATA.modules.length && DATA.modules[mi].normalized) {
+      layout[yaKey(r)].range = [-0.05, 1.05];
+    }
   }
 
   Plotly.newPlot('plotDiv', traces, layout, {
@@ -1085,33 +1153,34 @@ _JS_MAIN = r"""
       ' \u2500\u2500</span>\n';
     h += '  ' + gIcon(D.gate_face_detected[pi])       + ' face_detected\n';
     h += '  ' + gIcon(D.gate_face_confidence_pass[pi]) + ' face_conf    ' + fmtN(D.face_confidence[pi],3) + ' \u2265 ' + fmtN(th.gate_face_confidence,3) + '\n';
-    h += '  face_area    ' + fmtN(D.face_area_ratio[pi],3) + '\n';
     var hBlur = D.head_blur ? D.head_blur[pi] : 0;
     var fBlur = D.blur_score ? D.blur_score[pi] : 0;
-    var useFaceBlur = hBlur > 0;
-    var blurTh = useFaceBlur ? th.gate_head_blur_min : th.gate_frame_blur_min;
-    var blurSrc = useFaceBlur ? 'face' : 'frame';
-    var blurShow = useFaceBlur ? hBlur : fBlur;
-    h += '  ' + gIcon(D.gate_blur_pass[pi]) + ' blur <span style="color:#999">(' + blurSrc + ')</span> ' + fmtN(blurShow,1) + ' \u2265 ' + fmtN(blurTh,1) + '\n';
+    if (hBlur > 0) {
+      h += '  ' + gIcon(D.gate_blur_face_pass[pi]) + ' blur.face     ' + fmtN(hBlur,1) + ' \u2265 ' + fmtN(th.gate_head_blur_min,1) + '\n';
+    } else if (fBlur > 0) {
+      h += '  ' + gIcon(D.gate_blur_frame_pass[pi]) + ' blur.frame    ' + fmtN(fBlur,1) + ' \u2265 ' + fmtN(th.gate_frame_blur_min,1) + '\n';
+    }
     var hContrast = D.head_contrast ? D.head_contrast[pi] : 0;
     var hClipped = D.clipped_ratio ? D.clipped_ratio[pi] : 0;
     var hCrushed = D.crushed_ratio ? D.crushed_ratio[pi] : 0;
     var hExp = (D.head_exposure && D.head_exposure[pi] > 0) ? D.head_exposure[pi] : 0;
     var fExp = D.brightness ? D.brightness[pi] : 0;
     if (hContrast > 0) {
-      h += '  ' + gIcon(D.gate_brightness_pass[pi]) + ' contrast    ' + fmtN(hContrast,3) + ' \u2265 ' + fmtN(th.gate_contrast_min,3) + '\n';
-      h += '    clipped     ' + fmtN(hClipped,3) + ' \u2264 ' + fmtN(th.gate_clipped_max,3) + '\n';
-      h += '    crushed     ' + fmtN(hCrushed,3) + ' \u2264 ' + fmtN(th.gate_crushed_max,3) + '\n';
+      h += '  ' + gIcon(D.gate_contrast_pass[pi]) + ' exposure.contrast ' + fmtN(hContrast,3) + ' \u2265 ' + fmtN(th.gate_contrast_min,3) + '\n';
+      h += '  ' + gIcon(D.gate_white_pass[pi])    + ' exposure.white    ' + fmtN(hClipped,3) + ' \u2264 ' + fmtN(th.gate_clipped_max,3) + '\n';
+      h += '  ' + gIcon(D.gate_black_pass[pi])     + ' exposure.black    ' + fmtN(hCrushed,3) + ' \u2264 ' + fmtN(th.gate_crushed_max,3) + '\n';
     } else {
       var useFaceExp = hExp > 0;
       var expSrc = useFaceExp ? 'face' : 'frame';
       var expVal = useFaceExp ? hExp : fExp;
-      h += '  ' + gIcon(D.gate_brightness_pass[pi]) + ' exposure <span style="color:#999">(' + expSrc + ')</span> ' + fmtN(expVal,1) + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
+      h += '  ' + gIcon(D.gate_brightness_pass[pi]) + ' exposure.brightness <span style="color:#999">(' + expSrc + ')</span> ' + fmtN(expVal,1) + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
+    }
+    var pCov = D.parsing_coverage ? D.parsing_coverage[pi] : 0;
+    if (pCov > 0) {
+      h += '  ' + gIcon(D.gate_parsing_coverage_pass[pi]) + ' parsing.coverage ' + fmtN(pCov,3) + ' \u2265 ' + fmtN(th.gate_parsing_coverage_min,3) + '\n';
     }
     var maskMethod = D.mask_method ? D.mask_method[pi] : '';
     if (maskMethod) h += '  mask: ' + maskMethod + '\n';
-    h += '  head_yaw     ' + fmtN(D.head_yaw[pi],1) + '\u00b0\n';
-    h += '  head_pitch   ' + fmtN(D.head_pitch[pi],1) + '\u00b0\n';
     if (D.gate_fail_reasons && D.gate_fail_reasons[pi]) {
       h += '  <span class="gate-fail">reasons: ' + D.gate_fail_reasons[pi] + '</span>\n';
     }
@@ -1122,7 +1191,6 @@ _JS_MAIN = r"""
       h += '\n<span class="section-label">\u2500\u2500 Gate: Passenger ' +
         (pgp ? '<span class="gate-pass">PASS</span>' : '<span class="gate-fail">FAIL</span>') +
         ' \u2500\u2500</span>\n';
-      h += '  face_area    ' + fmtN(D.passenger_face_area_ratio[pi],3) + '\n';
       var pBlur = D.passenger_head_blur[pi];
       h += '  ' + gIcon(D.passenger_gate_blur_pass[pi]) + ' blur <span style="color:#999">(face)</span> ' + fmtN(pBlur,1) + ' \u2265 ' + fmtN(th.passenger_blur_min,1) + '\n';
       var pExp = D.passenger_head_exposure[pi];

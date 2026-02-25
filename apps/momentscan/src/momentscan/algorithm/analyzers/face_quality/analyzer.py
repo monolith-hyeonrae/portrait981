@@ -46,21 +46,28 @@ _MIN_MASK_COVERAGE = 0.05
 # ── Mask construction helpers ──
 
 
-def _transform_parse_mask(
-    parse_result, head_box: tuple, crop_shape: tuple[int, int]
+def _align_parse_to_crop(
+    mask: np.ndarray,
+    parse_crop_box: tuple,
+    head_box: tuple,
+    crop_shape: tuple[int, int],
 ) -> Optional[np.ndarray]:
-    """Transform face.parse mask into face.quality crop coordinate space.
+    """Transform an arbitrary mask/class_map from parse crop space to head crop space.
+
+    Both parse_crop_box and head_box are in original image pixel coordinates.
+    The head crop image is resized to crop_shape, so we must scale coordinates
+    from original image space into crop_shape space.
 
     Args:
-        parse_result: FaceParseResult with face_mask and crop_box.
-        head_box: face.quality crop box (x, y, w, h) in image pixels.
-        crop_shape: (height, width) of the face.quality crop.
+        mask: 2D array (H, W) in parse crop coordinates (e.g. face_mask or class_map).
+        parse_crop_box: (x, y, w, h) of the parse crop in image pixels.
+        head_box: (x, y, w, h) of the face.quality head crop in image pixels.
+        crop_shape: (height, width) of the face.quality crop (resized).
 
     Returns:
-        Binary mask (crop_shape) uint8 or None if no overlap.
+        Aligned array (crop_shape) with same dtype, or None if no overlap.
     """
-    parse_mask = parse_result.face_mask
-    px, py, pw, ph = parse_result.crop_box
+    px, py, pw, ph = parse_crop_box
     hx, hy, hw, hh = head_box
 
     if pw <= 0 or ph <= 0 or hw <= 0 or hh <= 0:
@@ -75,40 +82,109 @@ def _transform_parse_mask(
     if ox2 <= ox1 or oy2 <= oy1:
         return None
 
-    # Resize parse mask from (512, 512) to actual parse crop size
-    parse_h, parse_w = parse_mask.shape[:2]
+    # Scale factors: original image coords → crop image coords
+    sx = crop_shape[1] / hw
+    sy = crop_shape[0] / hh
+
+    # Resize parse mask from model output size to actual parse crop size
+    parse_h, parse_w = mask.shape[:2]
     if (parse_h, parse_w) != (ph, pw):
         resized_parse = cv2.resize(
-            parse_mask, (pw, ph), interpolation=cv2.INTER_NEAREST
+            mask, (pw, ph), interpolation=cv2.INTER_NEAREST
         )
     else:
-        resized_parse = parse_mask
+        resized_parse = mask
 
-    # Extract overlap from parse mask (parse crop coords)
+    # Extract overlap region from resized parse mask (parse crop coords)
     src_x1 = ox1 - px
     src_y1 = oy1 - py
-    src_x2 = ox2 - px
-    src_y2 = oy2 - py
-    overlap_mask = resized_parse[src_y1:src_y2, src_x1:src_x2]
+    src_w = ox2 - ox1
+    src_h = oy2 - oy1
+    overlap = resized_parse[src_y1:src_y1 + src_h, src_x1:src_x1 + src_w]
 
-    # Place into head crop coords (clip to actual crop bounds)
-    dst_x1 = ox1 - hx
-    dst_y1 = oy1 - hy
-    dst_x2 = min(ox2 - hx, crop_shape[1])
-    dst_y2 = min(oy2 - hy, crop_shape[0])
+    # Destination in crop_shape coords (scaled from image coords)
+    dst_x1 = int(round((ox1 - hx) * sx))
+    dst_y1 = int(round((oy1 - hy) * sy))
+    dst_x2 = int(round((ox2 - hx) * sx))
+    dst_y2 = int(round((oy2 - hy) * sy))
+
+    # Clip to crop bounds
+    dst_x1 = max(0, min(dst_x1, crop_shape[1]))
+    dst_y1 = max(0, min(dst_y1, crop_shape[0]))
+    dst_x2 = max(0, min(dst_x2, crop_shape[1]))
+    dst_y2 = max(0, min(dst_y2, crop_shape[0]))
 
     if dst_x2 <= dst_x1 or dst_y2 <= dst_y1:
         return None
 
-    # Match source slice to clipped destination
-    actual_w = dst_x2 - dst_x1
-    actual_h = dst_y2 - dst_y1
-    overlap_mask = resized_parse[src_y1:src_y1 + actual_h, src_x1:src_x1 + actual_w]
+    # Resize overlap to match scaled destination size
+    dst_w = dst_x2 - dst_x1
+    dst_h = dst_y2 - dst_y1
+    if overlap.shape[1] != dst_w or overlap.shape[0] != dst_h:
+        overlap = cv2.resize(overlap, (dst_w, dst_h), interpolation=cv2.INTER_NEAREST)
 
-    result_mask = np.zeros(crop_shape, dtype=np.uint8)
-    result_mask[dst_y1:dst_y2, dst_x1:dst_x2] = overlap_mask
+    result = np.zeros(crop_shape, dtype=mask.dtype)
+    result[dst_y1:dst_y2, dst_x1:dst_x2] = overlap
 
-    return result_mask
+    return result
+
+
+def _transform_parse_mask(
+    parse_result, head_box: tuple, crop_shape: tuple[int, int]
+) -> Optional[np.ndarray]:
+    """Transform face.parse binary mask into face.quality crop coordinate space.
+
+    Thin wrapper around _align_parse_to_crop for backward compatibility.
+    """
+    return _align_parse_to_crop(
+        parse_result.face_mask, parse_result.crop_box, head_box, crop_shape,
+    )
+
+
+_SEG_GROUPS: dict[str, frozenset[int]] = {
+    "face": frozenset({1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14}),  # skin+brow+eye+glasses+ear+nose+mouth+lip+neck
+    "eye": frozenset({4, 5}),
+    "mouth": frozenset({11, 12, 13}),
+    "hair": frozenset({17}),
+}
+def _compute_semantic_ratios(
+    class_map: np.ndarray,
+    region: tuple[int, int, int, int] | None = None,
+) -> dict[str, float]:
+    """Compute per-group pixel ratios from a class_map.
+
+    Args:
+        class_map: 2D uint8 array with class indices [0..18].
+        region: (x, y, w, h) sub-region in class_map coordinates.
+                If None, use the full map.
+
+    Returns:
+        Dict with keys: seg_face, seg_eye, seg_mouth, seg_hair, eye_pixel_ratio.
+    """
+    if region is not None:
+        rx, ry, rw, rh = region
+        mh, mw = class_map.shape[:2]
+        rx = max(0, rx)
+        ry = max(0, ry)
+        rw = min(rw, mw - rx)
+        rh = min(rh, mh - ry)
+        if rw <= 0 or rh <= 0:
+            return {f"seg_{k}": 0.0 for k in _SEG_GROUPS} | {"eye_pixel_ratio": 0.0}
+        sub = class_map[ry:ry + rh, rx:rx + rw]
+    else:
+        sub = class_map
+
+    total = sub.size
+    if total == 0:
+        return {f"seg_{k}": 0.0 for k in _SEG_GROUPS} | {"eye_pixel_ratio": 0.0}
+
+    ratios: dict[str, float] = {}
+    for name, classes in _SEG_GROUPS.items():
+        count = sum(int(np.count_nonzero(sub == c)) for c in classes)
+        ratios[f"seg_{name}"] = count / total
+
+    ratios["eye_pixel_ratio"] = ratios["seg_eye"]
+    return ratios
 
 
 def _landmark_ellipse_mask(
@@ -187,29 +263,35 @@ def _compute_face_mask(
     parse_result,
     landmarks: Optional[np.ndarray],
     head_box: tuple,
-) -> tuple[np.ndarray, str]:
+) -> tuple[np.ndarray, str, float]:
     """3-level fallback mask: parsing → landmark ellipse → center patch.
 
     Returns:
-        (mask, method) — binary mask (H, W) uint8 and method name string.
+        (mask, method, parsing_coverage) — binary mask (H, W) uint8,
+        method name string, and face.parse coverage ratio (0 if not attempted).
     """
     crop_shape = head_gray.shape[:2]
-    min_pixels = int(crop_shape[0] * crop_shape[1] * _MIN_MASK_COVERAGE)
+    crop_area = crop_shape[0] * crop_shape[1]
+    min_pixels = int(crop_area * _MIN_MASK_COVERAGE)
+    parsing_coverage = 0.0  # 0 = parsing 미시도
 
     # Level 1: Face parsing (BiSeNet)
     if parse_result is not None:
         mask = _transform_parse_mask(parse_result, head_box, crop_shape)
-        if mask is not None and np.count_nonzero(mask) > min_pixels:
-            return mask, "parsing"
+        if mask is not None:
+            parsing_coverage = float(np.count_nonzero(mask)) / crop_area if crop_area > 0 else 0.0
+            if np.count_nonzero(mask) > min_pixels:
+                return mask, "parsing", parsing_coverage
+            # parsing 시도했지만 coverage 부족 → coverage 기록 후 fallback
 
     # Level 2: Landmark ellipse (5-point)
     if landmarks is not None and len(landmarks) >= 5:
         mask = _landmark_ellipse_mask(head_gray, landmarks, head_box, crop_shape)
         if np.count_nonzero(mask) > min_pixels:
-            return mask, "landmark"
+            return mask, "landmark", parsing_coverage
 
     # Level 3: Center patch (50%)
-    return _center_patch_mask(crop_shape), "center_patch"
+    return _center_patch_mask(crop_shape), "center_patch", parsing_coverage
 
 
 # ── Metric functions ──
@@ -386,8 +468,29 @@ class FaceQualityAnalyzer(Module):
             face_id = getattr(face, "face_id", 0)
             parse_result = parse_map.get(face_id)
 
+            # Semantic ratios from class_map (face bbox region in head crop)
+            semantic_ratios: dict[str, float] = {}
+            if parse_result is not None:
+                crop_shape = head_gray.shape[:2]
+                hx, hy, hw, hh = head_box
+                # Scale face bbox from image coords to crop_shape coords
+                sx = crop_shape[1] / hw if hw > 0 else 1.0
+                sy = crop_shape[0] / hh if hh > 0 else 1.0
+                face_region = (
+                    int((px - hx) * sx), int((py - hy) * sy),
+                    int(pw * sx), int(ph * sy),
+                )
+
+                class_map = getattr(parse_result, "class_map", None)
+                if class_map is not None and class_map.size > 1:
+                    aligned_cmap = _align_parse_to_crop(
+                        class_map, parse_result.crop_box, head_box, crop_shape,
+                    )
+                    if aligned_cmap is not None:
+                        semantic_ratios = _compute_semantic_ratios(aligned_cmap, region=face_region)
+
             # 3-level mask fallback
-            mask, method = _compute_face_mask(
+            mask, method, parsing_cov = _compute_face_mask(
                 head_gray, parse_result, landmarks, head_box,
             )
 
@@ -406,6 +509,12 @@ class FaceQualityAnalyzer(Module):
                 head_contrast=head_contrast,
                 clipped_ratio=clipped,
                 crushed_ratio=crushed,
+                parsing_coverage=parsing_cov,
+                seg_face=semantic_ratios.get("seg_face", 0.0),
+                seg_eye=semantic_ratios.get("seg_eye", 0.0),
+                seg_mouth=semantic_ratios.get("seg_mouth", 0.0),
+                seg_hair=semantic_ratios.get("seg_hair", 0.0),
+                eye_pixel_ratio=semantic_ratios.get("eye_pixel_ratio", 0.0),
             ))
 
         # Main face result for backward compat
@@ -424,6 +533,12 @@ class FaceQualityAnalyzer(Module):
             head_contrast=main_result.head_contrast if main_result else 0.0,
             clipped_ratio=main_result.clipped_ratio if main_result else 0.0,
             crushed_ratio=main_result.crushed_ratio if main_result else 0.0,
+            parsing_coverage=main_result.parsing_coverage if main_result else 0.0,
+            seg_face=main_result.seg_face if main_result else 0.0,
+            seg_eye=main_result.seg_eye if main_result else 0.0,
+            seg_mouth=main_result.seg_mouth if main_result else 0.0,
+            seg_hair=main_result.seg_hair if main_result else 0.0,
+            eye_pixel_ratio=main_result.eye_pixel_ratio if main_result else 0.0,
         )
 
     def process(

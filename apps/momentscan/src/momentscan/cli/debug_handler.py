@@ -134,6 +134,7 @@ class DebugFrameHandler:
             head_pose_obs=observations.get("head.pose"),
             gate_obs=gate_obs,
             face_parse_obs=observations.get("face.parse"),
+            face_quality_obs=observations.get("face.quality"),
         )
 
         # Video writer

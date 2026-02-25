@@ -74,6 +74,7 @@ class BarMark:
     value: float  # [0, 1] fill ratio
     color: tuple[int, int, int] = (0, 255, 255)
     height_px: int = 6
+    label: str = ""
 
 
 @dataclass(frozen=True)

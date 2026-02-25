@@ -201,10 +201,15 @@ class FaceGateAnalyzer(Module):
             blur_min = cfg.head_blur_min if role == "main" else cfg.passenger_blur_min
             if head_blur > 0:
                 if head_blur < blur_min:
-                    fails.append("blur")
+                    fails.append("blur.face")
             elif frame_blur > 0:
                 if frame_blur < cfg.frame_blur_min:
-                    fails.append("blur")
+                    fails.append("blur.frame")
+
+            # Parsing coverage: BiSeNet segmentation coverage (0 = 미측정 → skip)
+            parsing_coverage = float(getattr(fq, "parsing_coverage", 0.0)) if fq else 0.0
+            if parsing_coverage > 0 and parsing_coverage < cfg.parsing_coverage_min:
+                fails.append("parsing.coverage")
 
             # Exposure: prefer local contrast metrics, fallback to absolute brightness
             head_contrast = float(getattr(fq, "head_contrast", 0.0)) if fq else 0.0
@@ -214,23 +219,19 @@ class FaceGateAnalyzer(Module):
             if head_contrast > 0:
                 # face.quality mask-based local contrast
                 if head_contrast < cfg.contrast_min:
-                    fails.append("exposure")
+                    fails.append("exposure.contrast")
                 if clipped_ratio > cfg.clipped_max:
-                    fails.append("exposure")
+                    fails.append("exposure.white")
                 if crushed_ratio > cfg.crushed_max:
-                    fails.append("exposure")
+                    fails.append("exposure.black")
             elif head_exposure > 0:
                 # face.quality absolute brightness fallback
                 if not (cfg.exposure_min <= head_exposure <= cfg.exposure_max):
-                    fails.append("exposure")
+                    fails.append("exposure.brightness")
             elif frame_bright > 0:
                 # frame-level absolute brightness fallback
                 if not (cfg.exposure_min <= frame_bright <= cfg.exposure_max):
-                    fails.append("exposure")
-
-            # Deduplicate exposure failures (multiple contrast conditions may trigger)
-            if fails.count("exposure") > 1:
-                fails = [f for i, f in enumerate(fails) if f != "exposure" or fails.index("exposure") == i]
+                    fails.append("exposure.brightness")
 
             # Pose: main only (passenger doesn't need frontal pose)
             yaw = float(getattr(face, "yaw", 0.0))
@@ -261,6 +262,7 @@ class FaceGateAnalyzer(Module):
                 head_contrast=head_contrast,
                 clipped_ratio=clipped_ratio,
                 crushed_ratio=crushed_ratio,
+                parsing_coverage=parsing_coverage,
             )
             results.append(result)
 
@@ -338,11 +340,14 @@ class FaceGateAnalyzer(Module):
                 continue
             bx, by, bw, bh = r.face_bbox
             color = (0, 255, 0) if r.gate_passed else (0, 0, 255)  # green / red
+
+            # Build compact gate label: "gate:OK" or "gate:blur,exp"
             fail_label = ",".join(r.fail_reasons[:2]) if r.fail_reasons else "OK"
+
             marks.append(LabelMark(
                 text=f"gate:{fail_label}",
                 x=bx,
-                y=by + bh + 0.01,  # just below face bbox
+                y=by + bh + 0.008,  # Zone 0: gate label (below bbox border)
                 color=color,
                 font_scale=0.35,
             ))

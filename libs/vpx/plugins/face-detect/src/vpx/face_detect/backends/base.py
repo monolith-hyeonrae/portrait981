@@ -25,6 +25,7 @@ class DetectedFace:
     pitch: float = 0.0
     roll: float = 0.0
     embedding: Optional[np.ndarray] = None  # ArcFace 512D (L2-normalized)
+    face_id: int = 0
 
 
 class FaceDetectionBackend(Protocol):

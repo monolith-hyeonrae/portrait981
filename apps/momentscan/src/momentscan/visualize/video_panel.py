@@ -92,6 +92,15 @@ _LAYER_MAP = {
 }
 
 
+# seg_face: contour only (no fill). Classes matching _SEG_GROUPS["face"].
+_FACE_CLASSES: frozenset[int] = frozenset({1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14})
+
+# Highlighted sub-regions: color fill (BGR)
+_HIGHLIGHT_GROUPS: dict[str, tuple[frozenset[int], tuple[int, int, int]]] = {
+    "mouth": (frozenset({11, 12, 13}), (50, 50, 255)),    # red
+}
+
+
 class VideoPanel:
     """Draws spatial annotations on the video frame.
 
@@ -137,6 +146,10 @@ class VideoPanel:
         if roi is not None and (layers is None or layers[DebugLayer.ROI]):
             self._draw_roi(output, roi)
 
+        # Portrait clip overlay (ROI-style darkened outside)
+        if observations and (layers is None or layers[DebugLayer.FACE]):
+            self._draw_portrait_clip(output, observations)
+
         # Face parse mask overlay (background — rendered below marks)
         if (observations and observations.get("face.parse")
                 and (layers is None or layers[DebugLayer.FACE])):
@@ -173,6 +186,10 @@ class VideoPanel:
             module = self._modules.get(name)
             if module:
                 marks = module.annotate(obs)
+
+                # portrait.score BBoxMark drawn separately as ROI-style overlay
+                if name == "portrait.score":
+                    marks = [m for m in marks if not isinstance(m, BBoxMark)]
 
                 # 3-level mark treatment (skip face.classify — has own role colors)
                 # emphasized: thick + bright | filtered: thin + bright | non-selected: thin + dim
@@ -323,27 +340,26 @@ class VideoPanel:
         image: np.ndarray,
         observations: Dict[str, Observation],
     ) -> None:
-        """Draw face.parse results as semi-transparent mask + contour outline."""
+        """Draw face.parse results as per-class colored overlay + contour.
+
+        Uses class_map (19-class) when available for semantic coloring,
+        falls back to binary face_mask (single cyan) otherwise.
+        """
         parse_obs = observations.get("face.parse")
         if parse_obs is None or parse_obs.data is None:
             return
 
         h, w = image.shape[:2]
-        overlay_color = np.array([255, 255, 0], dtype=np.uint8)  # cyan BGR
-        alpha = 0.25
+        alpha = 0.35
+        group_ratios: dict[str, float] = {}  # name → coverage ratio
+        legend_anchor: Optional[Tuple[int, int]] = None  # (x, y) for first face
 
-        for result in parse_obs.data.results:
+        for i, result in enumerate(parse_obs.data.results):
             if result.crop_box == (0, 0, 0, 0):
                 continue
             bx, by, bw, bh = result.crop_box
             if bw <= 0 or bh <= 0:
                 continue
-
-            # Resize mask to crop_box size
-            mask_resized = cv2.resize(
-                result.face_mask, (bw, bh),
-                interpolation=cv2.INTER_NEAREST,
-            )
 
             # Frame boundary clipping
             x1, y1 = max(0, bx), max(0, by)
@@ -354,24 +370,134 @@ class VideoPanel:
             mx1, my1 = x1 - bx, y1 - by
             mx2, my2 = mx1 + (x2 - x1), my1 + (y2 - y1)
 
-            # Semi-transparent overlay on face pixels
             roi = image[y1:y2, x1:x2]
-            mask_region = mask_resized[my1:my2, mx1:mx2]
-            face_pixels = mask_region > 0
-            if face_pixels.any():
-                roi[face_pixels] = (
-                    roi[face_pixels].astype(np.float32) * (1 - alpha)
-                    + overlay_color * alpha
-                ).astype(np.uint8)
 
-            # Contour outline
-            contours, _ = cv2.findContours(
-                mask_region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+            # Branch: class_map available → per-class coloring
+            has_class_map = (
+                result.class_map is not None
+                and result.class_map.size > 1
             )
-            for c in contours:
-                c[:, :, 0] += x1
-                c[:, :, 1] += y1
-                cv2.drawContours(image, [c], -1, (0, 255, 255), 1)
+
+            if has_class_map:
+                class_map_resized = cv2.resize(
+                    result.class_map, (bw, bh),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                region_map = class_map_resized[my1:my2, mx1:mx2]
+
+                # Color fill: mouth sub-region
+                color_overlay = np.zeros_like(roi)
+                for name, (classes, color) in _HIGHLIGHT_GROUPS.items():
+                    group_mask = np.isin(region_map, list(classes))
+                    if group_mask.any():
+                        color_overlay[group_mask] = color
+
+                fill_mask = color_overlay.any(axis=2)
+                if fill_mask.any():
+                    roi[fill_mask] = (
+                        roi[fill_mask].astype(np.float32) * (1 - alpha)
+                        + color_overlay[fill_mask].astype(np.float32) * alpha
+                    ).astype(np.uint8)
+
+                # Contour: face region boundary
+                face_binary = np.isin(region_map, list(_FACE_CLASSES)).astype(np.uint8) * 255
+                contours, _ = cv2.findContours(
+                    face_binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+                )
+                for c in contours:
+                    c[:, :, 0] += x1
+                    c[:, :, 1] += y1
+                    cv2.drawContours(image, [c], -1, (0, 255, 0), 1)
+
+                # Record legend anchor from the first face crop
+                if i == 0:
+                    legend_anchor = (min(w - 1, bx + bw + 4), max(0, by))
+
+            else:
+                # Fallback: binary face_mask → single cyan
+                face_mask_resized = cv2.resize(
+                    result.face_mask, (bw, bh),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                face_region = face_mask_resized[my1:my2, mx1:mx2]
+                face_pixels = face_region > 0
+                if face_pixels.any():
+                    face_color = np.array([255, 255, 0], dtype=np.uint8)
+                    roi[face_pixels] = (
+                        roi[face_pixels].astype(np.float32) * (1 - alpha)
+                        + face_color * alpha
+                    ).astype(np.uint8)
+
+                contours, _ = cv2.findContours(
+                    face_region, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+                )
+                for c in contours:
+                    c[:, :, 0] += x1
+                    c[:, :, 1] += y1
+                    cv2.drawContours(image, [c], -1, (0, 255, 255), 1)
+
+        # Read coverage ratios from face.quality observation
+        fq_obs = observations.get("face.quality")
+        fq_data = getattr(fq_obs, "data", None) if fq_obs else None
+        if fq_data is not None:
+            group_ratios["face"] = getattr(fq_data, "seg_face", 0.0)
+            group_ratios["mouth"] = getattr(fq_data, "seg_mouth", 0.0)
+
+        # Legend — groups with coverage, next to first face crop
+        if group_ratios and legend_anchor is not None:
+            self._draw_parse_legend(image, legend_anchor, group_ratios)
+
+    def _draw_parse_legend(
+        self,
+        image: np.ndarray,
+        anchor: Tuple[int, int],
+        group_ratios: dict[str, float],
+    ) -> None:
+        """Draw small color legend with coverage ratios for parse groups."""
+        h, w = image.shape[:2]
+
+        # face contour + highlight groups
+        entries: list[tuple[str, tuple[int, int, int], float]] = []
+        if "face" in group_ratios:
+            entries.append(("face", (0, 255, 0), group_ratios["face"]))
+        for name, (_, color) in _HIGHLIGHT_GROUPS.items():
+            if name in group_ratios:
+                entries.append((name, color, group_ratios[name]))
+
+        if not entries:
+            return
+
+        lx, ly = anchor
+        row_h = 14
+        total_h = len(entries) * row_h + 4
+        box_w = 90
+
+        # Clamp to frame bounds
+        if lx + box_w > w:
+            lx = w - box_w - 2
+        if ly + total_h > h:
+            ly = h - total_h - 2
+        lx = max(0, lx)
+        ly = max(0, ly)
+
+        # Semi-transparent background
+        overlay_region = image[ly:ly + total_h, lx:lx + box_w].copy()
+        cv2.rectangle(image, (lx, ly), (lx + box_w, ly + total_h), (0, 0, 0), -1)
+        image[ly:ly + total_h, lx:lx + box_w] = (
+            overlay_region.astype(np.float32) * 0.4
+            + image[ly:ly + total_h, lx:lx + box_w].astype(np.float32) * 0.6
+        ).astype(np.uint8)
+
+        # Draw entries
+        cy = ly + 2
+        for name, color, ratio in entries:
+            cv2.rectangle(image, (lx + 2, cy + 1), (lx + 12, cy + 11), color, -1)
+            label = f"{name} {ratio:.0%}"
+            cv2.putText(
+                image, label, (lx + 15, cy + 10),
+                FONT, 0.32, (220, 220, 220), 1,
+            )
+            cy += row_h
 
     # --- Embedding quality indicator ---
 
@@ -410,7 +536,7 @@ class VideoPanel:
         h, w = image.shape[:2]
         bx, by, bw, bh = face.bbox
         px = int(bx * w)
-        py = int((by + bh) * h) + 4  # Just below face bbox
+        py = int((by + bh) * h) + 100  # Zone 3: below mark-based overlays
         bar_w = max(30, int(bw * w))
 
         # Anchor update flash
@@ -455,22 +581,47 @@ class VideoPanel:
     # --- ROI ---
 
     def _draw_roi(self, image: np.ndarray, roi: Tuple[float, float, float, float]) -> None:
-        """Draw ROI by dimming the area outside the boundary."""
+        """Draw ROI as a simple line rectangle."""
         h, w = image.shape[:2]
         x1, y1, x2, y2 = roi
         px1, py1 = int(x1 * w), int(y1 * h)
         px2, py2 = int(x2 * w), int(y2 * h)
+        cv2.rectangle(image, (px1, py1), (px2, py2), (60, 60, 60), 1)
 
-        # Dim outside ROI
+    # --- Portrait clip (ROI-style) ---
+
+    def _draw_portrait_clip(
+        self, image: np.ndarray, observations: Dict[str, Observation],
+    ) -> None:
+        """Draw portrait.score crop box with darkened outside."""
+        obs = observations.get("portrait.score")
+        if obs is None or obs.data is None:
+            return
+        data = obs.data
+        box = getattr(data, "portrait_crop_box", None)
+        if box is None:
+            return
+        img_w, img_h = data.image_size if data.image_size else (1, 1)
+        x, y, w_box, h_box = box
+        h, w = image.shape[:2]
+        px1 = int(x / img_w * w)
+        py1 = int(y / img_h * h)
+        px2 = int((x + w_box) / img_w * w)
+        py2 = int((y + h_box) / img_h * h)
+
+        # Dim outside portrait clip
         mask = np.zeros((h, w), dtype=np.uint8)
-        mask[:py1, :] = 1      # top
-        mask[py2:, :] = 1      # bottom
-        mask[py1:py2, :px1] = 1  # left
-        mask[py1:py2, px2:] = 1  # right
+        mask[:py1, :] = 1
+        mask[py2:, :] = 1
+        mask[py1:py2, :px1] = 1
+        mask[py1:py2, px2:] = 1
         image[mask == 1] = (image[mask == 1] * 0.4).astype(np.uint8)
 
-        # Thin border
-        cv2.rectangle(image, (px1, py1), (px2, py2), (60, 60, 60), 1)
+        # Thin border + label
+        color = (200, 200, 255)
+        cv2.rectangle(image, (px1, py1), (px2, py2), color, 1)
+        label = f"portrait clip={data.head_aesthetic:.2f}"
+        cv2.putText(image, label, (px1, py1 - 4), FONT, 0.35, color, 1)
 
     # --- Trigger flash ---
 

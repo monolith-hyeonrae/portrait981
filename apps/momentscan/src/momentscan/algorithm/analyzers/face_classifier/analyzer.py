@@ -142,7 +142,12 @@ class FaceClassifierAnalyzer(Module):
         depends_on=["track_update"],
     )
     def _classify_faces(self, faces: List[FaceObservation]) -> List[ClassifiedFace]:
-        """Classify each face based on criteria."""
+        """Classify each face based on criteria.
+
+        Special case: if there is exactly one non-noise face, promote it
+        directly to main candidate regardless of track_length.  In a
+        single-rider scenario the only visible face cannot be transient.
+        """
         classified_faces = []
         for face in faces:
             role, confidence = self._classify_face(face)
@@ -157,6 +162,20 @@ class FaceClassifierAnalyzer(Module):
                 avg_area=avg_area,
             )
             classified_faces.append(classified)
+
+        # Single non-noise face → force main candidate
+        non_noise = [cf for cf in classified_faces if cf.role != "noise"]
+        if len(non_noise) == 1 and non_noise[0].role == "transient":
+            cf = non_noise[0]
+            idx = classified_faces.index(cf)
+            classified_faces[idx] = ClassifiedFace(
+                face=cf.face,
+                role="main",
+                confidence=cf.confidence,
+                track_length=cf.track_length,
+                avg_area=cf.avg_area,
+            )
+
         return classified_faces
 
     @processing_step(

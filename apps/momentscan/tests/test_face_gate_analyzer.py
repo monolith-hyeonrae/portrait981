@@ -52,7 +52,8 @@ class MockFrame:
 
 class MockFaceQualityResult:
     def __init__(self, face_id=0, head_blur=0.0, head_exposure=0.0,
-                 head_contrast=0.0, clipped_ratio=0.0, crushed_ratio=0.0):
+                 head_contrast=0.0, clipped_ratio=0.0, crushed_ratio=0.0,
+                 parsing_coverage=0.0):
         self.face_id = face_id
         self.head_blur = head_blur
         self.head_exposure = head_exposure
@@ -60,6 +61,7 @@ class MockFaceQualityResult:
         self.head_contrast = head_contrast
         self.clipped_ratio = clipped_ratio
         self.crushed_ratio = crushed_ratio
+        self.parsing_coverage = parsing_coverage
 
 
 class MockFaceQualityOutput:
@@ -312,7 +314,7 @@ class TestFaceGateAnalyzer:
             "face.detect": _face_obs(faces=[face]),
             "face.classify": _classify_obs([MockClassifiedFace(face, "main")]),
             "face.quality": _face_quality_obs(
-                face_results=[MockFaceQualityResult(face_id=1, head_blur=10.0, head_exposure=250.0)],
+                face_results=[MockFaceQualityResult(face_id=1, head_blur=3.0, head_exposure=250.0)],
             ),
         }
         obs = analyzer.process(MockFrame(), deps=deps)
@@ -320,8 +322,8 @@ class TestFaceGateAnalyzer:
         assert obs.data.main_gate_passed is False
         reasons = obs.data.main_fail_reasons
         assert "face_confidence" in reasons
-        assert "blur" in reasons
-        assert "exposure" in reasons
+        assert "blur.face" in reasons
+        assert "exposure.brightness" in reasons
 
     def test_gate_head_pose_overrides(self):
         """head.pose precise values should override face.detect geometric values in result."""
@@ -348,18 +350,18 @@ class TestFaceGateAnalyzer:
         analyzer = FaceGateAnalyzer()
         analyzer.initialize()
 
-        # head_blur=20 (below 30 threshold), frame blur_score=100 (above 50)
+        # head_blur=3 (below 5 threshold), frame blur_score=100 (above 50)
         deps = {
             "face.detect": _face_obs(faces=[face]),
             "face.classify": _classify_obs([MockClassifiedFace(face, "main")]),
             "face.quality": _face_quality_obs(
-                face_results=[MockFaceQualityResult(face_id=1, head_blur=20.0, head_exposure=128.0)],
+                face_results=[MockFaceQualityResult(face_id=1, head_blur=3.0, head_exposure=128.0)],
             ),
             "frame.quality": _quality_obs(blur_score=100.0, brightness=128.0),
         }
         obs = analyzer.process(MockFrame(), deps=deps)
 
-        assert "blur" in obs.data.main_fail_reasons
+        assert "blur.face" in obs.data.main_fail_reasons
 
     def test_gate_blur_frame_fallback(self):
         """Without face.quality, frame blur_score should be used as fallback."""
@@ -374,7 +376,7 @@ class TestFaceGateAnalyzer:
         }
         obs = analyzer.process(MockFrame(), deps=deps)
 
-        assert "blur" in obs.data.main_fail_reasons
+        assert "blur.frame" in obs.data.main_fail_reasons
 
     def test_gate_unmeasured_pass(self):
         """Zero values (unmeasured) should pass by default."""
@@ -468,10 +470,11 @@ class TestFaceGateAnalyzer:
         }
         obs = analyzer.process(MockFrame(), deps=deps)
         assert obs.data.main_gate_passed is True
-        assert "exposure" not in obs.data.main_fail_reasons
+        assert all(r not in obs.data.main_fail_reasons
+                    for r in ("exposure.contrast", "exposure.white", "exposure.black"))
 
     def test_gate_contrast_too_low(self):
-        """Very low contrast (flat/washed) should fail exposure."""
+        """Very low contrast (flat/washed) should fail exposure.contrast."""
         face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
         analyzer = FaceGateAnalyzer()
         analyzer.initialize()
@@ -488,10 +491,10 @@ class TestFaceGateAnalyzer:
         }
         obs = analyzer.process(MockFrame(), deps=deps)
         assert obs.data.main_gate_passed is False
-        assert "exposure" in obs.data.main_fail_reasons
+        assert "exposure.contrast" in obs.data.main_fail_reasons
 
     def test_gate_clipped_too_high(self):
-        """High clipped ratio should fail exposure."""
+        """High clipped ratio should fail exposure.white."""
         face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
         analyzer = FaceGateAnalyzer()
         analyzer.initialize()
@@ -508,10 +511,10 @@ class TestFaceGateAnalyzer:
         }
         obs = analyzer.process(MockFrame(), deps=deps)
         assert obs.data.main_gate_passed is False
-        assert "exposure" in obs.data.main_fail_reasons
+        assert "exposure.white" in obs.data.main_fail_reasons
 
     def test_gate_crushed_too_high(self):
-        """High crushed ratio should fail exposure."""
+        """High crushed ratio should fail exposure.black."""
         face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
         analyzer = FaceGateAnalyzer()
         analyzer.initialize()
@@ -528,10 +531,10 @@ class TestFaceGateAnalyzer:
         }
         obs = analyzer.process(MockFrame(), deps=deps)
         assert obs.data.main_gate_passed is False
-        assert "exposure" in obs.data.main_fail_reasons
+        assert "exposure.black" in obs.data.main_fail_reasons
 
     def test_gate_contrast_zero_uses_brightness_fallback(self):
-        """When head_contrast is 0 (no mask metrics), fallback to absolute brightness."""
+        """When head_contrast is 0 (no mask metrics), fallback to exposure.brightness."""
         face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
         analyzer = FaceGateAnalyzer()
         analyzer.initialize()
@@ -549,7 +552,7 @@ class TestFaceGateAnalyzer:
         obs = analyzer.process(MockFrame(), deps=deps)
         # head_exposure=250 > 220 → fail
         assert obs.data.main_gate_passed is False
-        assert "exposure" in obs.data.main_fail_reasons
+        assert "exposure.brightness" in obs.data.main_fail_reasons
 
     def test_gate_result_has_contrast_fields(self):
         """FaceGateResult should include contrast/clipped/crushed."""
@@ -572,3 +575,86 @@ class TestFaceGateAnalyzer:
         assert result.head_contrast == 0.2
         assert result.clipped_ratio == 0.05
         assert result.crushed_ratio == 0.01
+
+    def test_gate_parsing_coverage_pass(self):
+        """Good parsing coverage should pass gate."""
+        face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
+        analyzer = FaceGateAnalyzer()
+        analyzer.initialize()
+
+        deps = {
+            "face.detect": _face_obs(faces=[face]),
+            "face.classify": _classify_obs([MockClassifiedFace(face, "main")]),
+            "face.quality": _face_quality_obs(
+                face_results=[MockFaceQualityResult(
+                    face_id=1, head_blur=100.0, head_exposure=128.0,
+                    parsing_coverage=0.4,
+                )],
+            ),
+        }
+        obs = analyzer.process(MockFrame(), deps=deps)
+        assert obs.data.main_gate_passed is True
+        assert "parsing.coverage" not in obs.data.main_fail_reasons
+        assert obs.data.results[0].parsing_coverage == 0.4
+
+    def test_gate_parsing_coverage_fail(self):
+        """Low parsing coverage should fail with parsing.coverage."""
+        face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
+        analyzer = FaceGateAnalyzer()
+        analyzer.initialize()
+
+        deps = {
+            "face.detect": _face_obs(faces=[face]),
+            "face.classify": _classify_obs([MockClassifiedFace(face, "main")]),
+            "face.quality": _face_quality_obs(
+                face_results=[MockFaceQualityResult(
+                    face_id=1, head_blur=100.0, head_exposure=128.0,
+                    parsing_coverage=0.05,
+                )],
+            ),
+        }
+        obs = analyzer.process(MockFrame(), deps=deps)
+        assert obs.data.main_gate_passed is False
+        assert "parsing.coverage" in obs.data.main_fail_reasons
+
+    def test_gate_parsing_coverage_zero_skipped(self):
+        """Zero parsing coverage (not measured) should be skipped."""
+        face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
+        analyzer = FaceGateAnalyzer()
+        analyzer.initialize()
+
+        deps = {
+            "face.detect": _face_obs(faces=[face]),
+            "face.classify": _classify_obs([MockClassifiedFace(face, "main")]),
+            "face.quality": _face_quality_obs(
+                face_results=[MockFaceQualityResult(
+                    face_id=1, head_blur=100.0, head_exposure=128.0,
+                    parsing_coverage=0.0,
+                )],
+            ),
+        }
+        obs = analyzer.process(MockFrame(), deps=deps)
+        assert obs.data.main_gate_passed is True
+        assert "parsing.coverage" not in obs.data.main_fail_reasons
+
+    def test_gate_parsing_coverage_custom_threshold(self):
+        """Custom parsing_coverage_min should be respected."""
+        cfg = FaceGateConfig(parsing_coverage_min=0.3)
+        face = MockFace(face_id=1, confidence=0.9, area_ratio=0.05)
+        analyzer = FaceGateAnalyzer(config=cfg)
+        analyzer.initialize()
+
+        deps = {
+            "face.detect": _face_obs(faces=[face]),
+            "face.classify": _classify_obs([MockClassifiedFace(face, "main")]),
+            "face.quality": _face_quality_obs(
+                face_results=[MockFaceQualityResult(
+                    face_id=1, head_blur=100.0, head_exposure=128.0,
+                    parsing_coverage=0.2,
+                )],
+            ),
+        }
+        obs = analyzer.process(MockFrame(), deps=deps)
+        assert obs.data.main_gate_passed is False
+        assert "parsing.coverage" in obs.data.main_fail_reasons
+

@@ -17,6 +17,13 @@ class FaceQualityResult:
     head_contrast: float = 0.0     # CV = std / mean (skin-tone invariant)
     clipped_ratio: float = 0.0     # overexposed (>250) pixel ratio
     crushed_ratio: float = 0.0     # underexposed (<5) pixel ratio
+    parsing_coverage: float = 0.0  # face.parse mask pixels / crop pixels (0 = 미측정/미시도)
+    # Semantic segmentation ratios (from class_map, info-only)
+    seg_face: float = 0.0        # face region (skin+brow+eye+ear+nose+mouth+lip)
+    seg_eye: float = 0.0         # classes 4+5
+    seg_mouth: float = 0.0       # classes 11+12+13
+    seg_hair: float = 0.0        # class 17
+    eye_pixel_ratio: float = 0.0  # = seg_eye (eye_open 교차검증용)
 
 
 @dataclass
@@ -33,6 +40,7 @@ class FaceQualityOutput:
         head_contrast: Local contrast (CV) for main face.
         clipped_ratio: Overexposed pixel ratio for main face.
         crushed_ratio: Underexposed pixel ratio for main face.
+        parsing_coverage: face.parse mask pixels / crop pixels for main face (0 = 미측정).
     """
 
     face_results: List[FaceQualityResult] = field(default_factory=list)
@@ -44,6 +52,12 @@ class FaceQualityOutput:
     head_contrast: float = 0.0
     clipped_ratio: float = 0.0
     crushed_ratio: float = 0.0
+    parsing_coverage: float = 0.0
+    seg_face: float = 0.0
+    seg_eye: float = 0.0
+    seg_mouth: float = 0.0
+    seg_hair: float = 0.0
+    eye_pixel_ratio: float = 0.0
 
 
 __all__ = ["FaceQualityResult", "FaceQualityOutput"]

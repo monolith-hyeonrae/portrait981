@@ -184,6 +184,14 @@ def _render_bar(
     # Fill
     if fill > 0:
         cv2.rectangle(image, (x, y), (x + int(bar_w * fill), y + bar_h), color, -1)
+    # Label
+    if mark.label:
+        label_scale = 0.3
+        cv2.putText(
+            image, mark.label,
+            (x + bar_w + 3, y + bar_h),
+            FONT, label_scale, color, 1,
+        )
 
 
 def _render_label(

@@ -14,7 +14,7 @@ class FaceGateConfig:
 
     # Main face thresholds
     face_confidence_min: float = 0.7
-    head_blur_min: float = 30.0       # face crop Laplacian variance
+    head_blur_min: float = 5.0        # face crop Laplacian variance (224×280 crop 기준)
     frame_blur_min: float = 50.0      # frame-level fallback
     exposure_min: float = 40.0
     exposure_max: float = 220.0
@@ -26,6 +26,9 @@ class FaceGateConfig:
     contrast_min: float = 0.05        # CV < 0.05 = flat/washed out
     clipped_max: float = 0.3          # >30% overexposed pixels
     crushed_max: float = 0.3          # >30% underexposed pixels
+
+    # Parsing coverage threshold (from face.quality BiSeNet mask)
+    parsing_coverage_min: float = 0.15  # BiSeNet coverage < 15% = 노출 불량 proxy
 
 
 @dataclass
@@ -46,6 +49,7 @@ class FaceGateResult:
     head_contrast: float = 0.0
     clipped_ratio: float = 0.0
     crushed_ratio: float = 0.0
+    parsing_coverage: float = 0.0
 
 
 @dataclass

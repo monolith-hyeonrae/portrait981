@@ -209,6 +209,14 @@ def _extract_face_quality(record: FrameRecord, obs: Any) -> None:
     record.clipped_ratio = float(getattr(data, "clipped_ratio", 0.0))
     record.crushed_ratio = float(getattr(data, "crushed_ratio", 0.0))
     record.mask_method = str(getattr(data, "mask_method", ""))
+    record.parsing_coverage = float(getattr(data, "parsing_coverage", 0.0))
+
+    # Semantic segmentation ratios (from class_map)
+    record.seg_face = float(getattr(data, "seg_face", 0.0))
+    record.seg_eye = float(getattr(data, "seg_eye", 0.0))
+    record.seg_mouth = float(getattr(data, "seg_mouth", 0.0))
+    record.seg_hair = float(getattr(data, "seg_hair", 0.0))
+    record.eye_pixel_ratio = float(getattr(data, "eye_pixel_ratio", 0.0))
 
 
 def _extract_head_pose(record: FrameRecord, obs: Any) -> None:

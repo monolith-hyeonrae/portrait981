@@ -256,6 +256,8 @@ class FaceDetectionAnalyzer(Module):
             )
 
         face_ids = self._assign_face_ids(detected_faces)
+        for df, fid in zip(detected_faces, face_ids):
+            df.face_id = fid
         face_observations, prev_faces_update = self._filter_and_convert(
             detected_faces, face_ids, (w, h)
         )

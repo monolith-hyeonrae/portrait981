@@ -60,6 +60,13 @@ class FrameRecord:
     clipped_ratio: float = 0.0      # overexposed (>250) pixel ratio
     crushed_ratio: float = 0.0      # underexposed (<5) pixel ratio
     mask_method: str = ""            # "parsing" | "landmark" | "center_patch"
+    parsing_coverage: float = 0.0    # face.parse segmentation coverage (0 = 미측정)
+    # Semantic segmentation ratios (from class_map, info-only)
+    seg_face: float = 0.0            # face region (skin+brow+eye+ear+nose+mouth+lip)
+    seg_eye: float = 0.0             # eye (l_eye+r_eye) pixel ratio
+    seg_mouth: float = 0.0           # mouth (mouth+u_lip+l_lip) pixel ratio
+    seg_hair: float = 0.0            # hair pixel ratio
+    eye_pixel_ratio: float = 0.0     # = seg_eye (eye_open 교차검증용)
 
     # CLIP axis scores (from portrait.score → metadata._clip_axes)
     clip_disney_smile: float = 0.0
@@ -221,7 +228,10 @@ class HighlightResult:
                 # shot quality
                 "head_blur", "head_exposure", "head_aesthetic",
                 "head_contrast", "clipped_ratio", "crushed_ratio",
-                "mask_method",
+                "mask_method", "parsing_coverage",
+                # semantic segmentation ratios
+                "seg_face", "seg_eye", "seg_mouth", "seg_hair",
+                "eye_pixel_ratio",
                 # CLIP axes
                 "clip_disney_smile", "clip_charisma",
                 "clip_wild_roar", "clip_playful_cute",
@@ -266,6 +276,13 @@ class HighlightResult:
                     f"{r.clipped_ratio:.4f}",
                     f"{r.crushed_ratio:.4f}",
                     r.mask_method,
+                    f"{r.parsing_coverage:.4f}",
+                    # semantic segmentation ratios
+                    f"{r.seg_face:.4f}",
+                    f"{r.seg_eye:.4f}",
+                    f"{r.seg_mouth:.4f}",
+                    f"{r.seg_hair:.4f}",
+                    f"{r.eye_pixel_ratio:.4f}",
                     # CLIP axes
                     f"{r.clip_disney_smile:.4f}",
                     f"{r.clip_charisma:.4f}",

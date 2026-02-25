@@ -213,17 +213,17 @@ class ExpressionAnalyzer(Module):
 
         marks = []
         for face in obs.data.faces:
-            bar_y = face.bbox[1] + face.bbox[3]  # below bbox
+            bar_y = face.bbox[1] + face.bbox[3] + 0.024  # Zone 1: expression bars
             bar_w = face.bbox[2]
             emotions = [
-                (face.signals.get("em_happy", 0.0), (0, 255, 255)),
-                (face.signals.get("em_angry", 0.0), (0, 0, 255)),
-                (face.signals.get("em_neutral", 0.0), (200, 200, 200)),
+                (face.signals.get("em_happy", 0.0), (0, 255, 255), "happy"),
+                (face.signals.get("em_angry", 0.0), (0, 0, 255), "angry"),
+                (face.signals.get("em_neutral", 0.0), (200, 200, 200), "neutral"),
             ]
-            for i, (value, color) in enumerate(emotions):
+            for i, (value, color, label) in enumerate(emotions):
                 marks.append(BarMark(
-                    x=face.bbox[0], y=bar_y + i * 0.015,
-                    w=bar_w, value=value, color=color,
+                    x=face.bbox[0], y=bar_y + i * 0.013,
+                    w=bar_w, value=value, color=color, label=label,
                 ))
         return marks
 

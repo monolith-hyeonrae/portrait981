@@ -177,19 +177,19 @@ class FaceAUAnalyzer(Module):
             if i >= len(data.au_intensities):
                 break
             au = data.au_intensities[i]
-            # Position below expression bars (3 emotion rows * 0.015 offset)
-            bar_y = bbox[1] + bbox[3] + 3 * 0.015
+            # Zone 2: AU bars (below expression bars)
+            bar_y = bbox[1] + bbox[3] + 0.066
             bar_w = bbox[2]
             key_aus = [
-                ("AU12", (200, 0, 200)),   # magenta — smile
-                ("AU25", (255, 0, 180)),   # purple — lips part
-                ("AU26", (255, 0, 140)),   # violet — jaw drop
+                ("AU12", (200, 0, 200), "smile"),
+                ("AU25", (255, 0, 180), "lips"),
+                ("AU26", (255, 0, 140), "jaw"),
             ]
-            for j, (au_name, color) in enumerate(key_aus):
+            for j, (au_name, color, label) in enumerate(key_aus):
                 intensity = au.get(au_name, 0.0)
                 value = min(1.0, intensity / 5.0)
                 marks.append(BarMark(
-                    x=bbox[0], y=bar_y + j * 0.015,
-                    w=bar_w, value=value, color=color,
+                    x=bbox[0], y=bar_y + j * 0.013,
+                    w=bar_w, value=value, color=color, label=label,
                 ))
         return marks
