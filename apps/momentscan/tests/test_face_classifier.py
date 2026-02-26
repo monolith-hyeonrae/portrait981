@@ -293,7 +293,7 @@ class TestFaceClassifierAnnotate:
         marks = classifier.annotate(obs)
         assert len(marks) == 1
         assert isinstance(marks[0], BBoxMark)
-        assert marks[0].label == "MAIN (50f)"
+        assert marks[0].label == "face:main (50f)"
         assert marks[0].color == (0, 255, 0)
         assert marks[0].thickness == 3
 

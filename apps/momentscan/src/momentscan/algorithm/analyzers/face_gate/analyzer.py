@@ -54,7 +54,7 @@ class FaceGateAnalyzer(Module):
     Evaluates gate conditions independently for each classified face:
 
     - main: full gate (area, blur, exposure, yaw, pitch)
-    - passenger: relaxed gate (lower area/blur thresholds, no pose check)
+    - passenger: suitability score (0.0–1.0), always gate_passed=True
     - transient/noise: auto-rejected
 
     depends: ["face.detect", "face.classify"]
@@ -179,7 +179,7 @@ class FaceGateAnalyzer(Module):
                     face_id=face_id,
                     role=role,
                     gate_passed=False,
-                    fail_reasons=("role_rejected",),
+                    fail_reasons=("gate.role.rejected",),
                     face_bbox=face_bbox,
                 ))
                 continue
@@ -188,50 +188,88 @@ class FaceGateAnalyzer(Module):
             confidence = float(getattr(face, "confidence", 0.0))
             area_ratio = float(getattr(face, "area_ratio", 0.0))
 
-            # Confidence: main only (passenger trusts detection)
-            if role == "main":
-                if confidence < cfg.face_confidence_min:
-                    fails.append("face_confidence")
+            # Per-face quality lookup
+            fq = face_quality_map.get(face_id) or face_quality_map.get(-1)
+            face_blur = float(getattr(fq, "face_blur", 0.0)) if fq else 0.0
+            face_exposure = float(getattr(fq, "face_exposure", 0.0)) if fq else 0.0
+            parsing_coverage = float(getattr(fq, "parsing_coverage", 0.0)) if fq else 0.0
+
+            # Passenger: suitability score (soft threshold, no hard gate)
+            if role == "passenger":
+                conf_score = (
+                    min(confidence / cfg.passenger_confidence_min, 1.0)
+                    if cfg.passenger_confidence_min > 0 else 1.0
+                )
+                parse_score = (
+                    min(parsing_coverage / cfg.parsing_coverage_min, 1.0)
+                    if parsing_coverage > 0 and cfg.parsing_coverage_min > 0 else 1.0
+                )
+                suitability = conf_score * parse_score
+                results.append(FaceGateResult(
+                    face_id=face_id,
+                    role=role,
+                    gate_passed=True,
+                    fail_reasons=(),
+                    suitability=suitability,
+                    confidence=confidence,
+                    face_bbox=face_bbox,
+                    face_area_ratio=area_ratio,
+                    face_blur=face_blur,
+                    exposure=face_exposure,
+                    parsing_coverage=parsing_coverage,
+                ))
+                continue
+
+            # Main face: confidence check
+            if confidence < cfg.face_confidence_min:
+                fails.append("gate.detect.confidence")
 
             # Blur: face.quality per-face preferred, frame fallback
-            fq = face_quality_map.get(face_id) or face_quality_map.get(-1)
-            head_blur = float(getattr(fq, "head_blur", 0.0)) if fq else 0.0
-            head_exposure = float(getattr(fq, "head_exposure", 0.0)) if fq else 0.0
-
-            blur_min = cfg.head_blur_min if role == "main" else cfg.passenger_blur_min
-            if head_blur > 0:
-                if head_blur < blur_min:
-                    fails.append("blur.face")
+            if face_blur > 0:
+                if face_blur < cfg.face_blur_min:
+                    fails.append("gate.blur.face")
             elif frame_blur > 0:
                 if frame_blur < cfg.frame_blur_min:
-                    fails.append("blur.frame")
+                    fails.append("gate.blur.frame")
 
             # Parsing coverage: BiSeNet segmentation coverage (0 = 미측정 → skip)
-            parsing_coverage = float(getattr(fq, "parsing_coverage", 0.0)) if fq else 0.0
             if parsing_coverage > 0 and parsing_coverage < cfg.parsing_coverage_min:
-                fails.append("parsing.coverage")
+                fails.append("gate.parsing.coverage")
 
             # Exposure: prefer local contrast metrics, fallback to absolute brightness
-            head_contrast = float(getattr(fq, "head_contrast", 0.0)) if fq else 0.0
+            face_contrast = float(getattr(fq, "face_contrast", 0.0)) if fq else 0.0
             clipped_ratio = float(getattr(fq, "clipped_ratio", 0.0)) if fq else 0.0
             crushed_ratio = float(getattr(fq, "crushed_ratio", 0.0)) if fq else 0.0
 
-            if head_contrast > 0:
+            if face_contrast > 0:
                 # face.quality mask-based local contrast
-                if head_contrast < cfg.contrast_min:
-                    fails.append("exposure.contrast")
+                if face_contrast < cfg.contrast_min:
+                    fails.append("gate.exposure.contrast")
                 if clipped_ratio > cfg.clipped_max:
-                    fails.append("exposure.white")
+                    fails.append("gate.exposure.white")
                 if crushed_ratio > cfg.crushed_max:
-                    fails.append("exposure.black")
-            elif head_exposure > 0:
+                    fails.append("gate.exposure.black")
+            elif face_exposure > 0:
                 # face.quality absolute brightness fallback
-                if not (cfg.exposure_min <= head_exposure <= cfg.exposure_max):
-                    fails.append("exposure.brightness")
+                if not (cfg.exposure_min <= face_exposure <= cfg.exposure_max):
+                    fails.append("gate.exposure.brightness")
             elif frame_bright > 0:
                 # frame-level absolute brightness fallback
                 if not (cfg.exposure_min <= frame_bright <= cfg.exposure_max):
-                    fails.append("exposure.brightness")
+                    fails.append("gate.exposure.brightness")
+
+            # Seg-based gates (require successful parsing)
+            seg_mouth = float(getattr(fq, "seg_mouth", 0.0)) if fq else 0.0
+            seg_face = float(getattr(fq, "seg_face", 0.0)) if fq else 0.0
+
+            if parsing_coverage >= cfg.parsing_coverage_min:
+                mask_detected = seg_mouth < cfg.seg_mouth_min
+                if not mask_detected:
+                    # No mask → seg boundary reliable → precise exposure check
+                    if seg_face < cfg.seg_face_min:
+                        fails.append("gate.exposure.seg_face")
+                # Mask detected → skip seg_face check, existing exposure chain
+                # (face_contrast → face_exposure → frame_bright) serves as fallback
 
             # Pose: main only (passenger doesn't need frontal pose)
             yaw = float(getattr(face, "yaw", 0.0))
@@ -255,14 +293,16 @@ class FaceGateAnalyzer(Module):
                 fail_reasons=tuple(fails),
                 face_bbox=face_bbox,
                 face_area_ratio=area_ratio,
-                head_blur=head_blur,
-                exposure=head_exposure,
+                face_blur=face_blur,
+                exposure=face_exposure,
                 head_yaw=yaw,
                 head_pitch=pitch,
-                head_contrast=head_contrast,
+                face_contrast=face_contrast,
                 clipped_ratio=clipped_ratio,
                 crushed_ratio=crushed_ratio,
                 parsing_coverage=parsing_coverage,
+                seg_mouth=seg_mouth,
+                seg_face=seg_face,
             )
             results.append(result)
 
@@ -276,11 +316,11 @@ class FaceGateAnalyzer(Module):
         elif not classified_faces:
             # No faces at all
             main_gate_passed = False
-            main_fail_reasons = ("face_detected",)
+            main_fail_reasons = ("gate.detect.missing",)
         else:
             # All faces are noise/transient
             main_gate_passed = False
-            main_fail_reasons = ("no_main_face",)
+            main_fail_reasons = ("gate.role.no_main",)
 
         output = FaceGateOutput(
             results=results,
@@ -339,18 +379,36 @@ class FaceGateAnalyzer(Module):
             if r.face_bbox == (0.0, 0.0, 0.0, 0.0):
                 continue
             bx, by, bw, bh = r.face_bbox
-            color = (0, 255, 0) if r.gate_passed else (0, 0, 255)  # green / red
 
-            # Build compact gate label: "gate:OK" or "gate:blur,exp"
-            fail_label = ",".join(r.fail_reasons[:2]) if r.fail_reasons else "OK"
-
-            marks.append(LabelMark(
-                text=f"gate:{fail_label}",
-                x=bx,
-                y=by + bh + 0.008,  # Zone 0: gate label (below bbox border)
-                color=color,
-                font_scale=0.35,
-            ))
+            if r.role == "passenger":
+                # Passenger: show suitability score instead of gate status
+                suit = r.suitability
+                if suit >= 0.8:
+                    color = (0, 255, 0)    # green
+                elif suit >= 0.4:
+                    color = (0, 165, 255)  # orange
+                else:
+                    color = (0, 0, 255)    # red
+                marks.append(LabelMark(
+                    text=f"suit:{suit:.2f}",
+                    x=bx,
+                    y=by + bh + 0.008,
+                    color=color,
+                    font_scale=0.35,
+                ))
+            else:
+                # Main / other: binary gate label
+                color = (0, 255, 0) if r.gate_passed else (0, 0, 255)
+                fail_label = ",".join(
+                    f.removeprefix("gate.") for f in r.fail_reasons[:2]
+                ) if r.fail_reasons else "OK"
+                marks.append(LabelMark(
+                    text=f"gate:{fail_label}",
+                    x=bx,
+                    y=by + bh + 0.008,
+                    color=color,
+                    font_scale=0.35,
+                ))
         return marks
 
 

@@ -164,43 +164,15 @@ z = (feature - median(feature)) / MAD(feature)
 z = (feature - p50) / (p95 - p50)
 ```
 
-## 6. Face Gate (hard filter) — `face.gate` analyzer
+## 6. Face Gate — `face.gate` analyzer
 
-DAG에서 per-frame 판정하는 전용 analyzer. gate 미통과 프레임의 최종 점수는 0.
+> 상세 문서: **[gate_policy.md](gate_policy.md)** (방법론, 임계값 근거, 역할별 전략)
+
+DAG에서 per-frame 판정하는 전용 analyzer.
 `depends: [face.detect, face.classify]`, `optional_depends: [face.quality, frame.quality, head.pose]`.
 
-gate 판정은 main face 기준. noise/transient 역할은 자동 거부.
-
-```python
-# FaceGateConfig 기본 임계값
-face_confidence_min = 0.7
-head_blur_min = 5.0           # face crop Laplacian (main)
-passenger_blur_min = 20.0     # face crop Laplacian (passenger, 완화)
-frame_blur_min = 50.0         # 프레임 전체 Laplacian (face.quality 없을 때 fallback)
-exposure_min, exposure_max = 40.0, 220.0
-contrast_min = 0.05           # CV = std/mean (flat/washed-out 배제)
-clipped_max = 0.30            # 과노출 픽셀(>250) 30% 초과 시 거부
-crushed_max = 0.30            # 저노출 픽셀(<5) 30% 초과 시 거부
-parsing_coverage_min = 0.15   # BiSeNet 마스크 커버리지 15% 미만 시 거부
-```
-
-**Fail reasons** (세분화된 거부 사유):
-
-| fail reason | 조건 |
-|---|---|
-| `face_detected` | 얼굴 미검출 |
-| `face_confidence` | confidence < 0.7 |
-| `blur.face` | face crop blur < 5.0 (main) / < 20.0 (passenger) |
-| `blur.frame` | 프레임 blur < 50 (face.quality 없을 때 fallback) |
-| `parsing.coverage` | BiSeNet 커버리지 < 15% |
-| `exposure.contrast` | CV < 0.05 |
-| `exposure.white` | clipped ratio > 30% |
-| `exposure.black` | crushed ratio > 30% |
-| `exposure.brightness` | 밝기 [40, 220] 범위 밖 |
-| `role_rejected` | noise/transient 역할 |
-| `no_main_face` | main face 미분류 |
-
-**Exposure 판정 우선순위**: face.quality local contrast → absolute brightness → frame.quality brightness (fallback).
+**주탑승자(main)**: binary gate (PASS/FAIL). 미통과 프레임은 peak/best frame 후보에서 완전 배제.
+**동승자(passenger)**: suitability score (0.0~1.0). 차단 없음, scoring에서 additive bonus로 반영.
 
 ## 7. Quality Score (연속 품질)
 
@@ -244,11 +216,15 @@ impact(t) = sum(w_i * v_i for top-K) / max_achievable  # [0, 1]
 ## 9. 최종 점수 (가산 구조)
 
 ```python
-final_score(t) = 0.35 * quality_score(t) + 0.65 * impact(t) if gate_passed(t) else 0
+base(t) = 0.35 * quality_score(t) + 0.65 * impact(t)
+final_score(t) = base(t) + 0.30 * passenger_suitability(t)
+# passenger_suitability: 동승자 적합 시 0.30 가산, 미감지/부적합 시 0
+# gate_passed=False 프레임은 peak/best frame 후보에서 배제 (score 자체는 산출)
 ```
 
 **곱이 아닌 덧셈**. Quality가 0이어도 Impact가 높으면 점수가 나온다.
-Gate-pass only EMA: gate_fail 프레임은 이전 smoothed 값 유지.
+동승자 보너스도 가산 구조 — 동승자 부적합 시 차감 없음.
+Gate는 peak detection / best frame 선택에서만 필터링 (final score 계산은 전 프레임).
 
 ## 10. Temporal 처리
 

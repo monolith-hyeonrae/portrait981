@@ -52,11 +52,11 @@ class FrameRecord:
     # ArcFace identity (from face.detect)
     face_identity: float = 0.0   # ArcFace anchor similarity (quality)
 
-    # Face quality (from face.quality — head crop region metrics)
-    head_blur: float = 0.0           # head_crop Laplacian variance (face sharpness)
-    head_exposure: float = 0.0       # head_crop mean brightness
+    # Face quality (from face.quality — face region metrics)
+    face_blur: float = 0.0           # Laplacian variance within face mask (sharpness)
+    face_exposure: float = 0.0       # mean brightness within face mask
     head_aesthetic: float = 0.0      # CLIP portrait quality score [0,1]
-    head_contrast: float = 0.0      # CV = std/mean (skin-tone invariant)
+    face_contrast: float = 0.0      # CV = std/mean (skin-tone invariant)
     clipped_ratio: float = 0.0      # overexposed (>250) pixel ratio
     crushed_ratio: float = 0.0      # underexposed (<5) pixel ratio
     mask_method: str = ""            # "parsing" | "landmark" | "center_patch"
@@ -97,13 +97,14 @@ class FrameRecord:
     gate_passed: bool = True        # default True: gate 미실행 시 통과로 간주
     gate_fail_reasons: str = ""     # comma-separated fail condition names
 
-    # Passenger gate (from face.gate analyzer)
+    # Passenger suitability (from face.gate analyzer)
     passenger_detected: bool = False
-    passenger_gate_passed: bool = True
-    passenger_gate_fail_reasons: str = ""
+    passenger_suitability: float = 0.0       # 0.0–1.0 soft score
+    passenger_confidence: float = 0.0        # raw (debug)
+    passenger_parsing_coverage: float = 0.0  # raw (debug)
     passenger_face_area_ratio: float = 0.0
-    passenger_head_blur: float = 0.0
-    passenger_head_exposure: float = 0.0
+    passenger_face_blur: float = 0.0
+    passenger_face_exposure: float = 0.0
 
 
 @dataclass
@@ -131,14 +132,15 @@ class HighlightConfig:
     """
 
     # Quality score weights (§6 Step 2)
-    quality_head_blur_weight: float = 0.30       # head_crop sharpness (portrait-specific)
+    quality_face_blur_weight: float = 0.30       # face region sharpness (portrait-specific)
     quality_face_size_weight: float = 0.20
     quality_face_identity_weight: float = 0.30   # ArcFace anchor similarity
     quality_frontalness_weight: float = 0.25     # fallback (ArcFace 없을 때만 사용)
 
-    # Final score = quality_blend × quality + impact_blend × impact (가산)
+    # Final score = quality_blend × quality + impact_blend × impact + passenger_bonus
     final_quality_blend: float = 0.35
     final_impact_blend: float = 0.65
+    passenger_bonus_weight: float = 0.30    # additive bonus for passenger suitability
 
     # Impact score weights (§6 Step 3) — Top-K weighted mean
     impact_top_k: int = 3  # 상위 K개 시그널만 사용 (현재 3채널: smile, yaw, portrait)
@@ -226,8 +228,8 @@ class HighlightResult:
                 # identity
                 "face_identity",
                 # shot quality
-                "head_blur", "head_exposure", "head_aesthetic",
-                "head_contrast", "clipped_ratio", "crushed_ratio",
+                "face_blur", "face_exposure", "head_aesthetic",
+                "face_contrast", "clipped_ratio", "crushed_ratio",
                 "mask_method", "parsing_coverage",
                 # semantic segmentation ratios
                 "seg_face", "seg_eye", "seg_mouth", "seg_hair",
@@ -269,10 +271,10 @@ class HighlightResult:
                     f"{r.blur_score:.1f}",
                     f"{r.brightness:.1f}",
                     f"{r.face_identity:.4f}",
-                    f"{r.head_blur:.1f}",
-                    f"{r.head_exposure:.1f}",
+                    f"{r.face_blur:.1f}",
+                    f"{r.face_exposure:.1f}",
                     f"{r.head_aesthetic:.4f}",
-                    f"{r.head_contrast:.4f}",
+                    f"{r.face_contrast:.4f}",
                     f"{r.clipped_ratio:.4f}",
                     f"{r.crushed_ratio:.4f}",
                     r.mask_method,

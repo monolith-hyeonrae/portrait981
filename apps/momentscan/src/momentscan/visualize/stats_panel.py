@@ -70,6 +70,7 @@ class StatsPanel:
         classifier_obs: Optional[Observation] = None,
         fusion_result: Optional[Observation] = None,
         is_gate_open: bool = False,
+        passenger_suitability: float = 0.0,
         in_cooldown: bool = False,
         profile_timing: Optional[Dict[str, float]] = None,
         monitor_stats: Optional[Dict] = None,
@@ -124,7 +125,7 @@ class StatsPanel:
             y = self._draw_profile_timing(canvas, x, y, rx2 - rx1 - 16, profile_timing)
 
         # Gate / cooldown
-        y = self._draw_gate_status(canvas, x, y, is_gate_open, in_cooldown)
+        y = self._draw_gate_status(canvas, x, y, is_gate_open, in_cooldown, passenger_suitability)
 
         # Face summary (skip if FACE layer is off)
         if layers is None or layers[DebugLayer.FACE]:
@@ -251,15 +252,29 @@ class StatsPanel:
         return y
 
     def _draw_gate_status(
-        self, canvas: np.ndarray, x: int, y: int, is_gate_open: bool, in_cooldown: bool
+        self, canvas: np.ndarray, x: int, y: int, is_gate_open: bool, in_cooldown: bool,
+        passenger_suitability: float = 0.0,
     ) -> int:
-        """Draw gate and cooldown status."""
+        """Draw gate and cooldown status + passenger suitability."""
         gate_color = COLOR_GREEN_BGR if is_gate_open else COLOR_GRAY_BGR
         gate_text = "OPEN" if is_gate_open else "CLOSED"
         cv2.putText(canvas, f"Gate: {gate_text}", (x, y), FONT, FONT_MEDIUM, gate_color, 1)
 
         if in_cooldown:
             cv2.putText(canvas, "  CD", (x + 95, y), FONT, FONT_MEDIUM, (0, 165, 255), 1)
+
+        # Passenger suitability (only when detected)
+        if passenger_suitability > 0:
+            if passenger_suitability >= 0.8:
+                suit_color = COLOR_GREEN_BGR
+            elif passenger_suitability >= 0.4:
+                suit_color = (0, 165, 255)  # orange
+            else:
+                suit_color = (0, 0, 255)  # red
+            cv2.putText(
+                canvas, f"  Suit: {passenger_suitability:.2f}",
+                (x + 95, y), FONT, FONT_MEDIUM, suit_color, 1,
+            )
 
         y += 18
         return y
@@ -421,16 +436,16 @@ class StatsPanel:
 
         Shows:
         - face_identity: ArcFace similarity to anchor
-        - head_blur: head crop sharpness (Laplacian variance)
+        - face_blur: face region sharpness (Laplacian variance)
         - head_aesthetic: CLIP portrait quality score [0,1]
         - anchor_conf: confidence of the anchor face
         """
         identity = embed_stats.get("face_identity", 0.0)
-        head_blur = embed_stats.get("head_blur", 0.0)
+        face_blur = embed_stats.get("face_blur", 0.0)
         head_aesthetic = embed_stats.get("head_aesthetic", 0.0)
         anchor_conf = embed_stats.get("anchor_conf", 0.0)
 
-        if identity <= 0 and head_blur <= 0 and head_aesthetic <= 0 and anchor_conf <= 0:
+        if identity <= 0 and face_blur <= 0 and head_aesthetic <= 0 and anchor_conf <= 0:
             return y
 
         y += 4
@@ -454,15 +469,15 @@ class StatsPanel:
             )
             y += bar_h + 4
 
-        # head_blur bar (cyan-ish, scaled to 500 max for display)
-        if head_blur > 0:
+        # face_blur bar (cyan-ish, scaled to 500 max for display)
+        if face_blur > 0:
             hb_color = (200, 200, 0)  # cyan-ish
-            hb_fill = min(1.0, head_blur / 500.0)
+            hb_fill = min(1.0, face_blur / 500.0)
             cv2.putText(canvas, "BLR:", (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
             bar_x = x + 35
             draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, hb_fill, hb_color)
             cv2.putText(
-                canvas, f"{head_blur:.0f}",
+                canvas, f"{face_blur:.0f}",
                 (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, hb_color, 1,
             )
             y += bar_h + 4

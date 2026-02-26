@@ -110,8 +110,17 @@ class DebugFrameHandler:
         gate_obs = observations.get("face.gate")
         if gate_obs is not None:
             is_gate_open = bool(gate_obs.signals.get("gate_passed", True))
+            # Extract passenger suitability from gate results
+            passenger_suitability = 0.0
+            gate_data = getattr(gate_obs, "data", None)
+            if gate_data is not None:
+                for r in getattr(gate_data, "results", []):
+                    if getattr(r, "role", "") == "passenger":
+                        passenger_suitability = float(getattr(r, "suitability", 0.0))
+                        break
         else:
             is_gate_open = True  # default: open if face.gate not in pipeline
+            passenger_suitability = 0.0
 
         # Render debug view
         face_obs = observations.get("face.detect")
@@ -122,6 +131,7 @@ class DebugFrameHandler:
             classifier_obs=classifier_obs,
             fusion_result=None,
             is_gate_open=is_gate_open,
+            passenger_suitability=passenger_suitability,
             in_cooldown=False,
             roi=self.roi,
             monitor_stats=monitor_stats,

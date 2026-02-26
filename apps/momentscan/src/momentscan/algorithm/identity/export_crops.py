@@ -102,8 +102,8 @@ def _extract_crops(
             prefix = f"{f.set_type}_{f.frame_idx}"
 
             # Head crop
-            if f.head_crop_box is not None:
-                head_img = _crop_image(img, f.head_crop_box)
+            if f.face_crop_box is not None:
+                head_img = _crop_image(img, f.face_crop_box)
                 if head_img is not None:
                     path = crops_dir / f"{prefix}_head.jpg"
                     cv2.imwrite(

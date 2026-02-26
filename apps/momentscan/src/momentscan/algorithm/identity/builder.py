@@ -286,7 +286,7 @@ class IdentityBuilder:
                 novelty_score=0.0,
                 pivot_name=assignment.pivot_name if assignment else None,
                 pivot_distance=assignment.pose_distance if assignment else 0.0,
-                head_crop_box=r.head_crop_box,
+                face_crop_box=r.face_crop_box,
                 image_size=r.image_size,
             ))
             selected_timestamps.append(r.timestamp_ms)
@@ -341,7 +341,7 @@ class IdentityBuilder:
                     novelty_score=0.0,
                     pivot_name=assignment.pivot_name if assignment else None,
                     pivot_distance=assignment.pose_distance if assignment else 0.0,
-                    head_crop_box=r.head_crop_box,
+                    face_crop_box=r.face_crop_box,
                     image_size=r.image_size,
                 )
                 coverage.append(frame)
@@ -410,7 +410,7 @@ class IdentityBuilder:
                 novelty_score=novelty,
                 pivot_name=assignment.pivot_name if assignment else None,
                 pivot_distance=assignment.pose_distance if assignment else 0.0,
-                head_crop_box=r.head_crop_box,
+                face_crop_box=r.face_crop_box,
                 image_size=r.image_size,
             ))
 

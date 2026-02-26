@@ -9,7 +9,7 @@ on_frame() 콜백에서 호출되어,
 - face.au: AU12 → smile_intensity 보정 (max 전략)
 - frame.quality: Observation.signals (blur, brightness, contrast)
 - face.classify: Observation.signals (main_confidence)
-- face.quality: FaceQualityOutput (head_blur, head_exposure)
+- face.quality: FaceQualityOutput (face_blur, face_exposure)
 - portrait.score: PortraitScoreOutput (head_aesthetic, CLIP axes)
 """
 
@@ -203,9 +203,9 @@ def _extract_face_quality(record: FrameRecord, obs: Any) -> None:
     if data is None:
         return
 
-    record.head_blur = float(getattr(data, "head_blur", 0.0))
-    record.head_exposure = float(getattr(data, "head_exposure", 0.0))
-    record.head_contrast = float(getattr(data, "head_contrast", 0.0))
+    record.face_blur = float(getattr(data, "face_blur", 0.0))
+    record.face_exposure = float(getattr(data, "face_exposure", 0.0))
+    record.face_contrast = float(getattr(data, "face_contrast", 0.0))
     record.clipped_ratio = float(getattr(data, "clipped_ratio", 0.0))
     record.crushed_ratio = float(getattr(data, "crushed_ratio", 0.0))
     record.mask_method = str(getattr(data, "mask_method", ""))
@@ -255,17 +255,17 @@ def _extract_face_gate(record: FrameRecord, obs: Any) -> None:
     reasons = getattr(data, "main_fail_reasons", ())
     record.gate_fail_reasons = ",".join(reasons) if reasons else ""
 
-    # Passenger gate
+    # Passenger suitability
     results = getattr(data, "results", [])
     for r in results:
         if getattr(r, "role", "") == "passenger":
             record.passenger_detected = True
-            record.passenger_gate_passed = bool(r.gate_passed)
-            fail_r = getattr(r, "fail_reasons", ())
-            record.passenger_gate_fail_reasons = ",".join(fail_r) if fail_r else ""
+            record.passenger_suitability = float(getattr(r, "suitability", 0.0))
+            record.passenger_confidence = float(getattr(r, "confidence", 0.0))
+            record.passenger_parsing_coverage = float(getattr(r, "parsing_coverage", 0.0))
             record.passenger_face_area_ratio = float(getattr(r, "face_area_ratio", 0.0))
-            record.passenger_head_blur = float(getattr(r, "head_blur", 0.0))
-            record.passenger_head_exposure = float(getattr(r, "head_exposure", 0.0))
+            record.passenger_face_blur = float(getattr(r, "face_blur", 0.0))
+            record.passenger_face_exposure = float(getattr(r, "exposure", 0.0))
             break
 
 

@@ -36,7 +36,7 @@ class IdentityRecord:
 
     # 크롭 좌표 (이미지 추출용)
     face_bbox: Optional[tuple[float, float, float, float]] = None  # 정규화
-    head_crop_box: Optional[tuple[int, int, int, int]] = None  # 픽셀
+    face_crop_box: Optional[tuple[int, int, int, int]] = None  # 픽셀
     image_size: Optional[tuple[int, int]] = None  # (w, h)
 
     # AU intensities from face.au (Dict[str, float], e.g., {"AU12": 2.5, ...})
@@ -71,7 +71,7 @@ class IdentityFrame:
     novelty_score: float = 0.0
     pivot_name: Optional[str] = None
     pivot_distance: float = 0.0
-    head_crop_box: Optional[tuple[int, int, int, int]] = None
+    face_crop_box: Optional[tuple[int, int, int, int]] = None
     image_size: Optional[tuple[int, int]] = None
 
 

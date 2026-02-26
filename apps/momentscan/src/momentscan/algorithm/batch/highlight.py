@@ -83,6 +83,16 @@ class BatchHighlightEngine:
         final_scores = wq * quality_scores + wi * impact_scores
         logger.info("[5/7] Scoring complete (%.2f×quality + %.2f×impact)", wq, wi)
 
+        # 7.5. Passenger bonus (additive)
+        wp = cfg.passenger_bonus_weight
+        if wp > 0:
+            passenger_bonus = self._compute_passenger_bonus(records)
+            boosted_count = int((passenger_bonus > 0).sum())
+            if boosted_count > 0:
+                final_scores = final_scores + wp * passenger_bonus
+                logger.info("[5.5/7] Passenger bonus applied (weight=%.2f, %.0f%% frames boosted)",
+                            wp, 100.0 * boosted_count / n)
+
         # 8. Temporal smoothing (standard EMA)
         smoothed = self._smooth_ema(final_scores, alpha=cfg.smoothing_alpha)
         logger.info("[6/7] Temporal smoothing (EMA α=%.2f)", cfg.smoothing_alpha)
@@ -132,7 +142,7 @@ class BatchHighlightEngine:
         # scoring에 필요하지만 delta/derived에 없는 추가 필드
         fields.update((
             "blur_score", "eye_open_ratio", "face_confidence", "face_identity",
-            "head_blur",
+            "face_blur",
             # CLIP 4축 (portrait_best = max of 4)
             "clip_disney_smile", "clip_charisma", "clip_wild_roar", "clip_playful_cute",
             # composites (info only)
@@ -225,10 +235,10 @@ class BatchHighlightEngine:
         """
         cfg = self.config
 
-        # Sharpness: head_blur(face.quality) 우선, fallback → frame blur_score
-        head_blur = arrays["head_blur"]
-        has_head_blur = head_blur > 0
-        blur_source = np.where(has_head_blur, head_blur, arrays["blur_score"])
+        # Sharpness: face_blur(face.quality) 우선, fallback → frame blur_score
+        face_blur = arrays["face_blur"]
+        has_face_blur = face_blur > 0
+        blur_source = np.where(has_face_blur, face_blur, arrays["blur_score"])
         blur_normed = self._minmax_normalize(blur_source)
 
         # Face size
@@ -242,7 +252,7 @@ class BatchHighlightEngine:
         recog_weight = np.where(has_identity, cfg.quality_face_identity_weight, cfg.quality_frontalness_weight)
 
         # Build weighted sum dynamically
-        w_blur = cfg.quality_head_blur_weight
+        w_blur = cfg.quality_face_blur_weight
         w_size = cfg.quality_face_size_weight
         total = w_blur + w_size + recog_weight
 
@@ -450,6 +460,13 @@ class BatchHighlightEngine:
             ))
 
         return windows
+
+    # ── Passenger bonus ──
+
+    @staticmethod
+    def _compute_passenger_bonus(records: List[FrameRecord]) -> np.ndarray:
+        """동승자 suitability를 보너스 배열로 변환."""
+        return np.array([r.passenger_suitability for r in records], dtype=np.float64)
 
     # ── Helpers ──
 

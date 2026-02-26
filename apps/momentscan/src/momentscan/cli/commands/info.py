@@ -153,7 +153,7 @@ def _print_scoring_section():
           f"face_area >= {cfg.gate_face_area_ratio:.2f}  "
           f"blur >= {cfg.gate_blur_min:.0f}  "
           f"bright \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}]")
-    print(f"  Quality score   head_blur: {cfg.quality_head_blur_weight:.2f}  "
+    print(f"  Quality score   face_blur: {cfg.quality_face_blur_weight:.2f}  "
           f"face_size: {cfg.quality_face_size_weight:.2f}  "
           f"face_identity: {cfg.quality_face_identity_weight:.2f}  "
           f"bg_sep: {cfg.quality_scene_bg_sep_weight:.2f}  "
@@ -209,12 +209,12 @@ def _print_scoring_detail():
 
     # Quality Score
     print(f"\n{BOLD}[Quality Score]{RESET}  = \u03a3(weight \u00d7 feature)")
-    print(f"  {cfg.quality_head_blur_weight:.2f}  head_blur_norm    {DIM}(portrait crop sharpness){RESET}")
+    print(f"  {cfg.quality_face_blur_weight:.2f}  face_blur_norm    {DIM}(portrait crop sharpness){RESET}")
     print(f"  {cfg.quality_face_size_weight:.2f}  face_size_norm    {DIM}(min-max){RESET}")
     print(f"  {cfg.quality_face_identity_weight:.2f}  face_identity     "
           f"{DIM}(ArcFace anchor cosine sim){RESET}")
     print(f"  {cfg.quality_scene_bg_sep_weight:.2f}  bg_separation     "
-          f"{DIM}(head_blur/scene_blur ratio — bokeh proxy){RESET}")
+          f"{DIM}(face_blur/scene_blur ratio — bokeh proxy){RESET}")
     print(f"  {cfg.quality_scene_composition_weight:.2f}  composition       "
           f"{DIM}(rule-of-thirds framing){RESET}")
     print(f"  {cfg.quality_frontalness_weight:.2f}  frontalness       "

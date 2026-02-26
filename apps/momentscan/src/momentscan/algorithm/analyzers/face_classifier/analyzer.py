@@ -334,7 +334,7 @@ class FaceClassifierAnalyzer(Module):
             marks.append(BBoxMark(
                 x=face.bbox[0], y=face.bbox[1],
                 w=face.bbox[2], h=face.bbox[3],
-                label=f"{role.upper()} ({cf.track_length}f)",
+                label=f"face:{role} ({cf.track_length}f)",
                 color=color,
                 thickness=3 if role == "main" else 2,
             ))

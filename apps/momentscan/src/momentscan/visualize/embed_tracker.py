@@ -19,7 +19,7 @@ class EmbedTracker:
 
         tracker = EmbedTracker()
         stats = tracker.update(face_obs, portrait_score_obs)
-        # stats = {"face_identity": 0.92, "head_blur": 320.0, ...}
+        # stats = {"face_identity": 0.92, "face_blur": 320.0, ...}
     """
 
     _ANCHOR_DECAY: float = 0.998  # per-frame decay → half-life ~346 frames
@@ -44,11 +44,11 @@ class EmbedTracker:
             portrait_score_obs: portrait.score Observation (PortraitScoreOutput fields).
 
         Returns:
-            Dict with face_identity, head_blur, head_aesthetic, anchor_conf.
+            Dict with face_identity, face_blur, head_aesthetic, anchor_conf.
         """
         stats: dict[str, float] = {
             "face_identity": 0.0,
-            "head_blur": 0.0,
+            "face_blur": 0.0,
             "head_aesthetic": 0.0,
             "anchor_conf": self._anchor_conf,
             "anchor_updated": 0.0,

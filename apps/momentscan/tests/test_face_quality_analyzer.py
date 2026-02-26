@@ -132,7 +132,7 @@ class TestLandmarkEllipseMask:
 
 class TestTransformParseMask:
     def test_full_overlap(self):
-        """Parse crop and head crop identical → full mask coverage."""
+        """Parse crop and face crop identical → full mask coverage."""
         result = MockParseResult(crop_box=(100, 100, 200, 200))
         mask = _transform_parse_mask(result, (100, 100, 200, 200), (200, 200))
         assert mask is not None
@@ -304,9 +304,9 @@ class TestFaceQualityAnalyzer:
         assert obs is not None
         assert obs.source == "face.quality"
         data = obs.data
-        assert data.head_blur >= 0.0
+        assert data.face_blur >= 0.0
         assert data.mask_method == "center_patch"
-        assert data.head_contrast >= 0.0
+        assert data.face_contrast >= 0.0
         analyzer.cleanup()
 
     def test_process_with_parse(self):
@@ -355,7 +355,7 @@ class TestFaceQualityAnalyzer:
         obs = analyzer.process(MockFrame(), deps=deps)
         data = obs.data
 
-        assert hasattr(data, "head_contrast")
+        assert hasattr(data, "face_contrast")
         assert hasattr(data, "clipped_ratio")
         assert hasattr(data, "crushed_ratio")
         assert hasattr(data, "mask_method")
@@ -363,7 +363,7 @@ class TestFaceQualityAnalyzer:
         # Per-face results too
         if data.face_results:
             r = data.face_results[0]
-            assert hasattr(r, "head_contrast")
+            assert hasattr(r, "face_contrast")
             assert hasattr(r, "clipped_ratio")
             assert hasattr(r, "crushed_ratio")
             assert hasattr(r, "mask_method")

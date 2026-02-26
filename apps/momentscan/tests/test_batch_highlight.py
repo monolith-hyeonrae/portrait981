@@ -183,7 +183,7 @@ class TestBatchHighlightEngine:
         for r in records:
             r.face_detected = False
             r.gate_passed = False
-            r.gate_fail_reasons = "face_detected"
+            r.gate_fail_reasons = "gate.detect.missing"
 
         engine = BatchHighlightEngine()
         result = engine.analyze(records)
@@ -241,6 +241,50 @@ class TestBatchHighlightEngine:
         )
         peak_times = [w.peak_ms / 1000.0 for w in result.windows]
         assert all(t < 30.0 for t in peak_times)
+
+    def test_passenger_bonus_boosts_score(self):
+        """passenger_suitability=1.0인 프레임이 0.0보다 높은 최종 점수."""
+        records = _make_records(100)
+        for r in records:
+            r.smile_intensity = 0.5
+
+        # All frames have same features, but some have passenger suitability
+        for i in range(45, 55):
+            records[i].passenger_detected = True
+            records[i].passenger_suitability = 1.0
+
+        cfg = HighlightConfig(passenger_bonus_weight=0.30)
+        engine = BatchHighlightEngine(config=cfg)
+        result = engine.analyze(records)
+        ts = result._timeseries
+
+        # Frames with passenger suitability should have higher final scores
+        boosted_score = ts["final_scores"][50]
+        unboosted_score = ts["final_scores"][10]
+        assert boosted_score > unboosted_score, (
+            f"Passenger-boosted score {boosted_score:.3f} should be > unboosted {unboosted_score:.3f}"
+        )
+
+    def test_passenger_bonus_weight_zero(self):
+        """passenger_bonus_weight=0 → 보너스 미적용."""
+        records = _make_records(100)
+        for r in records:
+            r.smile_intensity = 0.5
+            r.passenger_detected = True
+            r.passenger_suitability = 1.0
+
+        cfg_no_bonus = HighlightConfig(passenger_bonus_weight=0.0)
+        cfg_with_bonus = HighlightConfig(passenger_bonus_weight=0.30)
+
+        result_no = BatchHighlightEngine(config=cfg_no_bonus).analyze(records)
+        result_with = BatchHighlightEngine(config=cfg_with_bonus).analyze(records)
+
+        # Without bonus, all scores should be lower
+        no_final = result_no._timeseries["final_scores"]
+        with_final = result_with._timeseries["final_scores"]
+        assert no_final[50] < with_final[50], (
+            f"No-bonus score {no_final[50]:.3f} should be < bonus score {with_final[50]:.3f}"
+        )
 
     def test_impact_smile_uses_absolute_not_delta(self):
         """smile_intensity impact는 delta가 아닌 per-video 절대값을 사용한다.

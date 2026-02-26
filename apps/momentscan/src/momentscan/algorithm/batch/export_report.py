@@ -74,8 +74,9 @@ _SKIP_CHART_FIELDS = {
     "gate_passed",
     "gate_fail_reasons",
     "passenger_detected",
-    "passenger_gate_passed",
-    "passenger_gate_fail_reasons",
+    "passenger_suitability",
+    "passenger_confidence",
+    "passenger_parsing_coverage",
     "mask_method",
 }
 
@@ -382,8 +383,8 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         "face_confidence": [gate_cfg.face_confidence_min],
         "blur_score": [gate_cfg.frame_blur_min],
         "brightness": [gate_cfg.exposure_min, gate_cfg.exposure_max],
-        "head_blur": [gate_cfg.head_blur_min],
-        "head_contrast": [gate_cfg.contrast_min],
+        "face_blur": [gate_cfg.face_blur_min],
+        "face_contrast": [gate_cfg.contrast_min],
         "clipped_ratio": [gate_cfg.clipped_max],
         "crushed_ratio": [gate_cfg.crushed_max],
         "parsing_coverage": [gate_cfg.parsing_coverage_min],
@@ -438,7 +439,7 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         int(r.face_confidence >= gate_cfg.face_confidence_min) for r in records
     ]
     data["gate_blur_face_pass"] = [
-        int(r.head_blur <= 0 or r.head_blur >= gate_cfg.head_blur_min)
+        int(r.face_blur <= 0 or r.face_blur >= gate_cfg.face_blur_min)
         for r in records
     ]
     data["gate_blur_frame_pass"] = [
@@ -446,7 +447,7 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         for r in records
     ]
     data["gate_contrast_pass"] = [
-        int(r.head_contrast <= 0 or r.head_contrast >= gate_cfg.contrast_min)
+        int(r.face_contrast <= 0 or r.face_contrast >= gate_cfg.contrast_min)
         for r in records
     ]
     data["gate_white_pass"] = [
@@ -457,9 +458,9 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     ]
     data["gate_brightness_pass"] = [
         int(
-            (r.head_exposure <= 0 and r.brightness <= 0)
-            or (r.head_exposure > 0 and gate_cfg.exposure_min <= r.head_exposure <= gate_cfg.exposure_max)
-            or (r.head_exposure <= 0 and gate_cfg.exposure_min <= r.brightness <= gate_cfg.exposure_max)
+            (r.face_exposure <= 0 and r.brightness <= 0)
+            or (r.face_exposure > 0 and gate_cfg.exposure_min <= r.face_exposure <= gate_cfg.exposure_max)
+            or (r.face_exposure <= 0 and gate_cfg.exposure_min <= r.brightness <= gate_cfg.exposure_max)
         )
         for r in records
     ]
@@ -470,33 +471,35 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         )
         for r in records
     ]
+    data["gate_mask_detected"] = [
+        int(
+            r.parsing_coverage >= gate_cfg.parsing_coverage_min
+            and r.seg_mouth < gate_cfg.seg_mouth_min
+        )
+        for r in records
+    ]
+    data["gate_seg_face_pass"] = [
+        int(
+            r.parsing_coverage < gate_cfg.parsing_coverage_min  # parsing low → skip
+            or r.seg_mouth < gate_cfg.seg_mouth_min             # mask → skip
+            or r.seg_face >= gate_cfg.seg_face_min              # no mask → check
+        )
+        for r in records
+    ]
     data["gate_fail_reasons"] = [r.gate_fail_reasons for r in records]
 
-    # ── Passenger gate per-condition arrays ──
+    # ── Passenger suitability arrays ──
     data["passenger_detected"] = [int(r.passenger_detected) for r in records]
-    data["passenger_gate_passed_arr"] = [int(r.passenger_gate_passed) for r in records]
-    data["passenger_gate_fail_reasons"] = [r.passenger_gate_fail_reasons for r in records]
+    data["passenger_suitability"] = [float(r.passenger_suitability) for r in records]
+    data["passenger_confidence"] = [float(r.passenger_confidence) for r in records]
+    data["passenger_parsing_coverage"] = [float(r.passenger_parsing_coverage) for r in records]
     data["passenger_face_area_ratio"] = [float(r.passenger_face_area_ratio) for r in records]
-    data["passenger_head_blur"] = [float(r.passenger_head_blur) for r in records]
-    data["passenger_head_exposure"] = [float(r.passenger_head_exposure) for r in records]
-    data["passenger_gate_blur_pass"] = [
-        int(
-            r.passenger_head_blur <= 0
-            or r.passenger_head_blur >= gate_cfg.passenger_blur_min
-        )
-        for r in records
-    ]
-    data["passenger_gate_brightness_pass"] = [
-        int(
-            r.passenger_head_exposure <= 0
-            or (gate_cfg.exposure_min <= r.passenger_head_exposure <= gate_cfg.exposure_max)
-        )
-        for r in records
-    ]
+    data["passenger_face_blur"] = [float(r.passenger_face_blur) for r in records]
+    data["passenger_face_exposure"] = [float(r.passenger_face_exposure) for r in records]
 
     # ── Config weights (for hover panel) ──
     data["cfg_quality_weights"] = {
-        "head_blur": cfg.quality_head_blur_weight,
+        "face_blur": cfg.quality_face_blur_weight,
         "face_size": cfg.quality_face_size_weight,
         "face_identity": cfg.quality_face_identity_weight,
         "frontalness": cfg.quality_frontalness_weight,
@@ -513,15 +516,19 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # ── Threshold values (for hover panel) ──
     data["thresholds"] = {
         "gate_face_confidence": gate_cfg.face_confidence_min,
-        "gate_head_blur_min": gate_cfg.head_blur_min,
+        "gate_face_blur_min": gate_cfg.face_blur_min,
         "gate_frame_blur_min": gate_cfg.frame_blur_min,
         "gate_exposure_min": gate_cfg.exposure_min,
         "gate_exposure_max": gate_cfg.exposure_max,
-        "passenger_blur_min": gate_cfg.passenger_blur_min,
+        "passenger_confidence_min": gate_cfg.passenger_confidence_min,
+        "passenger_bonus_weight": cfg.passenger_bonus_weight,
+        "parsing_coverage_min": gate_cfg.parsing_coverage_min,
         "gate_contrast_min": gate_cfg.contrast_min,
         "gate_clipped_max": gate_cfg.clipped_max,
         "gate_crushed_max": gate_cfg.crushed_max,
         "gate_parsing_coverage_min": gate_cfg.parsing_coverage_min,
+        "gate_seg_mouth_min": gate_cfg.seg_mouth_min,
+        "gate_seg_face_min": gate_cfg.seg_face_min,
     }
 
     return data
@@ -668,7 +675,8 @@ def _build_field_reference_html() -> str:
         "gate": ('<span class="role-badge role-gate">gate</span>', 0),
         "quality": ('<span class="role-badge role-quality">quality</span>', 1),
         "impact": ('<span class="role-badge role-impact">impact</span>', 2),
-        "info": ('<span class="role-badge role-info">info</span>', 3),
+        "bonus": ('<span class="role-badge role-bonus">bonus</span>', 3),
+        "info": ('<span class="role-badge role-info">info</span>', 4),
     }
 
     rows = ""
@@ -745,6 +753,7 @@ _CSS = """
     white-space: pre; margin-top: 8px; color: #444;
   }
   .gate-pass { color: #2e7d32; }
+  .gate-warn { color: #e65100; }
   .gate-fail { color: #c62828; font-weight: 600; }
   .section-label { color: #999; font-weight: 600; }
   .summary-grid {
@@ -819,6 +828,7 @@ _CSS = """
   .role-gate { background: #e8f5e9; color: #2e7d32; }
   .role-quality { background: #e3f2fd; color: #1565c0; }
   .role-impact { background: #fbe9e7; color: #d84315; }
+  .role-bonus { background: #f3e5f5; color: #6a1b9a; }
   .role-info { background: #f5f5f5; color: #999; }
   .selected-frames {
     display: flex; gap: 10px; margin-top: 12px;
@@ -934,6 +944,10 @@ _JS_MAIN = r"""
     line:{color:'#1565c0', width:1.5}, xaxis: xRef(1), yaxis:'y2', hoverinfo:'x+y'});
   traces.push({x:t, y:DATA.impact_scores, name:'impact', type:'scatter', mode:'lines',
     line:{color:'#d84315', width:1.5}, xaxis: xRef(1), yaxis:'y2', hoverinfo:'x+y'});
+  if (DATA.passenger_suitability && DATA.passenger_suitability.some(function(v){return v>0})) {
+    traces.push({x:t, y:DATA.passenger_suitability, name:'passenger', type:'scatter', mode:'lines',
+      line:{color:'#6a1b9a', width:1.2, dash:'dot'}, xaxis: xRef(1), yaxis:'y2', hoverinfo:'x+y'});
+  }
 
   // ── Dynamic module subplots ──
   DATA.modules.forEach(function(mod, mi) {
@@ -1090,6 +1104,7 @@ _JS_MAIN = r"""
       ? '<span class="gate-pass">\u2713</span>'
       : '<span class="gate-fail">\u2717</span>';
   }
+  function padR(s, n) { while (s.length < n) s += ' '; return s; }
 
   // Binary search for nearest time index from data x value
   function timeToIndex(xVal) {
@@ -1146,58 +1161,95 @@ _JS_MAIN = r"""
     var qw = D.cfg_quality_weights;
     var iw = D.cfg_impact_weights;
 
-    // Gate — Main
+    // Gate — Main (tree: depth1=domain, depth2=measurement)
     var gp = D.gate_mask[pi];
     var h = '<span class="section-label">\u2500\u2500 Gate: Main ' +
       (gp ? '<span class="gate-pass">PASS</span>' : '<span class="gate-fail">FAIL</span>') +
       ' \u2500\u2500</span>\n';
-    h += '  ' + gIcon(D.gate_face_detected[pi])       + ' face_detected\n';
-    h += '  ' + gIcon(D.gate_face_confidence_pass[pi]) + ' face_conf    ' + fmtN(D.face_confidence[pi],3) + ' \u2265 ' + fmtN(th.gate_face_confidence,3) + '\n';
-    var hBlur = D.head_blur ? D.head_blur[pi] : 0;
-    var fBlur = D.blur_score ? D.blur_score[pi] : 0;
-    if (hBlur > 0) {
-      h += '  ' + gIcon(D.gate_blur_face_pass[pi]) + ' blur.face     ' + fmtN(hBlur,1) + ' \u2265 ' + fmtN(th.gate_head_blur_min,1) + '\n';
-    } else if (fBlur > 0) {
-      h += '  ' + gIcon(D.gate_blur_frame_pass[pi]) + ' blur.frame    ' + fmtN(fBlur,1) + ' \u2265 ' + fmtN(th.gate_frame_blur_min,1) + '\n';
+    var L = 15;  // child label pad width
+
+    // detect
+    var detectOk = D.gate_face_detected[pi] && D.gate_face_confidence_pass[pi];
+    h += '  ' + gIcon(detectOk) + ' detect\n';
+    if (!D.gate_face_detected[pi]) {
+      h += '      missing\n';
+    } else {
+      h += '      ' + padR('confidence', L) + fmtN(D.face_confidence[pi],3) + ' \u2265 ' + fmtN(th.gate_face_confidence,3) + '\n';
     }
-    var hContrast = D.head_contrast ? D.head_contrast[pi] : 0;
+
+    // blur
+    var hBlur = D.face_blur ? D.face_blur[pi] : 0;
+    var fBlur = D.blur_score ? D.blur_score[pi] : 0;
+    var blurOk = (hBlur > 0) ? !!D.gate_blur_face_pass[pi] : (fBlur > 0) ? !!D.gate_blur_frame_pass[pi] : true;
+    h += '  ' + gIcon(blurOk) + ' blur\n';
+    if (hBlur > 0) {
+      h += '      ' + padR('face', L) + fmtN(hBlur,1) + ' \u2265 ' + fmtN(th.gate_face_blur_min,1) + '\n';
+    } else if (fBlur > 0) {
+      h += '      ' + padR('frame', L) + fmtN(fBlur,1) + ' \u2265 ' + fmtN(th.gate_frame_blur_min,1) + '\n';
+    }
+
+    // exposure (includes seg_face when parsing sufficient)
+    var hContrast = D.face_contrast ? D.face_contrast[pi] : 0;
     var hClipped = D.clipped_ratio ? D.clipped_ratio[pi] : 0;
     var hCrushed = D.crushed_ratio ? D.crushed_ratio[pi] : 0;
-    var hExp = (D.head_exposure && D.head_exposure[pi] > 0) ? D.head_exposure[pi] : 0;
+    var hExp = (D.face_exposure && D.face_exposure[pi] > 0) ? D.face_exposure[pi] : 0;
     var fExp = D.brightness ? D.brightness[pi] : 0;
+    var pCov = D.parsing_coverage ? D.parsing_coverage[pi] : 0;
+    var expOk = (hContrast > 0)
+      ? (!!D.gate_contrast_pass[pi] && !!D.gate_white_pass[pi] && !!D.gate_black_pass[pi])
+      : !!D.gate_brightness_pass[pi];
+    if (pCov >= th.gate_parsing_coverage_min) expOk = expOk && !!D.gate_seg_face_pass[pi];
+    h += '  ' + gIcon(expOk) + ' exposure\n';
     if (hContrast > 0) {
-      h += '  ' + gIcon(D.gate_contrast_pass[pi]) + ' exposure.contrast ' + fmtN(hContrast,3) + ' \u2265 ' + fmtN(th.gate_contrast_min,3) + '\n';
-      h += '  ' + gIcon(D.gate_white_pass[pi])    + ' exposure.white    ' + fmtN(hClipped,3) + ' \u2264 ' + fmtN(th.gate_clipped_max,3) + '\n';
-      h += '  ' + gIcon(D.gate_black_pass[pi])     + ' exposure.black    ' + fmtN(hCrushed,3) + ' \u2264 ' + fmtN(th.gate_crushed_max,3) + '\n';
+      h += '      ' + gIcon(D.gate_contrast_pass[pi]) + ' ' + padR('contrast', L-2) + fmtN(hContrast,3) + ' \u2265 ' + fmtN(th.gate_contrast_min,3) + ' <span style="color:#999">(head)</span>\n';
+      h += '      ' + gIcon(D.gate_white_pass[pi])    + ' ' + padR('white', L-2)    + fmtN(hClipped,3)  + ' \u2264 ' + fmtN(th.gate_clipped_max,3) + ' <span style="color:#999">(head)</span>\n';
+      h += '      ' + gIcon(D.gate_black_pass[pi])    + ' ' + padR('black', L-2)    + fmtN(hCrushed,3)  + ' \u2264 ' + fmtN(th.gate_crushed_max,3) + ' <span style="color:#999">(head)</span>\n';
     } else {
       var useFaceExp = hExp > 0;
       var expSrc = useFaceExp ? 'face' : 'frame';
       var expVal = useFaceExp ? hExp : fExp;
-      h += '  ' + gIcon(D.gate_brightness_pass[pi]) + ' exposure.brightness <span style="color:#999">(' + expSrc + ')</span> ' + fmtN(expVal,1) + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
+      h += '      ' + gIcon(D.gate_brightness_pass[pi]) + ' ' + padR('brightness', L-2) + fmtN(expVal,1) + ' <span style="color:#999">(' + expSrc + ')</span> \u2208 [' + th.gate_exposure_min + ',' + th.gate_exposure_max + ']\n';
     }
-    var pCov = D.parsing_coverage ? D.parsing_coverage[pi] : 0;
+    if (pCov >= th.gate_parsing_coverage_min) {
+      var sMouth = D.seg_mouth ? D.seg_mouth[pi] : 0;
+      var sFace = D.seg_face ? D.seg_face[pi] : 0;
+      var maskOn = D.gate_mask_detected ? D.gate_mask_detected[pi] : 0;
+      var maskColor = maskOn ? '#ff9800' : '#78909c';
+      var maskLabel = maskOn ? 'yes' : 'no';
+      h += '      <span style="color:' + maskColor + '">\u25c7 mask: ' + maskLabel + '</span> <span style="color:#666">(mouth ' + fmtN(sMouth,3) + ')</span>\n';
+      if (!maskOn) {
+        h += '      \u2514 ' + gIcon(D.gate_seg_face_pass[pi]) + ' ' + padR('seg_face', L-4) + fmtN(sFace,3) + ' \u2265 ' + fmtN(th.gate_seg_face_min,3) + '\n';
+      } else {
+        h += '      \u2514 <span style="color:#999">seg_face skip \u2192 fallback</span>\n';
+      }
+    }
+
+    // parsing
     if (pCov > 0) {
-      h += '  ' + gIcon(D.gate_parsing_coverage_pass[pi]) + ' parsing.coverage ' + fmtN(pCov,3) + ' \u2265 ' + fmtN(th.gate_parsing_coverage_min,3) + '\n';
+      h += '  ' + gIcon(D.gate_parsing_coverage_pass[pi]) + ' parsing\n';
+      h += '      ' + padR('coverage', L) + fmtN(pCov,3) + ' \u2265 ' + fmtN(th.gate_parsing_coverage_min,3) + '\n';
     }
+
     var maskMethod = D.mask_method ? D.mask_method[pi] : '';
     if (maskMethod) h += '  mask: ' + maskMethod + '\n';
     if (D.gate_fail_reasons && D.gate_fail_reasons[pi]) {
       h += '  <span class="gate-fail">reasons: ' + D.gate_fail_reasons[pi] + '</span>\n';
     }
 
-    // Gate — Passenger
+    // Passenger suitability
     if (D.passenger_detected && D.passenger_detected[pi]) {
-      var pgp = D.passenger_gate_passed_arr[pi];
-      h += '\n<span class="section-label">\u2500\u2500 Gate: Passenger ' +
-        (pgp ? '<span class="gate-pass">PASS</span>' : '<span class="gate-fail">FAIL</span>') +
+      var suit = D.passenger_suitability[pi];
+      var sColor = suit >= 0.8 ? 'gate-pass' : (suit >= 0.4 ? 'gate-warn' : 'gate-fail');
+      h += '\n<span class="section-label">\u2500\u2500 Passenger: ' +
+        '<span class="' + sColor + '">' + fmtN(suit,2) + '</span>' +
+        ' (bonus \u00d7' + fmtN(th.passenger_bonus_weight,2) + ')' +
         ' \u2500\u2500</span>\n';
-      var pBlur = D.passenger_head_blur[pi];
-      h += '  ' + gIcon(D.passenger_gate_blur_pass[pi]) + ' blur <span style="color:#999">(face)</span> ' + fmtN(pBlur,1) + ' \u2265 ' + fmtN(th.passenger_blur_min,1) + '\n';
-      var pExp = D.passenger_head_exposure[pi];
-      h += '  ' + gIcon(D.passenger_gate_brightness_pass[pi]) + ' exposure <span style="color:#999">(face)</span> ' + fmtN(pExp,1) + ' \u2208 [' + th.gate_exposure_min + ', ' + th.gate_exposure_max + ']\n';
-      if (D.passenger_gate_fail_reasons && D.passenger_gate_fail_reasons[pi]) {
-        h += '  <span class="gate-fail">reasons: ' + D.passenger_gate_fail_reasons[pi] + '</span>\n';
-      }
+      h += '  confidence  ' + fmtN(D.passenger_confidence[pi],2)
+        + ' / ' + fmtN(th.passenger_confidence_min,2) + '\n';
+      h += '  parsing     ' + fmtN(D.passenger_parsing_coverage[pi],2)
+        + ' / ' + fmtN(th.parsing_coverage_min,2) + '\n';
+      h += '  blur        ' + fmtN(D.passenger_face_blur[pi],1) + '\n';
+      h += '  exposure    ' + fmtN(D.passenger_face_exposure[pi],1) + '\n';
     }
 
     // Quality
@@ -1205,7 +1257,7 @@ _JS_MAIN = r"""
     var blV = D.blur_normed[pi], fsV = D.face_size_normed[pi];
     var fidV = D.face_identity[pi], frV = D.frontalness[pi];
     h += '\n<span class="section-label">\u2500\u2500 Quality: ' + fmtN(qs,3) + ' \u2500\u2500</span>\n';
-    h += '  head_blur     ' + fmtN(qw.head_blur,2)  + ' \u00d7 ' + fmtN(blV,3) + ' = ' + fmtN(qw.head_blur*blV,3) + '\n';
+    h += '  face_blur     ' + fmtN(qw.face_blur,2)  + ' \u00d7 ' + fmtN(blV,3) + ' = ' + fmtN(qw.face_blur*blV,3) + '\n';
     h += '  face_size     ' + fmtN(qw.face_size,2)  + ' \u00d7 ' + fmtN(fsV,3) + ' = ' + fmtN(qw.face_size*fsV,3) + '\n';
     if (fidV > 0) {
       h += '  face_identity ' + fmtN(qw.face_identity,2) + ' \u00d7 ' + fmtN(fidV,3) + ' = ' + fmtN(qw.face_identity*fidV,3) + '\n';
@@ -1242,13 +1294,20 @@ _JS_MAIN = r"""
       h += '  ' + e.label + ' ' + fmtN(e.w,2) + ' \u00d7 ' + fmtN(e.raw,3) + ' = ' + fmtN(e.wv,3) + suffix + '\n';
     }
 
-    // Final (additive: wq × quality + wi × impact)
+    // Final (additive: wq × quality + wi × impact + wp × suitability)
     var fs = D.final_scores[pi];
     var sm = D.smoothed[pi];
     var wq = D.cfg_final_quality_blend || 0.35;
     var wi = D.cfg_final_impact_blend || 0.65;
+    var wp = th.passenger_bonus_weight || 0;
+    var pSuit = (D.passenger_suitability && D.passenger_detected && D.passenger_detected[pi])
+              ? D.passenger_suitability[pi] : 0;
     h += '\n<span class="section-label">\u2500\u2500 Final \u2500\u2500</span>\n';
-    h += '  ' + fmtN(wq,2) + '\u00d7Q(' + fmtN(qs,3) + ') + ' + fmtN(wi,2) + '\u00d7I(' + fmtN(is_,3) + ') = ' + fmtN(fs,3) + '\n';
+    var formula = '  ' + fmtN(wq,2) + '\u00d7Q(' + fmtN(qs,3) + ') + ' + fmtN(wi,2) + '\u00d7I(' + fmtN(is_,3) + ')';
+    if (pSuit > 0) {
+      formula += ' + <span style="color:#6a1b9a">' + fmtN(wp,2) + '\u00d7P(' + fmtN(pSuit,2) + ')</span>';
+    }
+    h += formula + ' = ' + fmtN(fs,3) + '\n';
     h += '  smoothed: ' + fmtN(sm,3) + '\n';
 
     pipelineDetail.innerHTML = h;

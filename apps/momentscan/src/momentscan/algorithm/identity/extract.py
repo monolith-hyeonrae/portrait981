@@ -74,7 +74,7 @@ def extract_identity_record(
     # frame.quality
     _extract_quality(record, obs_by_source.get("frame.quality"))
 
-    # face.quality → head crop box coordinates
+    # face.quality → crop box coordinates
     _extract_face_quality_crop(record, obs_by_source.get("face.quality"))
 
     # face.au → AU intensities
@@ -129,14 +129,14 @@ def _extract_quality(record: IdentityRecord, obs: Any) -> None:
 
 
 def _extract_face_quality_crop(record: IdentityRecord, obs: Any) -> None:
-    """face.quality: head crop box coordinates for identity crops."""
+    """face.quality: crop box coordinates for identity crops."""
     if obs is None:
         return
     data = getattr(obs, "data", None)
     if data is None:
         return
 
-    record.head_crop_box = getattr(data, "head_crop_box", None)
+    record.face_crop_box = getattr(data, "face_crop_box", None)
     if record.image_size is None:
         record.image_size = getattr(data, "image_size", None)
 

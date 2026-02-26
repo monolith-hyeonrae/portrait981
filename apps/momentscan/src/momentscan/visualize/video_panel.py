@@ -511,14 +511,14 @@ class VideoPanel:
 
         Shows small horizontal bars below the face bbox:
         - face_identity: Green=high anchor similarity, Red=low
-        - head_blur: Cyan bar (head crop sharpness, Laplacian variance)
+        - face_blur: Cyan bar (face region sharpness, Laplacian variance)
         - scene_bg_separation: Green bar (head sharper than background ratio)
         """
         identity = embed_stats.get("face_identity", 0.0)
-        head_blur = embed_stats.get("head_blur", 0.0)
+        face_blur = embed_stats.get("face_blur", 0.0)
         bg_sep = embed_stats.get("scene_bg_separation", 0.0)
 
-        if identity <= 0 and head_blur <= 0 and bg_sep <= 0:
+        if identity <= 0 and face_blur <= 0 and bg_sep <= 0:
             return
 
         # Find main face bbox from face.detect
@@ -560,16 +560,16 @@ class VideoPanel:
             py += 8
 
         # Head blur bar (cyan) — Laplacian variance, scaled to 500
-        if head_blur > 0:
+        if face_blur > 0:
             blr_color = (200, 200, 0)  # cyan-ish BGR
-            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, head_blur / 500.0), blr_color)
+            draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, face_blur / 500.0), blr_color)
             cv2.putText(
-                image, f"BLR:{head_blur:.0f}", (px + bar_w + 3, py + 4),
+                image, f"BLR:{face_blur:.0f}", (px + bar_w + 3, py + 4),
                 FONT, 0.25, blr_color, 1,
             )
             py += 7
 
-        # BG separation bar (green) — ratio head_blur/scene_blur, scaled to 3.0
+        # BG separation bar (green) — ratio face_blur/scene_blur, scaled to 3.0
         if bg_sep > 0:
             sep_color = (0, 200, 100)  # green-ish BGR
             draw_horizontal_bar(image, px, py, bar_w, 4, min(1.0, bg_sep / 3.0), sep_color)
