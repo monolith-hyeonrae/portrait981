@@ -12,14 +12,11 @@ src/momentscan/
 ├── algorithm/
 │   ├── analyzers/
 │   │   ├── __init__.py        # Lazy import, Output 타입 re-export
-│   │   ├── face_classifier/   # vpx 플러그인 구조 (momentscan 전용)
-│   │   │   ├── analyzer.py    # FaceClassifierAnalyzer
-│   │   │   ├── output.py      # FaceClassifierOutput
-│   │   │   └── types.py       # ClassifiedFace
-│   │   ├── quality/           # vpx 플러그인 구조 (momentscan 전용)
-│   │   │   ├── analyzer.py    # QualityAnalyzer
-│   │   │   └── output.py      # QualityOutput
-│   │   ├── frame_scoring/     # FrameScoringAnalyzer, FrameScorer
+│   │   ├── face_classifier/   # FaceClassifierAnalyzer (역할 분류)
+│   │   ├── face_quality/      # FaceQualityAnalyzer (head crop blur/exposure + seg)
+│   │   ├── face_baseline/     # FaceBaselineAnalyzer (Welford online stats)
+│   │   ├── frame_gate/        # FrameGateAnalyzer (per-face quality gate)
+│   │   ├── quality/           # QualityAnalyzer (프레임 전체 blur/brightness)
 │   │   └── source.py          # SourceProcessor, BackendPreprocessor
 │   ├── batch/                 # Phase 1: 배치 하이라이트 분석
 │   │   ├── types.py           # FrameRecord, HighlightConfig, HighlightWindow, HighlightResult
@@ -62,15 +59,19 @@ print(f"Found {len(result.highlights)} highlights")
 Video Source
      │ Frame (per-frame)
      ▼
-Analyzers (face.detect, face.expression, body.pose, hand.gesture, frame.quality)
+Analyzers (DAG):
+  face.detect → face.classify → face.baseline (stateful)
+       │ → face.expression, face.quality, face.parse, portrait.score, face.au, head.pose
+       └→ face.gate (depends: detect+classify, optional: quality+frame.quality+head.pose)
+  body.pose, hand.gesture, frame.quality (independent)
      │ Observations → on_frame() → FrameRecord 축적
      ▼
 BatchHighlightEngine (after_run, per-video batch)
      │ 1. Numeric feature delta (EMA baseline)
      │ 2. Per-video 정규화 (MAD z-score)
-     │ 3. Quality gate (hard filter)
-     │ 4. Scoring: quality_score × impact_score
-     │ 5. Temporal smoothing (EMA)
+     │ 3. face.gate 판정 읽기 (gate_passed)
+     │ 4. Scoring: 0.35×Quality + 0.65×Impact (가산)
+     │ 5. Temporal smoothing (EMA, gate-pass only)
      │ 6. Peak detection (scipy.signal.find_peaks)
      │ 7. Window 생성 + best frame 선택
      ▼
@@ -110,10 +111,16 @@ class ExpressionAnalyzer(Module):
 | FaceDetectionAnalyzer | `face.detect` | - | vpx-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
 | ExpressionAnalyzer | `face.expression` | face.detect | vpx-face-expression | HSEmotion | expression → aggregation |
 | FaceClassifierAnalyzer | `face.classify` | face.detect | momentscan (core) | 내장 로직 | track_update → classify → role_assignment |
+| FaceParseAnalyzer | `face.parse` | face.detect | vpx-face-parse | BiSeNet | 19-class face segmentation |
+| FaceQualityAnalyzer | `face.quality` | face.detect | momentscan (core) | OpenCV + BiSeNet mask | head crop blur/exposure + seg ratios (face/eye/mouth/hair) |
+| FrameGateAnalyzer | `face.gate` | face.detect, face.classify | momentscan (core) | 내장 로직 | per-face quality gate (confidence, blur, exposure, parsing) |
+| FaceBaselineAnalyzer | `face.baseline` | face.detect, face.classify | momentscan (core) | 내장 로직 | Welford online stats (STATEFUL) |
+| FaceAUAnalyzer | `face.au` | face.detect | vpx-face-au | ONNX | Action Unit 분석 (AU6/12/25/26) |
+| HeadPoseAnalyzer | `head.pose` | face.detect | vpx-head-pose | 6DRepNet | 6DoF head pose (yaw/pitch/roll) |
+| PortraitScoreAnalyzer | `portrait.score` | face.detect | vpx-portrait-score | CLIP | 4축 aesthetic scoring + composites |
 | PoseAnalyzer | `body.pose` | - | vpx-body-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
 | GestureAnalyzer | `hand.gesture` | - | vpx-hand-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
-| QualityAnalyzer | `frame.quality` | - | momentscan (core) | OpenCV | grayscale → blur/brightness/contrast → quality_gate |
-| FrameScoringAnalyzer | `frame.scoring` | - | momentscan (core) | 내장 로직 | scoring |
+| QualityAnalyzer | `frame.quality` | - | momentscan (core) | OpenCV | grayscale → blur/brightness/contrast |
 
 ## FaceClassifierAnalyzer
 
@@ -126,7 +133,11 @@ class ExpressionAnalyzer(Module):
 | `transient` | 위치 변화 큼 / 짧은 등장 | 0~N명 |
 | `noise` | 작은 얼굴 / 낮은 confidence | 0~N명 |
 
-점수 가중치: 위치 안정성 40%, 얼굴 크기 30%, 프레임 중앙 20%, 프레임 내부 10%.
+점수 가중치: camera_proximity 40%, 얼굴 크기 20%, track_length 0.5×, 위치 안정성 20%.
+
+**Single non-noise → main 승격**: non-noise 얼굴이 정확히 1명이고 transient일 때 → main으로 강제 승격.
+1인 탑승 시나리오에서 유일한 얼굴이 transient로 남는 것을 방지.
+Lock-in: main이 10프레임 이상 연속 등장 시 고정 (LOCK_THRESHOLD=10).
 
 ## 시각화 컬러 코딩
 

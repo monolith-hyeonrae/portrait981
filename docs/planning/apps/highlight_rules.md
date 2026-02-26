@@ -42,9 +42,9 @@ output/{video_id}/highlight/
     "peak_ms": 35150,
     "score": 0.83,
     "reason": {
-      "mouth_open_ratio": 0.9,
-      "head_velocity": 0.6,
-      "wrist_raise": 0.7
+      "smile_intensity": 0.9,
+      "portrait_best": 0.7,
+      "head_yaw": 0.4
     },
     "selected_frames": [
       {
@@ -66,7 +66,11 @@ highlight.py와 info.py가 같은 레지스트리를 읽어 일관성을 보장�
 Video
   │ decode (visualbase)
   ▼
-Face detect + Expression + Body pose (vpx plugins)
+Analyzers (DAG):
+  face.detect → face.classify → face.baseline (Welford online stats)
+       │ → face.expression, face.quality, face.parse, portrait.score, face.au, head.pose
+       └→ face.gate (depends: detect+classify, optional: quality+frame.quality+head.pose)
+  body.pose, hand.gesture, frame.quality (independent)
   │
   ▼
 Numeric Feature Extraction (extract.py → FrameRecord)
@@ -78,11 +82,10 @@ Temporal Delta (EMA baseline) + Derived Fields
 Per-video Signal Normalization (MAD z-score)
   │
   ▼
-QualityGate (hard filter)
-  │ face_detected, face_confidence, blur_score, brightness
-  │ 미측정(=0) → 통과 (blur, brightness)
+face.gate (DAG에서 per-frame 판정 완료 → gate_passed 읽기)
+  │ confidence, blur, exposure, contrast, parsing_coverage
   ▼
-Scoring: quality_score × impact_score
+Scoring: 0.35×Quality + 0.65×Impact (가산)
   │ gate 통과 프레임만 최종 점수 산출
   ▼
 Temporal Smoothing (EMA) + Peak Detection
@@ -102,24 +105,30 @@ Export (windows.json + timeseries.csv + score_curve.png + report.html + frames/)
 | record_field | 소스 | scoring_role | rationale |
 |---|---|---|---|
 | `face_detected` | face.detect | gate | 얼굴이 없는 프레임은 인물 사진으로 사용 불가 |
-| `face_confidence` | face.detect | gate | 오검출된 얼굴로 선별하면 의미 없는 사진이 뽑힘. 0.7 이상만 신뢰 |
-| `face_area_ratio` | face.detect | quality | 얼굴이 너무 작으면 인쇄/SNS 사진으로 부적합. 화면의 1% 이상 |
+| `face_confidence` | face.detect | gate | 오검출된 얼굴로 선별하면 의미 없는 사진이 뽑힘. ≥0.7만 신뢰 |
+| `face_area_ratio` | face.detect | gate+quality | 얼굴이 너무 작으면 인쇄/SNS 사진으로 부적합. ≥2% |
 | `face_center_distance` | face.detect | info | 프레임 중심 거리 참고용. 현재 scoring 미사용 |
-| `head_yaw` | face.detect | quality | 정면에 가까운 사진이 고객 만족도 높음. 45도 이상 옆모습은 감점 |
-| `head_pitch` | face.detect | info | 상하 회전 참고. head_velocity 파생 필드의 소스 |
-| `head_roll` | face.detect | info | 머리 기울기 참고. 현재 scoring 미사용 |
-| `mouth_open_ratio` | face.expression | impact | 환호/놀람 등 감정 표현이 큰 순간이 라이드 하이라이트 |
-| `eye_open_ratio` | face.expression | gate | 눈 감은 사진은 인물 사진으로 부적합. 0.15 미만이면 탈락 |
-| `smile_intensity` | face.expression | impact | 미소 피크는 감정적으로 좋은 순간. 평소 무표정/부정 표정 대비 미소 급등이 특히 의미 있음 |
-| `wrist_raise` | body.pose | impact | 손을 올리는 동작은 라이드 즐기는 대표적 제스처 |
-| `torso_rotation` | body.pose | impact | 상체 움직임이 큰 순간 = 활발한 반응 구간 |
-| `hand_near_face` | body.pose | info | 손으로 얼굴 가리는 순간 감지용. 향후 gate 추가 후보 |
-| `elbow_angle_change` | body.pose | info | 팔 동작 크기. wrist_raise와 중복도 높아 현재 미사용 |
-| `blur_score` | frame.quality | quality | 모션블러가 심한 프레임은 사진 품질 열화. Laplacian 50 미만 탈락 |
-| `brightness` | frame.quality | gate | 너무 밝거나 너무 어두우면 후보정으로도 복구 어려움. 40-220 범위만 통과 |
-| `contrast` | frame.quality | info | 대비 정보. 현재 brightness와 blur로 충분하여 미사용 |
+| `head_yaw` | face.detect / head.pose | impact | delta → MAD z-score → relu. 급격한 회전이 하이라이트 |
+| `head_pitch` | face.detect / head.pose | info | 상하 회전 참고 |
+| `head_roll` | face.detect / head.pose | info | 머리 기울기 참고. 현재 scoring 미사용 |
+| `head_blur` | face.quality | gate+quality | 얼굴 크롭 Laplacian 분산. gate: ≥5.0 (main), ≥20.0 (passenger) |
+| `head_exposure` | face.quality | info | 얼굴 크롭 평균 밝기 [40-220] |
+| `head_contrast` | face.quality | gate | CV=std/mean. ≥0.05 (flat/washed-out 배제) |
+| `clipped_ratio` | face.quality | gate | 과노출 픽셀(>250) 비율. ≤30% |
+| `crushed_ratio` | face.quality | gate | 저노출 픽셀(<5) 비율. ≤30% |
+| `parsing_coverage` | face.quality | gate | BiSeNet 마스크 커버리지. ≥15% |
+| `seg_face/eye/mouth/hair` | face.quality | info | 시맨틱 세그멘테이션 비율 |
+| `smile_intensity` | face.expression | impact | 미소 피크. per-video min-max 절대값. 이 영상에서 가장 웃는 순간 포착 |
+| `portrait_best` | portrait.score | impact | CLIP 4축(disney_smile, charisma, wild_roar, playful_cute) 중 프레임별 max |
+| `head_aesthetic` | portrait.score | info | CLIP aggregate score. 미학적 구분 근거 부족으로 scoring 제외 |
+| `clip_disney_smile/charisma/wild_roar/playful_cute` | portrait.score | info | CLIP 4축 개별 점수. portrait_best의 소스 |
+| `AU6/AU12/AU25/AU26` | face.au | info | Action Units: cheek_raiser, lip_corner, lips_part, jaw_drop |
+| `duchenne_smile/wild_intensity/chill_score` | composites | info | 크로스-analyzer 복합 지표. timeline 표시용 |
+| `blur_score` | frame.quality | gate | 프레임 전체 Laplacian. face.quality 없을 때 fallback (≥50) |
+| `brightness` | frame.quality | gate | 프레임 전체 평균 밝기. face.quality 없을 때 fallback [40-220] |
+| `contrast` | frame.quality | info | 프레임 전체 대비 정보 참고용 |
 | `main_face_confidence` | face.classify | info | 주탑승자 분류 신뢰도 참고용 |
-| `frame_score` | frame.scoring | info | 종합 프레임 점수 참고용 |
+| `gate_passed` | face.gate | gate | per-frame main face gate 판정 결과 |
 
 ### D. Temporal Delta (핵심)
 
@@ -128,15 +137,14 @@ delta 대상 필드 (`PIPELINE_DELTA_SPECS`):
 delta(t) = |feature(t) - EMA(feature, alpha=0.1)|
 ```
 
-대상: `mouth_open_ratio`, `smile_intensity`, `head_yaw`, `head_pitch`, `wrist_raise`, `torso_rotation`, `face_area_ratio`, `brightness`
+대상: `smile_intensity`, `head_yaw`, `face_area_ratio`, `brightness`, `duchenne_smile`, `wild_intensity`
 
-**절대값이 아닌 변화량**이 score의 주 입력.
+**절대값이 아닌 변화량**이 score의 주 입력 (단, smile_intensity는 예외 — per-video min-max 절대값 사용).
 
 ### E. 파생 필드 (PIPELINE_DERIVED_FIELDS)
 
 | 필드명 | 소스 | 계산 |
 |---|---|---|
-| `head_velocity` | head_yaw, head_pitch | `sqrt(delta_yaw^2 + delta_pitch^2) / dt` (deg/sec) |
 | `frontalness` | head_yaw | `1 - |yaw| / max_yaw`, clamped [0, 1] |
 
 ## 5. 정규화 (Per-video, 필수)
@@ -156,71 +164,93 @@ z = (feature - median(feature)) / MAD(feature)
 z = (feature - p50) / (p95 - p50)
 ```
 
-## 6. Scoring: Gate × Impact (곱 구조)
+## 6. Face Gate (hard filter) — `face.gate` analyzer
 
-weighted sum만 쓰면 "감정이 좋은데 흐린 프레임"이 뽑히고,
-quality만 좋으면 "사진은 괜찮은데 임팩트 없는 장면"이 뽑힌다.
-이를 방지하기 위해 **gate와 impact를 곱 구조**로 결합한다.
+DAG에서 per-frame 판정하는 전용 analyzer. gate 미통과 프레임의 최종 점수는 0.
+`depends: [face.detect, face.classify]`, `optional_depends: [face.quality, frame.quality, head.pose]`.
 
-### Step 1: QualityGate (hard filter)
-
-gate를 통과하지 못하면 해당 프레임의 최종 점수는 0.
-미측정 값(=0)은 통과 처리 (blur_score, brightness, eye_open_ratio).
+gate 판정은 main face 기준. noise/transient 역할은 자동 거부.
 
 ```python
-quality_gate(t) = (
-    face_detected(t)
-    and face_confidence(t) >= 0.7
-    and face_area_ratio(t) >= 0.01
-    and (blur_score(t) == 0 or blur_score(t) >= 50)        # 미측정 → 통과
-    and (brightness(t) == 0 or 40 <= brightness(t) <= 220)  # 미측정 → 통과
-    and (eye_open_ratio(t) == 0 or eye_open_ratio(t) >= 0.15)  # 미측정 → 통과
-)
+# FaceGateConfig 기본 임계값
+face_confidence_min = 0.7
+head_blur_min = 5.0           # face crop Laplacian (main)
+passenger_blur_min = 20.0     # face crop Laplacian (passenger, 완화)
+frame_blur_min = 50.0         # 프레임 전체 Laplacian (face.quality 없을 때 fallback)
+exposure_min, exposure_max = 40.0, 220.0
+contrast_min = 0.05           # CV = std/mean (flat/washed-out 배제)
+clipped_max = 0.30            # 과노출 픽셀(>250) 30% 초과 시 거부
+crushed_max = 0.30            # 저노출 픽셀(<5) 30% 초과 시 거부
+parsing_coverage_min = 0.15   # BiSeNet 마스크 커버리지 15% 미만 시 거부
 ```
 
-### Step 2: Quality Score (연속 품질)
+**Fail reasons** (세분화된 거부 사유):
+
+| fail reason | 조건 |
+|---|---|
+| `face_detected` | 얼굴 미검출 |
+| `face_confidence` | confidence < 0.7 |
+| `blur.face` | face crop blur < 5.0 (main) / < 20.0 (passenger) |
+| `blur.frame` | 프레임 blur < 50 (face.quality 없을 때 fallback) |
+| `parsing.coverage` | BiSeNet 커버리지 < 15% |
+| `exposure.contrast` | CV < 0.05 |
+| `exposure.white` | clipped ratio > 30% |
+| `exposure.black` | crushed ratio > 30% |
+| `exposure.brightness` | 밝기 [40, 220] 범위 밖 |
+| `role_rejected` | noise/transient 역할 |
+| `no_main_face` | main face 미분류 |
+
+**Exposure 판정 우선순위**: face.quality local contrast → absolute brightness → frame.quality brightness (fallback).
+
+## 7. Quality Score (연속 품질)
 
 gate 통과 프레임에 대해 연속적 품질 점수를 계산.
-최종 점수에 곱으로 반영되어, 같은 impact라도 quality가 높은 프레임이 우선된다.
 
 ```python
 quality_score(t) = (
-    0.4 * blur_norm(t) +             # 선명도 (per-video min-max 정규화)
-    0.3 * face_size_norm(t) +         # 얼굴 크기 (per-video min-max 정규화)
-    0.3 * frontalness(t)              # 정면 근접도 (1 - |yaw|/45)
+    0.30 * head_blur_norm(t) +        # 얼굴 크롭 선명도 (per-video min-max)
+    0.20 * face_size_norm(t) +         # 얼굴 크기 (per-video min-max)
+    0.30 * face_identity(t)            # ArcFace anchor similarity
+    # face_identity 없으면 → 0.25 * frontalness(t) (1 - |yaw|/max_yaw)
 )
 ```
 
-### Step 3: Impact Score (감정/동작 변화)
+face_identity (ArcFace) 사용 시 가중치 합 = 0.80, frontalness fallback 시 = 0.75.
+정규화: `quality / sum(weights)` → [0, 1].
 
-MAD z-score 정규화된 delta에 **ReLU** 적용 후 가중합. 평균 이상 변화만 기여한다.
+## 8. Impact Score (Top-K 가중 평균)
 
-```python
-relu = lambda x: max(x, 0)
-
-impact(t) = (
-    0.35 * relu(normed_smile_intensity(t)) +
-    0.15 * relu(normed_head_yaw_delta(t)) +
-    0.12 * relu(normed_mouth_open_ratio(t)) +
-    0.10 * relu(normed_head_velocity(t)) +
-    0.08 * relu(normed_wrist_raise(t)) +
-    0.08 * relu(normed_torso_rotation(t)) +
-    0.06 * relu(normed_face_area_ratio(t)) +
-    0.06 * relu(normed_brightness(t))
-)
-```
-
-가중치는 초기값이며 데이터 기반 튜닝 대상. 합계 = 1.00.
-
-### Step 4: 최종 점수
+3채널 중 상위 K개(기본 K=3) 시그널의 가중 평균.
 
 ```python
-final_score(t) = quality_score(t) * impact(t) if quality_gate(t) else 0
+channels = {
+    "smile_intensity": (0.25, per_video_minmax(smile_intensity)),  # 절대값!
+    "head_yaw":        (0.15, relu(mad_zscore(delta_head_yaw))),
+    "portrait_best":   (0.25, max(clip_disney, clip_charisma, clip_wild, clip_playful)),
+}
+
+# Top-K: weight 기준 상위 K개 채널 선택
+top_k = sorted(channels, key=weight, reverse=True)[:3]
+max_achievable = sum(w for w in top_k_weights)
+
+impact(t) = sum(w_i * v_i for top-K) / max_achievable  # [0, 1]
 ```
 
-**blur는 impact에 미포함** — quality_score와 gate에서만 사용.
+**smile_intensity는 예외**: delta가 아닌 per-video min-max 절대값 사용.
+절대값이 높은 프레임이 좋은 사진이므로 '이 영상에서 가장 웃는 순간' 포착.
 
-## 7. Temporal 처리
+**삭제된 채널**: mouth_open, head_velocity, wrist_raise, torso_rotation, face_area_ratio, brightness.
+
+## 9. 최종 점수 (가산 구조)
+
+```python
+final_score(t) = 0.35 * quality_score(t) + 0.65 * impact(t) if gate_passed(t) else 0
+```
+
+**곱이 아닌 덧셈**. Quality가 0이어도 Impact가 높으면 점수가 나온다.
+Gate-pass only EMA: gate_fail 프레임은 이전 smoothed 값 유지.
+
+## 10. Temporal 처리
 
 ### Smoothing
 
@@ -253,7 +283,7 @@ for peak in peaks:
     window = (peak_time - 1.0s, peak_time + 1.0s)
 ```
 
-## 8. Best Frame Selection
+## 11. Best Frame Selection
 
 구간 내 프레임 중 `final_scores` 상위 N개 (기본 3장) 선택.
 `final_scores > 0`인 프레임만 대상.
@@ -264,30 +294,31 @@ window_indices = np.argsort(window_scores)[::-1][:best_frame_count]
 # final_scores <= 0인 프레임 제외
 ```
 
-## 9. Explainability Log (필수)
+## 12. Explainability Log (필수)
 
 `timeseries.csv`:
 
 ```csv
-frame_idx,timestamp_ms,gate_pass,quality_score,impact_score,final_score,smoothed_score,is_peak,face_detected,face_confidence,face_area_ratio,head_yaw,head_pitch,mouth_open_ratio,eye_open_ratio,smile_intensity,wrist_raise,torso_rotation,blur_score,brightness
-0,0.0,1,0.6543,0.1523,0.0997,0.0997,0,1,0.920,0.0400,3.2,-1.1,0.120,0.850,0.300,0.000,0.020,180.5,128.3
+frame_idx,timestamp_ms,gate_pass,quality_score,impact_score,final_score,smoothed_score,is_peak,face_detected,face_confidence,face_area_ratio,head_yaw,head_pitch,smile_intensity,head_blur,head_exposure,parsing_coverage,portrait_best,blur_score,brightness
+0,0.0,1,0.6543,0.1523,0.152,0.152,0,1,0.920,0.0400,3.2,-1.1,0.300,45.2,128.3,0.82,0.31,180.5,128.3
 ...
 ```
 
 모든 실행에서 생성. highlight_vector와의 비교 분석에 사용.
 
-## 10. 테마파크 라이드 특화 주의사항
+## 13. 테마파크 라이드 특화 주의사항
 
 온라이드 촬영 환경에서 흔히 발생하는 문제와 대응:
 
 | 문제 | 원인 | 대응 |
 |------|------|------|
-| 표정 검출 불안정 | 조명 변화, 그림자, 모션블러 | intensity 절대값 대신 **상대 변화(delta)**만 사용. 이미 §4.D로 반영 |
-| 헤드포즈 노이즈 | ride 중 지속적 흔들림 | raw yaw/pitch를 impact에 직접 쓰지 않음. **head_velocity(변화율)**와 **정면 근접도(gate/quality)**로만 활용 |
+| 표정 검출 불안정 | 조명 변화, 그림자, 모션블러 | smile_intensity만 per-video min-max 절대값. head_yaw는 delta 사용 |
+| 헤드포즈 노이즈 | ride 중 지속적 흔들림 | head_yaw delta → MAD z-score → relu. 급격한 변화만 impact에 기여 |
 | 손 올림 = 얼굴 가림 | wrist_raise와 occlusion 동시 발생 | `hand_near_face`는 info로 기록. 향후 gate 추가 후보 |
-| blur가 가장 치명적 | 카메라/탑승객 모두 움직임 | blur 나쁘면 impact 무관하게 무조건 제외 (hard gate). quality_score에도 blur 반영 |
+| blur가 가장 치명적 | 카메라/탑승객 모두 움직임 | face.gate에서 head_blur ≥5.0 hard gate. quality_score에도 head_blur(0.30) 반영 |
+| 조명 불균일 | 터널/실외 전환 | face.quality의 local contrast(CV), clipped/crushed ratio로 gate 판정 |
 
-## 11. Phase 2 (highlight_vector)와의 연결
+## 14. Phase 2 (highlight_vector)와의 연결
 
 Phase 1과 Phase 2는 **즉시 통합하지 않고 병렬 비교** 후 단계적으로 연결한다.
 
@@ -307,15 +338,17 @@ Phase 1과 Phase 2는 **즉시 통합하지 않고 병렬 비교** 후 단계적
 
 **지금은 단계 1에만 집중. 단계 2 이후는 Phase 2 구현 + 비교 데이터 확보 후 결정.**
 
-## 12. momentscan과의 관계
+## 15. momentscan과의 관계
 
 ### 재사용 가능한 부품
 
 | momentscan 부품 | highlight_rules 활용 |
 |----------------|---------------------|
-| `algorithm/analyzers/highlight/` | Gate 로직 참고 (hysteresis, consecutive counting) |
+| `algorithm/analyzers/frame_gate/` | face.gate analyzer (per-frame gate 판정) |
+| `algorithm/analyzers/face_quality/` | face crop blur/exposure + BiSeNet seg ratios |
+| `algorithm/analyzers/face_baseline/` | Welford online stats (face.baseline) |
+| `algorithm/batch/` | BatchHighlightEngine (scoring + peak detection) |
 | `algorithm/monitoring/` | PipelineMonitor 패턴 재사용 가능 |
-| `algorithm/analyzers/quality/` | blur/exposure 계산 |
 
 ### 차이점
 
@@ -323,17 +356,22 @@ Phase 1과 Phase 2는 **즉시 통합하지 않고 병렬 비교** 후 단계적
 - highlight_rules: **배치 후처리** (비디오 전체를 한 번에 처리)
 - momentscan의 trigger 로직(expression_spike, head_turn 등)을 per-video 정규화 + peak detection으로 대체
 
-## 13. vpx 의존성
+## 16. vpx 의존성
 
 | 패키지 | 용도 |
 |--------|------|
-| vpx-face-detect | 얼굴 검출, 추적, head pose |
-| vpx-face-expression | 표정 proxy (mouth_open, eye_open, smile_intensity) |
-| vpx-body-pose | 상반신 포즈 (wrist, elbow, torso) |
-| vpx-sdk | QualityGate, Observation 타입 |
+| vpx-face-detect | 얼굴 검출, 추적 |
+| vpx-face-expression | 표정 (smile_intensity 등) |
+| vpx-face-parse | BiSeNet 19-class segmentation |
+| vpx-portrait-score | CLIP 4축 aesthetic scoring |
+| vpx-face-au | Action Unit 분석 |
+| vpx-head-pose | 6DoF head pose |
+| vpx-body-pose | 상반신 포즈 |
+| vpx-hand-gesture | 제스처 감지 |
+| vpx-sdk | Module, Observation 타입, crop 유틸리티 |
 | visualbase | 비디오 디코딩 |
 
-## 14. 구현 계획
+## 17. 구현 계획
 
 ### Phase 1: Feature 추출 파이프라인
 

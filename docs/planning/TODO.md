@@ -36,7 +36,24 @@
 
 ---
 
+## ~~highlight_rules.md §6 가산 공식 업데이트~~ ✓ 완료
+
+- §6: face.gate analyzer 조건 (confidence, blur, exposure, contrast, parsing_coverage)
+- §7: Quality Score (0.30×head_blur + 0.20×face_size + 0.30×face_identity / 0.25×frontalness)
+- §8: Impact Score (3채널 top-K: smile_intensity, head_yaw, portrait_best)
+- §9: Final = 0.35×Quality + 0.65×Impact (가산)
+- §4 feature 테이블: face.quality, portrait.score, face.au, face.gate 필드 추가
+
+---
+
+## ~~face.quality seg 그룹 재구성~~ ✓ 완료
+
+- seg 그룹: face/eye/mouth/hair (이전: skin/nose/brow 등 개별 클래스)
+- `_align_parse_to_crop()` 좌표 스케일링 수정 (parse crop → head crop 변환)
+- 3-level mask fallback: BiSeNet → landmark ellipse → center patch
+
+---
+
 ## 메모
 
-- `highlight_rules.md §6` 가산 공식으로 업데이트 필요
 - planning docs(momentscan.md, identity_builder.md, highlight_vector.md)에 `shot.quality` 참조 잔존 — 히스토리 기록으로 유지
