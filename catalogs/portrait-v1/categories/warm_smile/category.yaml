@@ -1,0 +1,16 @@
+name: warm_smile
+description: >
+  따뜻한 미소. 입 다문 채 눈웃음 또는 자연스러운 미소.
+  Duchenne smile 계열의 진심 어린 웃음.
+threshold: 0.79
+clip_axis:
+  prompts:
+    - "a person with a warm gentle closed-mouth Duchenne smile with crinkled eyes"
+    - "a radiant angelic smile like a Disney princess or prince"
+    - "a sweet tender smile with soft sparkling eyes full of warmth"
+    - "a person smiling gently with pure innocent joy and kindness"
+  neg_prompts:
+    - "a person laughing hard with mouth wide open"
+    - "a person with a cool smirk and no warmth"
+    - "a person with a blank neutral unsmiling face"
+  action: select

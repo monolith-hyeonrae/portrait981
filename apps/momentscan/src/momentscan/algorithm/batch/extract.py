@@ -26,12 +26,29 @@ _anchor_embedding: Optional[np.ndarray] = None
 _anchor_confidence: float = 0.0
 _ANCHOR_DECAY: float = 0.998  # per-frame decay → half-life ~346 frames
 
+# Module-level state for signal-profile catalog scoring
+_catalog_profiles: list = []
+
+
+def set_catalog_profiles(profiles: list) -> None:
+    """Signal-profile catalog 프로파일 설정.
+
+    MomentscanApp.setup()에서 호출. 설정 후 extract_frame_record()가
+    compute_catalog_scores()를 호출하여 catalog_best/catalog_primary를 덮어쓴다.
+
+    Args:
+        profiles: CategoryProfile 리스트.
+    """
+    global _catalog_profiles
+    _catalog_profiles = list(profiles)
+
 
 def reset_extract_state() -> None:
     """비디오 간 상태 격리를 위한 모듈 레벨 상태 리셋."""
-    global _anchor_embedding, _anchor_confidence
+    global _anchor_embedding, _anchor_confidence, _catalog_profiles
     _anchor_embedding = None
     _anchor_confidence = 0.0
+    _catalog_profiles = []
 
 
 def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord]:
@@ -73,6 +90,11 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
     _extract_face_baseline(record, obs_by_source.get("face.baseline"))
 
     _compute_composites(record)
+
+    # Signal-profile catalog scoring
+    if _catalog_profiles:
+        from momentscan.algorithm.batch.catalog_scoring import compute_catalog_scores
+        compute_catalog_scores(record, _catalog_profiles)
 
     return record
 
@@ -138,6 +160,9 @@ def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
         record.eye_open_ratio = 1.0 - neutral
         record.em_neutral = neutral
         record.smile_intensity = float(face_signals.get("em_happy", 0.0))
+        record.em_happy = float(face_signals.get("em_happy", 0.0))
+        record.em_surprise = float(face_signals.get("em_surprise", 0.0))
+        record.em_angry = float(face_signals.get("em_angry", 0.0))
         return
 
     # Fallback: frame-level signals
@@ -162,8 +187,14 @@ def _extract_face_au(record: FrameRecord, obs: Any) -> None:
     au = au_list[0]  # main face
 
     # 개별 AU 강도 저장 (DISFA 0-5 스케일)
+    record.au1_inner_brow = float(au.get("AU1", 0.0))
+    record.au2_outer_brow = float(au.get("AU2", 0.0))
+    record.au4_brow_lowerer = float(au.get("AU4", 0.0))
+    record.au5_upper_lid = float(au.get("AU5", 0.0))
     record.au6_cheek_raiser = float(au.get("AU6", 0.0))
+    record.au9_nose_wrinkler = float(au.get("AU9", 0.0))
     record.au12_lip_corner = float(au.get("AU12", 0.0))
+    record.au15_lip_depressor = float(au.get("AU15", 0.0))
     record.au25_lips_part = float(au.get("AU25", 0.0))
     record.au26_jaw_drop = float(au.get("AU26", 0.0))
 
@@ -294,14 +325,12 @@ def _extract_portrait_score(record: FrameRecord, obs: Any) -> None:
 
     record.head_aesthetic = float(getattr(data, "head_aesthetic", 0.0))
 
-    # CLIP axis scores (metadata._clip_axes)
+    # CLIP axis scores → dynamic dict (metadata._clip_axes)
     metadata = getattr(obs, "metadata", None) or {}
     clip_axes = metadata.get("_clip_axes")
     if clip_axes:
         for ax in clip_axes:
-            field_name = f"clip_{ax.name}"
-            if hasattr(record, field_name):
-                setattr(record, field_name, float(ax.score))
+            record.clip_axes[ax.name] = float(ax.score)
 
 
 def _compute_composites(record: FrameRecord) -> None:
@@ -309,21 +338,20 @@ def _compute_composites(record: FrameRecord) -> None:
 
     extract_frame_record() 마지막에 호출.
     모든 개별 필드가 채워진 후 조합.
+    clip_axes dict에서 동적으로 축 점수를 참조.
     """
-    # Duchenne smile: disney_smile 분위기 × AU 근육 증거
-    # AU6(눈주름) + AU12(입꼬리) → 0~5 스케일 → /5.0으로 정규화 → clamp [0,1]
+    axes = record.clip_axes
+
+    # Duchenne smile: warm_smile 분위기 × AU 근육 증거
     au_duchenne = min(1.0, (record.au6_cheek_raiser + record.au12_lip_corner) / 5.0)
-    record.duchenne_smile = record.clip_disney_smile * au_duchenne
+    record.composites["duchenne_smile"] = axes.get("warm_smile", 0.0) * au_duchenne
 
     # Wild intensity: 함성 분위기 × 실제 입벌림
     au_mouth_open = min(1.0, max(record.au25_lips_part, record.au26_jaw_drop) / 3.0)
-    record.wild_intensity = record.clip_wild_roar * au_mouth_open
+    record.composites["wild_intensity"] = axes.get("wild_energy", 0.0) * au_mouth_open
 
     # Chill: 무표정 + 모든 CLIP 축 비활성
-    axes_max = max(
-        record.clip_disney_smile, record.clip_charisma,
-        record.clip_wild_roar, record.clip_playful_cute,
-    )
+    axes_max = max(axes.values()) if axes else 0.0
     neutral_high = max(0.0, record.em_neutral - 0.5) * 2.0  # 0.5+ → [0,1]
     axes_low = max(0.0, 1.0 - axes_max * 2.0)  # 0.5 이하일 때만 양수
-    record.chill_score = neutral_high * axes_low if record.face_detected else 0.0
+    record.composites["chill_score"] = neutral_high * axes_low if record.face_detected else 0.0

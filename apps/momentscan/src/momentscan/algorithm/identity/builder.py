@@ -99,7 +99,9 @@ class IdentityBuilder:
             if stable < cfg.tau_id:
                 continue
 
-            # Pivot assignment (AU-based or fallback)
+            # Bucket classification:
+            # 1. Pivot assignment (AU-based or fallback)
+            # 2. Fixed grid fallback
             if r.au_intensities:
                 assignment = assign_pivot(r.head_yaw, r.head_pitch, r.au_intensities)
             else:

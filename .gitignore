@@ -38,6 +38,7 @@ Thumbs.db
 # Logs & outputs
 *.log
 clips/
+output/
 
 # references
 temp/

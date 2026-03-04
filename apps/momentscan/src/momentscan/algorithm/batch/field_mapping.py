@@ -100,15 +100,17 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
     # face.classify (1)
     FieldMapping("face.classify", "main_face_confidence", "주탑승자 분류 신뢰도", "info",
                  rationale="주탑승자 분류 신뢰도 참고용"),
-    # CLIP axes (4) — portrait.score에서 추출, portrait_best 서브시그널
-    FieldMapping("portrait.score", "clip_disney_smile", "디즈니 미소 축 점수", "info",
-                 rationale="따뜻한 Duchenne 미소 분위기. duchenne_smile 복합 시그널 구성 → portrait_best에 기여"),
-    FieldMapping("portrait.score", "clip_charisma", "카리스마 축 점수", "info",
-                 rationale="시크/당당한 분위기. portrait_best에 직접 기여"),
-    FieldMapping("portrait.score", "clip_wild_roar", "포효 축 점수", "info",
-                 rationale="호탕한 함성/환호 분위기. wild_intensity 복합 시그널 구성 → portrait_best에 기여"),
-    FieldMapping("portrait.score", "clip_playful_cute", "장난기 축 점수", "info",
-                 rationale="혀내밀기/볼부풀리기 등. portrait_best 후보 (CLIP 4축 중 max 선택)"),
+    # Catalog (2) — signal-profile catalog scoring
+    FieldMapping("catalog_scoring", "catalog_best", "카탈로그 최상위 카테고리 점수", "impact",
+                 rationale="signal-profile cosine 유사도. catalog 모드일 때 portrait_best를 대체. per-video min-max 정규화 후 Impact에 기여"),
+    FieldMapping("catalog_scoring", "catalog_primary", "카탈로그 최상위 카테고리 이름", "info",
+                 rationale="catalog_best에 해당하는 카테고리 이름 (디버깅/리포트용)"),
+    FieldMapping("catalog_scoring", "catalog_scores", "카테고리별 유사도 dict", "impact",
+                 rationale="카테고리별 Fisher-weighted 유사도. catalog 모드일 때 Impact 채널을 구성"),
+    # CLIP axes — 동적 (clip_axes Dict). portrait_best 서브시그널.
+    # 개별 축 매핑은 카탈로그 category.yaml에서 정의되며 런타임에 등록.
+    FieldMapping("portrait.score", "clip_axes", "CLIP axis 점수 (동적 Dict)", "info",
+                 rationale="카탈로그 카테고리별 CLIP text-axis 점수. portrait_best에 max 기여"),
     # face.au — 개별 AU (4)
     FieldMapping("face.au", "au6_cheek_raiser", "AU6 볼 올림 (Duchenne)", "info",
                  rationale="Duchenne smile 복합 시그널 구성 요소"),
@@ -121,13 +123,9 @@ PIPELINE_FIELD_MAPPINGS: tuple[FieldMapping, ...] = (
     # face.expression — neutral
     FieldMapping("face.expression", "em_neutral", "무표정 확률 (HSEmotion)", "info",
                  rationale="chill 복합 시그널 구성 요소. eye_open_ratio 산출 근거"),
-    # Cross-analyzer composites (3) — portrait_best 서브시그널 (프레임별 최상위 1개만 Impact 반영)
-    FieldMapping("portrait.score", "duchenne_smile", "Duchenne 미소 (CLIP×AU)", "info",
-                 rationale="disney_smile × (AU6+AU12). portrait_best 후보 (프레임별 max 선택)"),
-    FieldMapping("portrait.score", "wild_intensity", "포효 강도 (CLIP×AU)", "info",
-                 rationale="wild_roar × max(AU25,AU26). portrait_best 후보 (프레임별 max 선택)"),
-    FieldMapping("portrait.score", "chill_score", "무표정 탑승 (neutral×low_axes)", "info",
-                 rationale="neutral 높음 + CLIP 축 낮음. portrait_best 후보 (프레임별 max 선택)"),
+    # Cross-analyzer composites — 동적 (composites Dict)
+    FieldMapping("portrait.score", "composites", "복합 시그널 (동적 Dict)", "info",
+                 rationale="CLIP axis × AU 조합 시그널 (duchenne_smile, wild_intensity, chill_score 등)"),
     # face.gate (2) — per-face gate analyzer 결과 (main face 기준)
     FieldMapping("face.gate", "gate_passed", "프레임 gate 통과 여부 (main face)", "gate",
                  rationale="face.gate analyzer가 DAG에서 per-face 판정한 main face gate 결과"),
@@ -155,8 +153,8 @@ PIPELINE_DELTA_SPECS: tuple[DeltaSpec, ...] = (
     DeltaSpec("head_yaw"),
     DeltaSpec("face_area_ratio"),
     DeltaSpec("brightness"),
-    DeltaSpec("duchenne_smile"),
-    DeltaSpec("wild_intensity"),
+    DeltaSpec("composite_duchenne_smile"),
+    DeltaSpec("composite_wild_intensity"),
 )
 
 PIPELINE_DERIVED_FIELDS: tuple[DerivedField, ...] = (

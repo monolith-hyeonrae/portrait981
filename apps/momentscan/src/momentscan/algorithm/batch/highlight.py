@@ -133,9 +133,13 @@ class BatchHighlightEngine:
 
         delta 대상 필드 + derived 필드의 소스 + scoring에 필요한 추가 필드를
         PIPELINE_DELTA_SPECS / PIPELINE_DERIVED_FIELDS에서 자동 수집한다.
+        CLIP axes와 composites는 dict에서 동적으로 추출.
         """
-        # delta 대상 필드
-        fields: set[str] = {spec.record_field for spec in PIPELINE_DELTA_SPECS}
+        # delta 대상 필드 (composite_* and clip_axis_* are built dynamically below)
+        fields: set[str] = set()
+        for spec in PIPELINE_DELTA_SPECS:
+            if not spec.record_field.startswith(("composite_", "clip_axis_")):
+                fields.add(spec.record_field)
         # derived 필드의 소스
         for derived in PIPELINE_DERIVED_FIELDS:
             fields.update(derived.source_fields)
@@ -143,16 +147,43 @@ class BatchHighlightEngine:
         fields.update((
             "blur_score", "eye_open_ratio", "face_confidence", "face_identity",
             "face_blur",
-            # CLIP 4축 (portrait_best = max of 4)
-            "clip_disney_smile", "clip_charisma", "clip_wild_roar", "clip_playful_cute",
-            # composites (info only)
-            "duchenne_smile", "wild_intensity", "chill_score",
+            # catalog (portrait_best fallback)
+            "catalog_best",
         ))
 
-        return {
-            field: np.array([getattr(r, field) for r in records])
-            for field in sorted(fields)
+        arrays = {
+            f: np.array([getattr(r, f) for r in records])
+            for f in sorted(fields)
         }
+
+        # Dynamic CLIP axes → "clip_axis_{name}" keys
+        all_clip_names: set[str] = set()
+        for r in records:
+            all_clip_names.update(r.clip_axes.keys())
+        for name in sorted(all_clip_names):
+            arrays[f"clip_axis_{name}"] = np.array(
+                [r.clip_axes.get(name, 0.0) for r in records]
+            )
+
+        # Dynamic composites → "composite_{name}" keys
+        all_composite_names: set[str] = set()
+        for r in records:
+            all_composite_names.update(r.composites.keys())
+        for name in sorted(all_composite_names):
+            arrays[f"composite_{name}"] = np.array(
+                [r.composites.get(name, 0.0) for r in records]
+            )
+
+        # catalog_scores → per-category arrays "catalog_cat_{name}"
+        all_cat_names: set[str] = set()
+        for r in records:
+            all_cat_names.update(r.catalog_scores.keys())
+        for name in sorted(all_cat_names):
+            arrays[f"catalog_cat_{name}"] = np.array(
+                [r.catalog_scores.get(name, 0.0) for r in records]
+            )
+
+        return arrays
 
     # ── Step 2: Temporal delta ──
 
@@ -165,7 +196,9 @@ class BatchHighlightEngine:
         cfg = self.config
         deltas = {}
         for spec in PIPELINE_DELTA_SPECS:
-            arr = arrays[spec.record_field]
+            arr = arrays.get(spec.record_field)
+            if arr is None:
+                continue
             ema = self._compute_ema(arr, cfg.delta_alpha)
             deltas[spec.record_field] = np.abs(arr - ema)
 
@@ -271,18 +304,58 @@ class BatchHighlightEngine:
         arrays: dict[str, np.ndarray],
         normed: dict[str, np.ndarray],
     ) -> np.ndarray:
-        """감정/동작 변화 점수 (Top-K weighted mean).
+        """감정/동작 변화 점수.
 
-        highlight_rules.md §6 Step 3
+        카탈로그 모드: 카테고리별 유사도 채널 → per-video min-max → top-K weighted mean.
+        폴백: 기존 3채널 (smile, yaw_delta, portrait_best).
+        """
+        catalog_cat_keys = [k for k in sorted(arrays) if k.startswith("catalog_cat_")]
+        if catalog_cat_keys:
+            return self._compute_catalog_impact(arrays, catalog_cat_keys)
+        return self._compute_legacy_impact(arrays, normed)
 
-        각 시그널의 가중 기여도를 계산한 뒤, 프레임별로 상위 K개만
-        선택하여 평균. 노이즈 누적을 방지하고 두드러진 변화에 집중.
+    def _compute_catalog_impact(
+        self,
+        arrays: dict[str, np.ndarray],
+        catalog_cat_keys: list[str],
+    ) -> np.ndarray:
+        """카탈로그 모드 Impact: 카테고리별 유사도를 채널로 사용.
+
+        각 카테고리의 시그널 프로파일이 smile/pose/AU/CLIP을 모두 인코딩하므로
+        카테고리별 유사도 = 일반화된 Impact 시그널.
+        균등 weight, per-video min-max 정규화, top-K weighted sum.
+        """
+        cfg = self.config
+        n_cats = len(catalog_cat_keys)
+        w = 1.0 / n_cats  # 균등 weight
+        k = min(n_cats, cfg.impact_top_k)
+
+        # Per-category: min-max normalize each category's similarity timeline
+        normed_cats = [self._minmax_normalize(arrays[key]) for key in catalog_cat_keys]
+
+        # Stack: (C, N)
+        weighted = np.array([w * v for v in normed_cats])
+
+        # max_achievable: top-K 채널 모두 v=1.0일 때
+        max_achievable = k * w
+
+        # Per-frame top-K selection
+        top_k_indices = np.argsort(-weighted, axis=0)[:k]  # (K, N)
+        top_k_values = np.take_along_axis(weighted, top_k_indices, axis=0)  # (K, N)
+
+        impact = top_k_values.sum(axis=0) / (max_achievable + 1e-8)
+        return impact
+
+    def _compute_legacy_impact(
+        self,
+        arrays: dict[str, np.ndarray],
+        normed: dict[str, np.ndarray],
+    ) -> np.ndarray:
+        """폴백: 기존 3채널 Impact (smile, yaw_delta, portrait_best).
 
         smile_intensity는 예외:
         - head_yaw/velocity 등 모션 시그널은 '변화량' delta가 의미 있음
         - smile은 '절대값이 높은 프레임' = 가장 웃는 순간이 좋은 사진
-        - delta 방식은 베이스라인(평상시 smile)이 높을 때 피크 delta가 작아져
-          smile이 가득한 영상에서 impact가 0.3 이하로 낮아지는 문제 발생
         - per-video min-max 정규화 절대값을 사용해 '이 영상에서 가장 웃는 순간' 포착
         """
         cfg = self.config
@@ -293,13 +366,19 @@ class BatchHighlightEngine:
         # smile: delta가 아닌 per-video min-max 절대값 사용
         smile_abs = self._minmax_normalize(arrays["smile_intensity"])
 
-        # Portrait: CLIP 4축 중 프레임별 최상위 1개만 채택
-        portrait_best = np.maximum.reduce([
-            self._minmax_normalize(arrays["clip_disney_smile"]),
-            self._minmax_normalize(arrays["clip_charisma"]),
-            self._minmax_normalize(arrays["clip_wild_roar"]),
-            self._minmax_normalize(arrays["clip_playful_cute"]),
-        ])
+        # Portrait: catalog_best 우선, fallback → CLIP 동적 축 max
+        catalog_best = arrays.get("catalog_best", np.zeros(len(smile_abs)))
+        has_catalog = catalog_best.max() > 0
+        if has_catalog:
+            portrait_best = self._minmax_normalize(catalog_best)
+        else:
+            clip_axis_keys = [k for k in sorted(arrays) if k.startswith("clip_axis_")]
+            if clip_axis_keys:
+                portrait_best = np.maximum.reduce([
+                    self._minmax_normalize(arrays[k]) for k in clip_axis_keys
+                ])
+            else:
+                portrait_best = np.zeros(len(smile_abs))
 
         # (signal_name, weight, values)
         channels: list[tuple[str, float, np.ndarray]] = [
@@ -315,18 +394,14 @@ class BatchHighlightEngine:
         weights_arr = np.array([w for _, w, _ in channels])   # (C,)
         weighted = np.array([w * v for _, w, v in channels])  # (C, N)
 
-        # 고정 denominator: K개 최대 가중치의 합 (e.g., k=3 → 0.30+0.20+0.15=0.65)
-        # 기여가 없는 채널의 weight이 분모에 섞이는 것을 방지.
-        # 의미: "top-K 채널 모두 v=1.0일 때 최대 impact=1.0"
+        # 고정 denominator: K개 최대 가중치의 합
         max_achievable = float(np.sort(weights_arr)[::-1][:k].sum())
 
         # Per-frame top-K: select K channels by weighted contribution
         top_k_indices = np.argsort(-weighted, axis=0)[:k]  # (K, N)
         top_k_values = np.take_along_axis(weighted, top_k_indices, axis=0)  # (K, N)
 
-        # sum(w_i × v_i for top-K) / max_achievable → [0, 1] range
         impact = top_k_values.sum(axis=0) / (max_achievable + 1e-8)
-
         return impact
 
     # ── Step 8: Smoothing ──

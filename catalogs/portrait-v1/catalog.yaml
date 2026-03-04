@@ -1,0 +1,31 @@
+name: portrait-v1
+version: "1"
+description: >
+  981파크 포트레이트 참조 카탈로그.
+  큐레이션된 참조 이미지로 카테고리를 정의하고,
+  image-to-image similarity로 프레임을 스코어링.
+
+embedding:
+  backend: clip
+  model_name: ViT-B-32
+  pretrained: openai
+
+defaults:
+  min_similarity: 0.79
+  max_collect: 5
+
+composites:
+  duchenne_smile:
+    components: [warm_smile]
+    au_formula: "min(1.0, (AU6 + AU12) / 5.0)"
+    description: "CLIP warm_smile × AU 근육 증거"
+  wild_intensity:
+    components: [wild_energy]
+    au_formula: "min(1.0, max(AU25, AU26) / 3.0)"
+    description: "CLIP wild_energy × 실제 입벌림"
+
+# 카테고리 추가 방법:
+# 1. categories/ 아래 새 폴더 생성
+# 2. 참조 이미지 5-10장 배치 (jpg/png)
+# 3. category.yaml 작성 (선택사항: name, threshold, description, clip_axis)
+# 4. 끝. 코드 변경 없음.

@@ -131,6 +131,12 @@ Examples:
         "--caption", action="store_true",
         help="Enable CoCa text captioner (shows generated captions in overlay)"
     )
+    debug_parser.add_argument(
+        "--collection", type=str, metavar="PATH",
+        help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
+             "Loads signal profiles and pose/pivot definitions. "
+             "Without this flag, uses built-in poses × AU-rule classification."
+    )
 
     # process command
     proc_parser = subparsers.add_parser("process", help="Process video and extract highlight clips")
@@ -158,6 +164,52 @@ Examples:
         help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"
     )
     proc_parser.add_argument(
+        "--collection", type=str, metavar="PATH",
+        help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
+             "Loads signal profiles and pose/pivot definitions. "
+             "Without this flag, uses built-in poses × AU-rule classification."
+    )
+    proc_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Enable verbose logging (show all third-party and internal messages)"
+    )
+
+    # collect command (alias for process)
+    collect_parser = subparsers.add_parser(
+        "collect",
+        help="Collect portrait frames from video (alias for process)",
+        description="Analyze video and collect portrait frames with pose×expression diversity. "
+                    "This is an alias for 'process' with the same options.",
+    )
+    collect_parser.add_argument("path", help="Path to video file")
+    collect_parser.add_argument("--fps", type=int, default=10, help="Analysis FPS (default: 10)")
+    collect_parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory (default: ~/.portrait981/momentscan/output/{video_stem}/)")
+    collect_parser.add_argument("--report", type=str, help="Save processing report to JSON file")
+    _add_trace_args(collect_parser)
+    collect_parser.add_argument(
+        "--backend", choices=["pathway", "simple"], default="simple",
+        help="Execution backend: 'simple' (sequential, default) or 'pathway' (streaming)"
+    )
+    collect_parser.add_argument(
+        "--profile", choices=["lite", "platform"], default=None,
+        help="Execution profile: 'lite' (inline, no observability) or 'platform' (process isolation, observability)"
+    )
+    _add_distributed_args(collect_parser)
+    collect_parser.add_argument(
+        "--batch-size", type=int, default=1, metavar="N",
+        help="Batch size for GPU module processing (default: 1)."
+    )
+    collect_parser.add_argument(
+        "--roi", type=str, metavar="X1,Y1,X2,Y2",
+        help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"
+    )
+    collect_parser.add_argument(
+        "--collection", type=str, metavar="PATH",
+        help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
+             "Loads signal profiles and pose/pivot definitions. "
+             "Without this flag, uses built-in poses × AU-rule classification."
+    )
+    collect_parser.add_argument(
         "-v", "--verbose", action="store_true",
         help="Enable verbose logging (show all third-party and internal messages)"
     )
@@ -171,6 +223,30 @@ Examples:
     bank_parser.add_argument(
         "path",
         help="Path to memory_bank.json or output directory",
+    )
+
+    # catalog-build command
+    catalog_parser = subparsers.add_parser(
+        "catalog-build",
+        help="Build signal profiles from reference image catalog",
+        description="Analyze reference images to generate per-category signal profiles "
+                    "for multi-signal matching.",
+    )
+    catalog_parser.add_argument(
+        "path",
+        help="Path to catalog directory (e.g. catalogs/portrait-v1)",
+    )
+    catalog_parser.add_argument(
+        "--no-cache", action="store_true",
+        help="Disable cache — force re-analysis of all reference images",
+    )
+    catalog_parser.add_argument(
+        "--report", type=str, metavar="PATH", nargs="?", const="catalog_report.html",
+        help="Generate HTML separation report (default: catalog_report.html)",
+    )
+    catalog_parser.add_argument(
+        "-v", "--verbose", action="store_true",
+        help="Enable verbose logging",
     )
 
     args = parser.parse_args()
@@ -193,11 +269,14 @@ Examples:
     elif args.command == "debug":
         commands.run_debug(args)
 
-    elif args.command == "process":
+    elif args.command in ("process", "collect"):
         commands.run_process(args)
 
     elif args.command == "bank":
         commands.run_bank(args)
+
+    elif args.command == "catalog-build":
+        commands.run_catalog_build(args)
 
     else:
         parser.print_help()

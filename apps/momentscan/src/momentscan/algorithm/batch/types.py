@@ -8,7 +8,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, fields as dataclass_fields
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -68,25 +68,34 @@ class FrameRecord:
     seg_hair: float = 0.0            # hair pixel ratio
     eye_pixel_ratio: float = 0.0     # = seg_eye (eye_open 교차검증용)
 
-    # CLIP axis scores (from portrait.score → metadata._clip_axes)
-    clip_disney_smile: float = 0.0
-    clip_charisma: float = 0.0
-    clip_wild_roar: float = 0.0
-    clip_playful_cute: float = 0.0
+    # CLIP axis scores (dynamic, from portrait.score → metadata._clip_axes)
+    clip_axes: Dict[str, float] = field(default_factory=dict)
 
-    # AU features (from face.au)
+    # Catalog scores (from portrait.score → catalog mode)
+    catalog_best: float = 0.0           # best catalog category score (0–1)
+    catalog_primary: str = ""           # best category name
+    catalog_scores: Dict[str, float] = field(default_factory=dict)  # per-category similarities
+
+    # AU features (from face.au) — 10 Action Units
+    au1_inner_brow: float = 0.0     # AU1: 이마 안쪽 올림
+    au2_outer_brow: float = 0.0     # AU2: 이마 바깥 올림
+    au4_brow_lowerer: float = 0.0   # AU4: 눈살 찌푸림
+    au5_upper_lid: float = 0.0      # AU5: 눈 크게 뜨기
     au6_cheek_raiser: float = 0.0   # AU6: 눈가 주름 (Duchenne marker)
+    au9_nose_wrinkler: float = 0.0  # AU9: 코 찡그림
     au12_lip_corner: float = 0.0    # AU12: 입꼬리 올림 (smile)
+    au15_lip_depressor: float = 0.0 # AU15: 입꼬리 내림
     au25_lips_part: float = 0.0     # AU25: 입술 벌림
     au26_jaw_drop: float = 0.0      # AU26: 턱 벌림
 
-    # Expression neutral (from face.expression)
-    em_neutral: float = 0.0         # HSEmotion neutral probability
+    # Emotion probabilities (from face.expression / HSEmotion)
+    em_happy: float = 0.0
+    em_neutral: float = 0.0
+    em_surprise: float = 0.0
+    em_angry: float = 0.0
 
-    # Cross-analyzer composites (derived in extract.py)
-    duchenne_smile: float = 0.0     # disney_smile × (AU6 + AU12) — genuine warm smile
-    wild_intensity: float = 0.0     # wild_roar × max(AU25, AU26) — 실제로 입 벌림 확인
-    chill_score: float = 0.0        # neutral_high × all_axes_low — 무표정 탑승
+    # Cross-analyzer composites (dynamic, derived in extract.py)
+    composites: Dict[str, float] = field(default_factory=dict)
 
     # Face baseline (from face.baseline)
     baseline_n: int = 0                  # observation count (n < 2 = not converged)
@@ -213,6 +222,18 @@ class HighlightResult:
 
         peak_set = set(int(p) for p in peaks)
 
+        # Discover dynamic clip_axes and composites keys from first record
+        clip_axis_names: List[str] = []
+        composite_names: List[str] = []
+        if records:
+            all_clip: set = set()
+            all_comp: set = set()
+            for r in records:
+                all_clip.update(r.clip_axes.keys())
+                all_comp.update(r.composites.keys())
+            clip_axis_names = sorted(all_clip)
+            composite_names = sorted(all_comp)
+
         csv_path = highlight_dir / "timeseries.csv"
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
@@ -234,16 +255,23 @@ class HighlightResult:
                 # semantic segmentation ratios
                 "seg_face", "seg_eye", "seg_mouth", "seg_hair",
                 "eye_pixel_ratio",
-                # CLIP axes
-                "clip_disney_smile", "clip_charisma",
-                "clip_wild_roar", "clip_playful_cute",
+            ]
+            # Dynamic CLIP axis columns
+            for name in clip_axis_names:
+                header.append(f"clip_{name}")
+            header += [
+                # Catalog
+                "catalog_best", "catalog_primary",
                 # AU features
                 "au6_cheek_raiser", "au12_lip_corner",
                 "au25_lips_part", "au26_jaw_drop",
                 # expression neutral
                 "em_neutral",
-                # composites
-                "duchenne_smile", "wild_intensity", "chill_score",
+            ]
+            # Dynamic composite columns
+            for name in composite_names:
+                header.append(name)
+            header += [
                 # baseline
                 "baseline_n", "baseline_area_mean", "baseline_area_std",
                 # gate result
@@ -252,7 +280,7 @@ class HighlightResult:
             writer.writerow(header)
 
             for i, r in enumerate(records):
-                writer.writerow([
+                row = [
                     r.frame_idx,
                     f"{r.timestamp_ms:.1f}",
                     int(gate_mask[i]),
@@ -285,11 +313,14 @@ class HighlightResult:
                     f"{r.seg_mouth:.4f}",
                     f"{r.seg_hair:.4f}",
                     f"{r.eye_pixel_ratio:.4f}",
-                    # CLIP axes
-                    f"{r.clip_disney_smile:.4f}",
-                    f"{r.clip_charisma:.4f}",
-                    f"{r.clip_wild_roar:.4f}",
-                    f"{r.clip_playful_cute:.4f}",
+                ]
+                # Dynamic CLIP axes
+                for name in clip_axis_names:
+                    row.append(f"{r.clip_axes.get(name, 0.0):.4f}")
+                row += [
+                    # Catalog
+                    f"{r.catalog_best:.4f}",
+                    r.catalog_primary,
                     # AU features
                     f"{r.au6_cheek_raiser:.3f}",
                     f"{r.au12_lip_corner:.3f}",
@@ -297,17 +328,19 @@ class HighlightResult:
                     f"{r.au26_jaw_drop:.3f}",
                     # expression neutral
                     f"{r.em_neutral:.3f}",
-                    # composites
-                    f"{r.duchenne_smile:.4f}",
-                    f"{r.wild_intensity:.4f}",
-                    f"{r.chill_score:.4f}",
+                ]
+                # Dynamic composites
+                for name in composite_names:
+                    row.append(f"{r.composites.get(name, 0.0):.4f}")
+                row += [
                     # baseline
                     r.baseline_n,
                     f"{r.baseline_area_mean:.4f}",
                     f"{r.baseline_area_std:.4f}",
                     # gate result
                     r.gate_fail_reasons,
-                ])
+                ]
+                writer.writerow(row)
 
         logger.info("Exported timeseries CSV: %s (%d rows)", csv_path, len(records))
 

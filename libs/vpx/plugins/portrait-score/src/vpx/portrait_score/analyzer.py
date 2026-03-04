@@ -38,7 +38,7 @@ class PortraitScoreAnalyzer(Module):
     """Analyzer that scores portrait quality using CLIP embeddings.
 
     Computes CLIP portrait quality from a portrait crop (head-to-shoulders)
-    derived from face detection.
+    derived from face detection. Uses CLIP text-image similarity with 4 axes.
 
     Requires open-clip-torch for scoring. When unavailable, returns zero scores.
 
@@ -57,6 +57,7 @@ class PortraitScoreAnalyzer(Module):
         enable_caption: bool = False,
         clip_stride: int = 1,
         device: str = "auto",
+        clip_axes: Optional[list] = None,
     ):
         self._aesthetic_expand = aesthetic_expand
         self._aesthetic_y_shift = aesthetic_y_shift
@@ -64,6 +65,7 @@ class PortraitScoreAnalyzer(Module):
         self._enable_aesthetic = enable_aesthetic
         self._enable_caption = enable_caption
         self._clip_stride = max(1, clip_stride)
+        self._clip_axes = clip_axes  # None = use defaults
 
         self._head_smoother = BBoxSmoother(alpha=smooth_alpha)
         self._aesthetic: Optional[object] = None
@@ -98,6 +100,7 @@ class PortraitScoreAnalyzer(Module):
                 scorer = CLIPPortraitScorer(
                     device=self._device,
                     enable_caption=self._enable_caption,
+                    axes=self._clip_axes,
                 )
                 scorer.initialize()
                 self._aesthetic = scorer
@@ -155,16 +158,22 @@ class PortraitScoreAnalyzer(Module):
 
         smoothed_head = self._head_smoother.update((px, py, pw, ph))
 
-        # CLIP portrait quality (portrait crop: 정수리~어깨)
+        # Portrait crop for text-prompt scoring
         head_aesthetic = 0.0
+        portrait_img = None
         portrait_box = None
-        if self._aesthetic is not None and getattr(self._aesthetic, "available", False):
+        has_aesthetic = self._aesthetic is not None and getattr(self._aesthetic, "available", False)
+
+        if has_aesthetic:
             portrait_img, portrait_box = face_crop(
                 image, smoothed_head,
                 expand=self._aesthetic_expand,
                 crop_ratio="1:1",
                 y_shift=self._aesthetic_y_shift,
             )
+
+        # CLIP text-prompt quality scoring
+        if has_aesthetic and portrait_img is not None:
             self._clip_frame_counter += 1
             if self._clip_frame_counter >= self._clip_stride:
                 self._clip_frame_counter = 0
@@ -300,19 +309,17 @@ class PortraitScoreAnalyzer(Module):
                 font_scale=0.35,
             ))
 
-        # CLIP axes
-        _AXIS_COLORS = {
-            "disney_smile": (150, 255, 150),
-            "charisma": (255, 180, 255),
-            "playful_cute": (150, 255, 255),
-            "wild_roar": (100, 255, 100),
-        }
+        # CLIP axes — dynamic palette (axis-name independent)
+        _AXIS_PALETTE = [
+            (150, 255, 150), (255, 180, 255), (150, 255, 255),
+            (100, 255, 100), (255, 200, 100), (100, 200, 255),
+        ]
         clip_axes = obs.metadata.get("_clip_axes") if obs.metadata else None
         if clip_axes:
             from vpx.sdk.marks import BarMark
             y_apos = 0.02
-            for ax in clip_axes:
-                color = _AXIS_COLORS.get(ax.name, (200, 200, 200))
+            for idx, ax in enumerate(clip_axes):
+                color = _AXIS_PALETTE[idx % len(_AXIS_PALETTE)]
                 active_marker = " *" if ax.active else ""
                 marks.append(LabelMark(
                     text=f"{ax.name}: {ax.score:.2f}{active_marker}",

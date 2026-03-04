@@ -68,6 +68,7 @@ def run_process(args):
         )
 
     batch_size = getattr(args, 'batch_size', 1)
+    collection_path = getattr(args, 'collection', None)
 
     # Print header
     mode = "distributed" if distributed else "library"
@@ -78,6 +79,8 @@ def run_process(args):
     batch_label = f" · batch: {batch_size}" if batch_size > 1 else ""
     print(f"{_}{DIM}{args.fps} fps · {ITALIC}{mode}{RESET}")
     print(f"{_}{DIM}backend: {backend}{batch_label} · output: {output_dir}{RESET}")
+    if collection_path:
+        print(f"{_}{DIM}collection: {collection_path}{RESET}")
     print()
 
     start_time = time.time()
@@ -94,6 +97,7 @@ def run_process(args):
             backend=backend,
             profile=profile,
             isolation=isolation_config,
+            collection_path=collection_path,
         )
     except Exception as e:
         print(f"\nError during processing: {e}")
@@ -106,6 +110,12 @@ def run_process(args):
     n_highlights = len(result.highlights)
 
     print(f"{BOLD}{'Summary':<10}{RESET}{DIM}{elapsed:.1f}s · {result.frame_count} frames · {n_highlights} highlights{RESET}")
+    if result.collection and hasattr(result.collection, 'persons'):
+        n_persons = len(result.collection.persons)
+        n_total_frames = sum(
+            len(p.all_frames()) for p in result.collection.persons.values()
+        )
+        print(f"{_}{DIM}{n_persons} persons · {n_total_frames} selected frames{RESET}")
     print(f"{_}{DIM}backend: {ITALIC}{result.actual_backend}{RESET}")
     _print_backend_stats(result.stats)
     print()

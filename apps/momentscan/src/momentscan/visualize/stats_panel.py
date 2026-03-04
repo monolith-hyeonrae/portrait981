@@ -494,6 +494,21 @@ class StatsPanel:
             )
             y += bar_h + 4
 
+        # catalog_best bar (mint green, signal-profile catalog similarity [0,1])
+        catalog_best = embed_stats.get("catalog_best", 0.0)
+        catalog_primary = embed_stats.get("catalog_primary", "")
+        if catalog_best > 0:
+            cat_color = (200, 255, 100)  # mint green BGR
+            label = f"CAT:{catalog_primary}" if catalog_primary else "CAT:"
+            cv2.putText(canvas, label, (x, y + bar_h - 2), FONT, 0.28, COLOR_GRAY_BGR, 1)
+            bar_x = x + 35
+            draw_horizontal_bar(canvas, bar_x, y, bar_w, bar_h, catalog_best, cat_color)
+            cv2.putText(
+                canvas, f"{catalog_best:.2f}",
+                (bar_x + bar_w + 3, y + bar_h - 1), FONT, 0.28, cat_color, 1,
+            )
+            y += bar_h + 4
+
         # Anchor info
         if anchor_conf > 0:
             cv2.putText(

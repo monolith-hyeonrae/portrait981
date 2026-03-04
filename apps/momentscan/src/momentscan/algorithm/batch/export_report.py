@@ -43,8 +43,9 @@ _MODULE_PALETTES: Dict[str, List[str]] = {
     "face.quality": ["#2e7d32", "#00838f", "#ff6f00", "#c62828", "#4527a0", "#546e7a", "#795548", "#d81b60", "#1a237e", "#4e342e", "#f4511e"],  # blur, exposure, contrast, clipped, crushed, mask, seg_face/eye/mouth/hair, eye_pixel_ratio
     "portrait.score": [
         "#e91e63",  # head_aesthetic
-        "#e91e63", "#9c27b0", "#ff5722", "#ff9800",  # CLIP axes (disney, charisma, wild, playful)
-        "#c62828", "#d84315", "#607d8b",  # composites (duchenne, wild_intensity, chill)
+        # CLIP axes + composites: dynamic (colors cycle from this palette)
+        "#e91e63", "#9c27b0", "#ff5722", "#ff9800", "#c62828", "#d84315", "#607d8b",
+        "#00695c", "#4527a0", "#bf360c",
     ],
     "frame.quality": ["#1565c0", "#e65100", "#2e7d32"],
     "face.classify": ["#f9a825"],
@@ -300,21 +301,39 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # Modules whose fields have heterogeneous scales → normalize to [0,1] for display
     _NORMALIZE_MODULES = {"face.quality"}
 
+    # Dict fields that expand dynamically (clip_axes, composites)
+    _DICT_FIELDS = {"clip_axes", "composites", "catalog_scores"}
+
     for mod_name, mappings in module_groups.items():
         is_active = False
+        expanded_mappings = []  # after dict expansion
         for fm in mappings:
-            vals = [getattr(r, fm.record_field) for r in records]
-            default_val = getattr(default_rec, fm.record_field)
-            if any(v != default_val for v in vals):
-                is_active = True
-            # Always add to data (hover panel needs all fields)
-            if fm.record_field not in data:
-                if isinstance(default_val, bool):
-                    data[fm.record_field] = [int(v) for v in vals]
-                elif isinstance(default_val, str):
-                    data[fm.record_field] = vals
-                else:
-                    data[fm.record_field] = [float(v) for v in vals]
+            if fm.record_field in _DICT_FIELDS:
+                # Expand dict field into individual sub-keys
+                all_keys: set = set()
+                for r in records:
+                    d = getattr(r, fm.record_field, {})
+                    all_keys.update(d.keys())
+                for sub_key in sorted(all_keys):
+                    sub_field = f"{fm.record_field}.{sub_key}"
+                    vals = [getattr(r, fm.record_field, {}).get(sub_key, 0.0) for r in records]
+                    if any(v != 0.0 for v in vals):
+                        is_active = True
+                    data[sub_field] = [float(v) for v in vals]
+                    expanded_mappings.append((sub_field, fm))
+            else:
+                vals = [getattr(r, fm.record_field) for r in records]
+                default_val = getattr(default_rec, fm.record_field)
+                if any(v != default_val for v in vals):
+                    is_active = True
+                if fm.record_field not in data:
+                    if isinstance(default_val, bool):
+                        data[fm.record_field] = [int(v) for v in vals]
+                    elif isinstance(default_val, str):
+                        data[fm.record_field] = vals
+                    else:
+                        data[fm.record_field] = [float(v) for v in vals]
+                expanded_mappings.append((fm.record_field, fm))
 
         if not is_active:
             continue
@@ -324,14 +343,14 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         # Per-field min-max normalization for modules with heterogeneous scales
         norm_ranges: Dict[str, list] = {}
         if should_normalize:
-            for fm in mappings:
-                if fm.record_field in _SKIP_CHART_FIELDS:
+            for field_key, fm in expanded_mappings:
+                if field_key in _SKIP_CHART_FIELDS:
                     continue
-                if isinstance(getattr(default_rec, fm.record_field), (int, float)):
-                    arr = np.array(data[fm.record_field])
-                    normed_key = f"{fm.record_field}_normed"
+                if field_key in data and isinstance(data[field_key][0] if data[field_key] else 0, (int, float)):
+                    arr = np.array(data[field_key])
+                    normed_key = f"{field_key}_normed"
                     data[normed_key] = _minmax(arr).tolist()
-                    norm_ranges[fm.record_field] = [
+                    norm_ranges[field_key] = [
                         float(arr.min()), float(arr.max()),
                     ]
 
@@ -340,20 +359,20 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
 
         fields_meta = []
         ci = 0
-        for fm in mappings:
-            if fm.record_field in _SKIP_CHART_FIELDS:
+        for field_key, fm in expanded_mappings:
+            if field_key in _SKIP_CHART_FIELDS:
                 continue
             fmeta: Dict[str, Any] = {
-                "key": fm.record_field,
-                "label": fm.record_field,
+                "key": field_key,
+                "label": field_key,
                 "color": palette[ci % len(palette)],
                 "role": fm.scoring_role,
                 "description": fm.description,
                 "rationale": fm.rationale,
             }
-            if should_normalize and f"{fm.record_field}_normed" in data:
-                fmeta["display_key"] = f"{fm.record_field}_normed"
-                fmeta["norm_range"] = norm_ranges.get(fm.record_field)
+            if should_normalize and f"{field_key}_normed" in data:
+                fmeta["display_key"] = f"{field_key}_normed"
+                fmeta["norm_range"] = norm_ranges.get(field_key)
             fields_meta.append(fmeta)
             ci += 1
 
@@ -427,11 +446,23 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     # 하위 호환: normed_smile_intensity도 절대값으로 채움 (legacy JS 참조)
     data["normed_smile_intensity"] = smile_abs.tolist()
 
-    # CLIP 4축 + composites: per-video min-max 절대값
-    for key in ("clip_disney_smile", "clip_charisma", "clip_wild_roar", "clip_playful_cute",
-                "duchenne_smile", "wild_intensity", "chill_score"):
-        raw = arrays.get(key, np.array([getattr(r, key) for r in records]))
-        data[f"{key}_abs"] = _minmax(raw).tolist()
+    # Dynamic CLIP axes: per-video min-max 절대값
+    clip_axis_names = set()
+    for r in records:
+        clip_axis_names.update(r.clip_axes.keys())
+    data["_clip_axis_names"] = sorted(clip_axis_names)
+    for name in sorted(clip_axis_names):
+        raw = arrays.get(f"clip_axis_{name}", np.array([r.clip_axes.get(name, 0.0) for r in records]))
+        data[f"clip_axis_{name}_abs"] = _minmax(raw).tolist()
+
+    # Dynamic composites: per-video min-max 절대값
+    composite_names = set()
+    for r in records:
+        composite_names.update(r.composites.keys())
+    data["_composite_names"] = sorted(composite_names)
+    for name in sorted(composite_names):
+        raw = arrays.get(f"composite_{name}", np.array([r.composites.get(name, 0.0) for r in records]))
+        data[f"composite_{name}_abs"] = _minmax(raw).tolist()
 
     # ── Per-gate-condition boolean arrays (for hover panel) ──
     data["gate_face_detected"] = [int(r.face_detected) for r in records]
@@ -496,6 +527,17 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
     data["passenger_face_area_ratio"] = [float(r.passenger_face_area_ratio) for r in records]
     data["passenger_face_blur"] = [float(r.passenger_face_blur) for r in records]
     data["passenger_face_exposure"] = [float(r.passenger_face_exposure) for r in records]
+
+    # ── Catalog category similarity arrays ──
+    cat_names_set: set = set()
+    for r in records:
+        cat_names_set.update(r.catalog_scores.keys())
+    cat_names = sorted(cat_names_set)
+    data["_catalog_categories"] = cat_names
+    for cat_name in cat_names:
+        data[f"catalog_cat_{cat_name}"] = [
+            float(r.catalog_scores.get(cat_name, 0.0)) for r in records
+        ]
 
     # ── Config weights (for hover panel) ──
     data["cfg_quality_weights"] = {
@@ -949,6 +991,26 @@ _JS_MAIN = r"""
       line:{color:'#6a1b9a', width:1.2, dash:'dot'}, xaxis: xRef(1), yaxis:'y2', hoverinfo:'x+y'});
   }
 
+  // Catalog category similarity traces (Score Decomposition subplot)
+  var catNames = DATA._catalog_categories || [];
+  var catPalette = ['#e91e63','#9c27b0','#ff9800','#00897b','#5c6bc0','#ef6c00','#00838f','#c62828'];
+  catNames.forEach(function(name, ci) {
+    var key = 'catalog_cat_' + name;
+    if (!DATA[key]) return;
+    var col = catPalette[ci % catPalette.length];
+    traces.push({
+      x: t, y: DATA[key],
+      name: name,
+      type: 'scatter', mode: 'none',
+      fill: 'tozeroy',
+      fillcolor: hexAlpha(col, 0.15),
+      line: {color: col, width: 0},
+      xaxis: xRef(1), yaxis: 'y2',
+      legendgroup: 'catalog',
+      hovertemplate: '<b>' + name + '</b><br>sim: %{y:.3f}<extra></extra>'
+    });
+  });
+
   // ── Dynamic module subplots ──
   DATA.modules.forEach(function(mod, mi) {
     var row = N_FIXED + mi;
@@ -1267,16 +1329,23 @@ _JS_MAIN = r"""
     // Impact
     var is_ = D.impact_scores[pi];
     var topK = D.cfg_impact_top_k || 3;
-    // Portrait best: max of CLIP 4 axes
-    var pSubs = [
-      ['disney',   D.clip_disney_smile_abs  ? D.clip_disney_smile_abs[pi]  : 0],
-      ['charisma', D.clip_charisma_abs      ? D.clip_charisma_abs[pi]      : 0],
-      ['wild',     D.clip_wild_roar_abs     ? D.clip_wild_roar_abs[pi]     : 0],
-      ['playful',  D.clip_playful_cute_abs  ? D.clip_playful_cute_abs[pi]  : 0]
-    ];
-    pSubs.sort(function(a,b) { return b[1] - a[1]; });
-    var pBestVal = pSubs[0][1];
-    var pBestName = pSubs[0][0];
+    // Portrait best: catalog_best priority → dynamic CLIP axes fallback
+    var catBest = D.catalog_best ? D.catalog_best[pi] : 0;
+    var catPrimary = D.catalog_primary ? D.catalog_primary[pi] : '';
+    var pBestVal, pBestName;
+    if (catBest > 0) {
+      pBestVal = catBest;
+      pBestName = 'cat:' + (catPrimary || '?');
+    } else {
+      var axNames = D._clip_axis_names || [];
+      var pSubs = axNames.map(function(n) {
+        var k = 'clip_axis_' + n + '_abs';
+        return [n, D[k] ? D[k][pi] : 0];
+      });
+      pSubs.sort(function(a,b) { return b[1] - a[1]; });
+      pBestVal = pSubs.length > 0 ? pSubs[0][1] : 0;
+      pBestName = pSubs.length > 0 ? pSubs[0][0] : '';
+    }
     var impF = [
       ['smile       ', 'smile_intensity',  D.normed_smile_intensity[pi]],
       ['yaw_\u0394       ', 'head_yaw',         D.normed_head_yaw[pi]],

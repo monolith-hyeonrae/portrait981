@@ -71,12 +71,10 @@ class AxisDefinition:
     threshold: float = 0.5  # sigmoid score threshold for activation
 
 
-_AXES: Tuple[AxisDefinition, ...] = (
-    # ── disney_smile: 미소의 질감 ──
-    # 입 다문 채 눈웃음 + 따뜻한 온기. Duchenne 미소의 동화적 질감.
-    # negative: 크게 벌린 웃음(hearty_laugh), 시크함(cold_charisma), 무표정 구분.
+_DEFAULT_AXES: Tuple[AxisDefinition, ...] = (
+    # ── warm_smile: 미소의 질감 ──
     AxisDefinition(
-        name="disney_smile",
+        name="warm_smile",
         prompts=(
             "a person with a warm gentle closed-mouth Duchenne smile with crinkled eyes",
             "a radiant angelic smile like a Disney princess or prince",
@@ -90,11 +88,9 @@ _AXES: Tuple[AxisDefinition, ...] = (
         ),
         action="select",
     ),
-    # ── model_aura: 시크한 카리스마 ──
-    # 웃지 않지만 멋짐이 폭발하는 순간. 시크/도도/당당/자신감.
-    # negative로 웃는 얼굴을 명시하여, 미소 없는 쿨함만 잡는다.
+    # ── cool_gaze: 시크한 카리스마 ──
     AxisDefinition(
-        name="charisma",
+        name="cool_gaze",
         prompts=(
             "a person with a cool confident smirk not smiling",
             "a person with a chic aloof expression and sharp gaze",
@@ -109,11 +105,9 @@ _AXES: Tuple[AxisDefinition, ...] = (
         ),
         action="select",
     ),
-    # ── playful_cute: 장난기 ──
-    # 혀내밀기/볼부풀리기/입삐죽 — 전문 모델 감지 불가, 검증됨.
-    # negative: 입 다문 일반적 표정으로 명확히 대비.
+    # ── playful_face: 장난기 ──
     AxisDefinition(
-        name="playful_cute",
+        name="playful_face",
         prompts=(
             "a person sticking tongue out playfully",
             "a person puffing cheeks like a blowfish",
@@ -127,11 +121,9 @@ _AXES: Tuple[AxisDefinition, ...] = (
         ),
         action="select",
     ),
-    # ── wild_roar: 포효/돌격 함성 ──
-    # 입 크게 벌리고 소리 지르듯 호탕한 순간. 웃음+함성+흥분 전부 포함.
-    # negative: 입 다문 잔잔한 상태로 확실히 분리.
+    # ── wild_energy: 포효/돌격 함성 ──
     AxisDefinition(
-        name="wild_roar",
+        name="wild_energy",
         prompts=(
             "a person screaming and yelling with mouth wide open in excitement",
             "a person roaring with laughter and head thrown back",
@@ -211,6 +203,7 @@ class CLIPPortraitScorer:
         negative_prompts: Optional[List[str]] = None,
         embed_ema_alpha: float = 0.2,
         enable_caption: bool = False,
+        axes: Optional[List[AxisDefinition]] = None,
     ):
         if device == "auto":
             try:
@@ -221,6 +214,7 @@ class CLIPPortraitScorer:
         self._device = device
         self._positive_prompts = positive_prompts or list(_DEFAULT_POSITIVE)
         self._negative_prompts = negative_prompts or list(_DEFAULT_NEGATIVE)
+        self._custom_axes = axes  # None = use _DEFAULT_AXES
 
         self._clip_model = None
         self._preprocess = None
@@ -268,6 +262,10 @@ class CLIPPortraitScorer:
 
             tokenizer = open_clip.get_tokenizer(_CLIP_MODEL)
 
+            # Resolve axes: custom (from catalog) or default
+            axes = self._custom_axes if self._custom_axes is not None else list(_DEFAULT_AXES)
+            self._axes = axes
+
             # Pre-encode text prompts
             with torch.no_grad():
                 pos_tokens = tokenizer(self._positive_prompts).to(self._device)
@@ -282,7 +280,7 @@ class CLIPPortraitScorer:
                 all_prompts: List[str] = []
                 pos_slices: List[Tuple[int, int]] = []
                 neg_slices: List[Tuple[int, int]] = []
-                for axis_def in _AXES:
+                for axis_def in axes:
                     ps = len(all_prompts)
                     all_prompts.extend(axis_def.prompts)
                     pos_slices.append((ps, len(all_prompts)))
@@ -290,19 +288,23 @@ class CLIPPortraitScorer:
                     all_prompts.extend(axis_def.neg_prompts)
                     neg_slices.append((ns, len(all_prompts)))
 
-                all_tokens = tokenizer(all_prompts).to(self._device)
-                all_embeds = model.encode_text(all_tokens)
-                all_embeds = all_embeds / all_embeds.norm(dim=-1, keepdim=True)
+                if all_prompts:
+                    all_tokens = tokenizer(all_prompts).to(self._device)
+                    all_embeds = model.encode_text(all_tokens)
+                    all_embeds = all_embeds / all_embeds.norm(dim=-1, keepdim=True)
 
-                def _mean_norm(embeds, start, end):
-                    m = embeds[start:end].mean(dim=0, keepdim=True)
-                    return m / m.norm(dim=-1, keepdim=True)
+                    def _mean_norm(embeds, start, end):
+                        m = embeds[start:end].mean(dim=0, keepdim=True)
+                        return m / m.norm(dim=-1, keepdim=True)
 
-                axis_pos_list = [_mean_norm(all_embeds, s, e) for s, e in pos_slices]
-                axis_neg_list = [_mean_norm(all_embeds, s, e) for s, e in neg_slices]
+                    axis_pos_list = [_mean_norm(all_embeds, s, e) for s, e in pos_slices]
+                    axis_neg_list = [_mean_norm(all_embeds, s, e) for s, e in neg_slices]
 
-                axis_pos_embeds = torch.cat(axis_pos_list, dim=0)  # (N_axes, D)
-                axis_neg_embeds = torch.cat(axis_neg_list, dim=0)  # (N_axes, D)
+                    axis_pos_embeds = torch.cat(axis_pos_list, dim=0)  # (N_axes, D)
+                    axis_neg_embeds = torch.cat(axis_neg_list, dim=0)  # (N_axes, D)
+                else:
+                    axis_pos_embeds = None
+                    axis_neg_embeds = None
 
             # CLIP learned logit_scale — exp(log_scale) → scalar
             self._logit_scale = float(model.logit_scale.exp().item())
@@ -316,14 +318,14 @@ class CLIPPortraitScorer:
             self._axis_neg_embeds = axis_neg_embeds
             self.available = True
 
-            n_pos_prompts = sum(len(a.prompts) for a in _AXES)
-            n_neg_prompts = sum(len(a.neg_prompts) for a in _AXES)
+            n_pos_prompts = sum(len(a.prompts) for a in axes)
+            n_neg_prompts = sum(len(a.neg_prompts) for a in axes)
             logger.info(
                 "CLIPPortraitScorer: loaded (device=%s, logit_scale=%.1f, "
                 "score_pos=%d, score_neg=%d, axes=%d, axis_prompts=%d+%d)",
                 self._device, self._logit_scale,
                 len(self._positive_prompts),
-                len(self._negative_prompts), len(_AXES),
+                len(self._negative_prompts), len(axes),
                 n_pos_prompts, n_neg_prompts,
             )
 
@@ -459,13 +461,14 @@ class CLIPPortraitScorer:
 
         import math
 
+        axes = self._axes
         ls = self._logit_scale
         pos_sims = (img_embed @ self._axis_pos_embeds.T).squeeze(0)  # (N_axes,)
         neg_sims = (img_embed @ self._axis_neg_embeds.T).squeeze(0)  # (N_axes,)
 
         results = []
         score_map: Dict[str, float] = {}
-        for i, axis_def in enumerate(_AXES):
+        for i, axis_def in enumerate(axes):
             raw_pos = float(pos_sims[i].item())
             raw_neg = float(neg_sims[i].item())
             raw_diff = raw_pos - raw_neg
@@ -542,6 +545,7 @@ class CLIPPortraitScorer:
         self._neg_embeds = None
         self._axis_pos_embeds = None
         self._axis_neg_embeds = None
+        self._axes = []
         self._embed_ema = None
         self._coca_model = None
         self._coca_transform = None

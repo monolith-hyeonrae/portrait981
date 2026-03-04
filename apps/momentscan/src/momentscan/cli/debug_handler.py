@@ -62,6 +62,7 @@ class DebugFrameHandler:
         self._writer = None
         self._writer_initialized = False
         self.frame_count = 0
+        self.pending_catalog: tuple = (0.0, "")
 
         # Timing tracking
         self._target_fps = fps
@@ -105,6 +106,12 @@ class DebugFrameHandler:
             face_obs=observations.get("face.detect"),
             portrait_score_obs=observations.get("portrait.score"),
         )
+
+        # Inject signal-profile catalog data from FrameRecord
+        cat_best, cat_primary = self.pending_catalog
+        if cat_best > 0:
+            embed_stats["catalog_best"] = cat_best
+            embed_stats["catalog_primary"] = cat_primary
 
         # Extract gate status from face.gate observation
         gate_obs = observations.get("face.gate")
