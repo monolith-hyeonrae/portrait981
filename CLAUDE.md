@@ -32,10 +32,15 @@ visualbase (미디어 I/O + IPC 인프라)
       → vpx-sdk (공유 타입: Observation, Module, protocols)
           → vpx-face-detect      (InsightFace SCRFD, onnxruntime-gpu)
           → vpx-face-expression  (HSEmotion, onnxruntime CPU)
+          → vpx-face-parse       (BiSeNet, face segmentation)
+          → vpx-face-au          (ONNX, Action Unit)
+          → vpx-head-pose        (6DRepNet, 6DoF)
+          → vpx-portrait-score   (CLIP, aesthetic scoring + catalog)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
-      → momentscan (core: CLI, analyzers, monitoring)
-      → portrait981 (통합 오케스트레이터, 미구현)
+      → momentscan (분석/수집 앱)
+      → momentbank (저장/관리)
+      → reportrait (AI 초상화 생성, ComfyUI 브릿지)
 ```
 
 ## 디렉토리 구조
@@ -56,10 +61,16 @@ portrait981/                    ← repo root
 │       └── plugins/            # Analyzer 플러그인
 │           ├── face-detect/    # InsightFace SCRFD
 │           ├── face-expression/# HSEmotion
+│           ├── face-parse/     # BiSeNet face segmentation
+│           ├── face-au/        # ONNX Action Unit
+│           ├── head-pose/      # 6DRepNet 6DoF
+│           ├── portrait-score/ # CLIP aesthetic scoring + catalog
 │           ├── body-pose/      # YOLO-Pose
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
-│   └── momentscan/             # 얼굴/장면 분석 core
+│   ├── momentscan/             # 얼굴/장면 분석 + 수집
+│   ├── momentbank/             # Identity memory bank + 프레임 저장
+│   └── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
 ├── docs/
 │   ├── ROADMAP.md
 │   └── planning/
@@ -78,13 +89,20 @@ portrait981/                    ← repo root
 | visualpath-isolation | `libs/visualpath/isolation/` | Worker 격리 |
 | visualpath-cli | `libs/visualpath/cli/` | CLI 도구 |
 | visualpath-pathway | `libs/visualpath/pathway/` | Pathway 백엔드 |
-| vpx-face-detect | `libs/vpx/plugins/face-detect/` | 얼굴 검출 |
-| vpx-face-expression | `libs/vpx/plugins/face-expression/` | 표정 분석 |
-| vpx-body-pose | `libs/vpx/plugins/body-pose/` | 포즈 추정 |
-| vpx-hand-gesture | `libs/vpx/plugins/hand-gesture/` | 제스처 감지 |
+| vpx-face-detect | `libs/vpx/plugins/face-detect/` | 얼굴 검출 (InsightFace SCRFD) |
+| vpx-face-expression | `libs/vpx/plugins/face-expression/` | 표정 분석 (HSEmotion) |
+| vpx-face-parse | `libs/vpx/plugins/face-parse/` | 얼굴 세그멘테이션 (BiSeNet) |
+| vpx-face-au | `libs/vpx/plugins/face-au/` | Action Unit 분석 (ONNX) |
+| vpx-head-pose | `libs/vpx/plugins/head-pose/` | 6DoF 머리 포즈 (6DRepNet) |
+| vpx-portrait-score | `libs/vpx/plugins/portrait-score/` | Aesthetic scoring + 카탈로그 (CLIP) |
+| vpx-body-pose | `libs/vpx/plugins/body-pose/` | 포즈 추정 (YOLO-Pose) |
+| vpx-hand-gesture | `libs/vpx/plugins/hand-gesture/` | 제스처 감지 (MediaPipe) |
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
 | vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
-| momentscan | `apps/momentscan/` | 얼굴/장면 분석 core |
+| vpx-viz | `libs/vpx/viz/` | 시각화 도구 |
+| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 |
+| momentbank | `apps/momentbank/` | Identity memory bank + 프레임 저장 |
+| reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 
 ## Namespace Package 패턴
 
@@ -130,7 +148,9 @@ from visualpath.core import DummyAnalyzer
 ```bash
 cd /home/hyeonrae/repo/monolith/portrait981
 uv sync --all-packages --all-extras   # 전체 workspace 동기화
-uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트
+uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트 (558)
+uv run pytest apps/momentbank/tests/ -v    # momentbank 테스트 (61)
+uv run pytest apps/reportrait/tests/ -v    # reportrait 테스트 (41)
 ```
 
 ## vpx CLI
@@ -152,6 +172,26 @@ vpx new face.landmark --dry-run                # 미리보기
 ```
 
 `vpx new`는 파일 생성 후 root `pyproject.toml`의 workspace members에 자동 등록한다.
+
+## reportrait CLI
+
+```bash
+# lookup_frames로 참조 이미지 조회 후 생성
+reportrait generate test_3 --pose left30 --dry-run
+reportrait generate test_3 --category warm_smile --prompt "portrait"
+
+# 직접 참조 이미지 지정 (lookup 건너뜀)
+reportrait generate --ref photo1.jpg photo2.jpg --prompt "portrait"
+
+# 워크플로우 파일 직접 지정 (I2I/I2V)
+reportrait generate --ref face.jpg --workflow /path/to/i2v.json
+
+# 특정 노드에만 이미지 주입
+reportrait generate --ref face.jpg --workflow workflow.json --node 81
+
+# 원격 ComfyUI 서버 (RunPod)
+reportrait generate --ref face.jpg --comfy-url https://xxx.proxy.runpod.net --api-key $RUNPOD_API_KEY
+```
 
 ## Production venv 격리
 
