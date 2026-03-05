@@ -69,6 +69,7 @@ def run_process(args):
 
     batch_size = getattr(args, 'batch_size', 1)
     collection_path = getattr(args, 'collection', None)
+    member_id = getattr(args, 'member_id', None)
 
     # Print header
     mode = "distributed" if distributed else "library"
@@ -98,6 +99,7 @@ def run_process(args):
             profile=profile,
             isolation=isolation_config,
             collection_path=collection_path,
+            member_id=member_id,
         )
     except Exception as e:
         print(f"\nError during processing: {e}")

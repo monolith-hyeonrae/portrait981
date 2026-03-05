@@ -108,6 +108,7 @@ def _extract_face_detect(record: CollectionRecord, obs: Any) -> None:
     record.head_yaw = float(getattr(face, "yaw", 0.0))
     record.head_pitch = float(getattr(face, "pitch", 0.0))
     record.head_roll = float(getattr(face, "roll", 0.0))
+    record.face_bbox = getattr(face, "bbox", None)
 
     # ArcFace embedding
     embedding = getattr(face, "embedding", None)

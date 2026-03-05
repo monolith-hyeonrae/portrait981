@@ -74,6 +74,7 @@ class CollectionRecord:
 
     # Crop/image info (export)
     face_crop_box: Optional[tuple] = None
+    face_bbox: Optional[tuple] = None
     image_size: Optional[tuple] = None
 
     # Catalog

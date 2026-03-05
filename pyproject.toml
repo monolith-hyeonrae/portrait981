@@ -18,6 +18,7 @@ members = [
     "libs/vpx/viz",
     "apps/momentscan",
     "apps/momentbank",
+    "apps/reportrait",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.
@@ -34,3 +35,4 @@ override-dependencies = [
 
 [tool.uv.sources]
 momentscan = { workspace = true }
+momentbank = { workspace = true }

@@ -264,12 +264,12 @@ class VideoPanel:
                     gate_passed_set = set()
                     for r in results:
                         if r.gate_passed:
-                            gate_passed_set.add(r.face_bbox)
+                            gate_passed_set.add(tuple(r.face_bbox))
 
         emphasized = []
         for bbox in active_bboxes:
             # Gate check: if gate data exists, bbox must be in passed set
-            if gate_passed_set is not None and bbox not in gate_passed_set:
+            if gate_passed_set is not None and tuple(bbox) not in gate_passed_set:
                 continue
             # ROI check: bbox center must be inside ROI
             if roi is not None:

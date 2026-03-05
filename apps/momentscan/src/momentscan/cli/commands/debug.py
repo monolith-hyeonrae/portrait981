@@ -65,6 +65,7 @@ def run_debug(args):
 
     # Resolve modules via MomentscanApp
     _collection_path = getattr(args, 'collection', None)
+    _member_id = getattr(args, 'member_id', None)
     app = MomentscanApp(collection_path=_collection_path)
     resolved = app.configure_modules(analyzer_names)
 
@@ -98,7 +99,7 @@ def run_debug(args):
     graph.add_node(PathNode(
         name="pipeline",
         modules=resolved,
-        parallel=False,
+        parallel=distributed,
         isolation=isolation_config,
     ))
     graph.add_edge("source", "pipeline")
@@ -311,12 +312,38 @@ def run_debug(args):
         if collection_result is not None:
             from momentscan.algorithm.collection.export import (
                 export_metadata,
-                export_crops,
                 export_clips,
             )
             export_metadata(collection_result, out)
-            export_crops(Path(args.path), collection_result, collection_records, out)
             export_clips(Path(args.path), collection_result, collection_records, out)
+
+            # Bank ingest: save frames + ingest
+            try:
+                from momentbank.ingest import (
+                    save_selected_frames,
+                    ingest_collection,
+                )
+                mid = _member_id or Path(args.path).stem
+                frame_paths = save_selected_frames(
+                    args.path, collection_result,
+                    collection_records, mid,
+                )
+                ingest_result = ingest_collection(
+                    collection_result, collection_records,
+                    frame_paths=frame_paths, member_id=mid,
+                )
+                if ingest_result.stats:
+                    print(f"          {DIM}{ingest_result.summary()}{RESET}")
+                else:
+                    n_with_eid = sum(1 for r in collection_records if r.e_id is not None)
+                    print(f"          {DIM}Memory bank: no data ingested "
+                          f"(persons={len(collection_result.persons)}, "
+                          f"e_id={n_with_eid}/{len(collection_records)}){RESET}")
+            except ImportError:
+                pass
+            except Exception as exc:
+                print(f"          {DIM}Memory bank error: {exc}{RESET}")
+
         export_report(
             Path(args.path),
             highlight_result=highlight_result,
@@ -376,12 +403,38 @@ def run_debug(args):
             if collection_result is not None:
                 from momentscan.algorithm.collection.export import (
                     export_metadata,
-                    export_crops,
                     export_clips,
                 )
                 export_metadata(collection_result, out)
-                export_crops(Path(args.path), collection_result, collection_records, out)
                 export_clips(Path(args.path), collection_result, collection_records, out)
+
+                # Bank ingest: save frames + ingest
+                try:
+                    from momentbank.ingest import (
+                        save_selected_frames,
+                        ingest_collection,
+                    )
+                    mid = _member_id or Path(args.path).stem
+                    frame_paths = save_selected_frames(
+                        args.path, collection_result,
+                        collection_records, mid,
+                    )
+                    ingest_result = ingest_collection(
+                        collection_result, collection_records,
+                        frame_paths=frame_paths, member_id=mid,
+                    )
+                    if ingest_result.stats:
+                        print(f"          {DIM}{ingest_result.summary()}{RESET}")
+                    else:
+                        n_with_eid = sum(1 for r in collection_records if r.e_id is not None)
+                        print(f"          {DIM}Memory bank: no data ingested "
+                              f"(persons={len(collection_result.persons)}, "
+                              f"e_id={n_with_eid}/{len(collection_records)}){RESET}")
+                except ImportError:
+                    pass
+                except Exception as exc:
+                    print(f"          {DIM}Memory bank error: {exc}{RESET}")
+
             export_report(
                 Path(args.path),
                 highlight_result=highlight_result,
@@ -470,6 +523,12 @@ def _print_exports(output_dir):
         files = sorted(clips_dir.iterdir())
         if files:
             print(f"  {DIM}clips/{RESET}  {DIM}({len(files)} files){RESET}")
+
+    bank_dir = Path(output_dir) / "momentbank"
+    if bank_dir.exists():
+        persons = sorted(bank_dir.iterdir())
+        if persons:
+            print(f"  {DIM}momentbank/{RESET}  {DIM}({len(persons)} persons){RESET}")
 
     if report_path.exists():
         print()

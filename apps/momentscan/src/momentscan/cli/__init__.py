@@ -137,6 +137,11 @@ Examples:
              "Loads signal profiles and pose/pivot definitions. "
              "Without this flag, uses built-in poses × AU-rule classification."
     )
+    debug_parser.add_argument(
+        "--member-id", type=str, metavar="ID",
+        help="Member ID for cumulative bank storage. "
+             "Default: video file stem."
+    )
 
     # process command
     proc_parser = subparsers.add_parser("process", help="Process video and extract highlight clips")
@@ -168,6 +173,11 @@ Examples:
         help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
              "Loads signal profiles and pose/pivot definitions. "
              "Without this flag, uses built-in poses × AU-rule classification."
+    )
+    proc_parser.add_argument(
+        "--member-id", type=str, metavar="ID",
+        help="Member ID for cumulative bank storage. "
+             "Default: video file stem."
     )
     proc_parser.add_argument(
         "-v", "--verbose", action="store_true",
@@ -210,19 +220,68 @@ Examples:
              "Without this flag, uses built-in poses × AU-rule classification."
     )
     collect_parser.add_argument(
+        "--member-id", type=str, metavar="ID",
+        help="Member ID for cumulative bank storage. "
+             "Default: video file stem."
+    )
+    collect_parser.add_argument(
         "-v", "--verbose", action="store_true",
         help="Enable verbose logging (show all third-party and internal messages)"
     )
 
-    # bank command
+    # bank command (with subcommands)
     bank_parser = subparsers.add_parser(
         "bank",
-        help="Show memory bank contents",
-        description="Display MemoryBank nodes, histograms, and representative images.",
+        help="Browse memory banks",
+        description="Browse and inspect memory banks stored under ~/.portrait981/momentbank/.",
     )
-    bank_parser.add_argument(
-        "path",
-        help="Path to memory_bank.json or output directory",
+    bank_sub = bank_parser.add_subparsers(dest="bank_command")
+
+    # bank list
+    bank_list_parser = bank_sub.add_parser(
+        "list",
+        help="List all members with bank summary",
+    )
+    bank_list_parser.add_argument(
+        "--sort", choices=["id", "nodes", "hits"], default="id",
+        help="Sort order (default: id)",
+    )
+
+    # bank show <member_id_or_path>
+    bank_show_parser = bank_sub.add_parser(
+        "show",
+        help="Show memory bank details for a member or path",
+    )
+    bank_show_parser.add_argument(
+        "target",
+        help="Member ID or path to memory_bank.json / output directory",
+    )
+
+    # bank get <member_id>
+    bank_get_parser = bank_sub.add_parser(
+        "get",
+        help="Get frames from bank by pose/category",
+    )
+    bank_get_parser.add_argument(
+        "member_id",
+        help="Member ID",
+    )
+    bank_get_parser.add_argument(
+        "--pose", type=str, default=None,
+        help="Filter by pose (e.g. left30, frontal)",
+    )
+    bank_get_parser.add_argument(
+        "--category", type=str, default=None,
+        help="Filter by category (e.g. warm_smile, neutral)",
+    )
+    bank_get_parser.add_argument(
+        "--top", type=int, default=1,
+        help="Number of results (default: 1)",
+    )
+    bank_get_parser.add_argument(
+        "--open", action="store_true", default=False,
+        dest="open_image",
+        help="Open the image with default viewer",
     )
 
     # catalog-build command

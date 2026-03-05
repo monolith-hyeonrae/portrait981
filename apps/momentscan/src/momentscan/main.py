@@ -38,6 +38,7 @@ class Result:
     highlights: List[Any] = field(default_factory=list)
     collection: Optional[Any] = None
     identity: Optional[Any] = None  # deprecated — use collection
+    bank: Optional[Any] = None  # IngestResult from momentbank
     frame_count: int = 0
     duration_sec: float = 0.0
     actual_backend: str = ""
@@ -54,9 +55,10 @@ class MomentscanApp(vp.App):
     fps = DEFAULT_FPS
     backend = DEFAULT_BACKEND
 
-    def __init__(self, *, analyzers=None, output_dir=None, collection_path=None):
+    def __init__(self, *, analyzers=None, output_dir=None, collection_path=None, member_id=None):
         self._output_dir = output_dir
         self._collection_path = collection_path
+        self._member_id = member_id
         self._frame_records: list = []
         self._collection_records: list = []
         self._interrupted = False
@@ -87,6 +89,7 @@ class MomentscanApp(vp.App):
     def setup(self):
         self._frame_records = []
         self._collection_records = []
+        self._ingest_result = None
         self._interrupted = False
 
         # Reset extract module state for video-level isolation
@@ -201,14 +204,25 @@ class MomentscanApp(vp.App):
 
         # Unified collection engine (replaces IdentityBuilder)
         collection_result = None
-        if self._collection_records:
+        n_coll = len(self._collection_records)
+        if n_coll > 0:
             from momentscan.algorithm.collection.engine import CollectionEngine
             coll_engine = CollectionEngine.from_collection_path(self._collection_path)
+
+            # Diagnostic: count records with embeddings
+            n_with_eid = sum(1 for r in self._collection_records if r.e_id is not None)
+            logger.info(
+                "Collection: %d records (%d with embedding)",
+                n_coll, n_with_eid,
+            )
+
             collection_result = coll_engine.collect(self._collection_records)
             logger.info(
                 "Collection analysis complete — %d persons detected",
                 len(collection_result.persons),
             )
+        else:
+            logger.info("No collection records — skipping collection analysis")
 
         if self._output_dir:
             output_path = Path(self._output_dir)
@@ -216,25 +230,54 @@ class MomentscanApp(vp.App):
 
             video_path = getattr(self, 'video', None)
 
-            # Collection exports: metadata + crops + clips
+            # Collection exports: metadata + clips
             if collection_result is not None and video_path is not None:
                 from momentscan.algorithm.collection.export import (
                     export_metadata,
-                    export_crops,
                     export_clips,
                 )
                 export_metadata(
                     collection_result, output_path,
                     highlights=highlight_result.windows,
                 )
-                export_crops(
-                    Path(video_path), collection_result,
-                    self._collection_records, output_path,
-                )
                 export_clips(
                     Path(video_path), collection_result,
                     self._collection_records, output_path,
                 )
+
+                # Bank ingest: save frames + ingest (optional)
+                try:
+                    from momentbank.ingest import (
+                        save_selected_frames,
+                        ingest_collection,
+                    )
+                    # Resolve member_id: explicit > video stem fallback
+                    mid = self._member_id
+                    if mid is None and video_path:
+                        mid = Path(video_path).stem
+                    if mid is None:
+                        mid = "unknown"
+                    frame_paths = save_selected_frames(
+                        video_path, collection_result,
+                        self._collection_records, mid,
+                    )
+                    ingest_result = ingest_collection(
+                        collection_result,
+                        self._collection_records,
+                        frame_paths=frame_paths,
+                        member_id=mid,
+                    )
+                    if ingest_result.stats:
+                        logger.info(ingest_result.summary())
+                    else:
+                        logger.info(
+                            "Memory bank: no data ingested "
+                            "(persons=%d, check e_id/quality thresholds)",
+                            len(collection_result.persons),
+                        )
+                    self._ingest_result = ingest_result
+                except ImportError:
+                    logger.debug("momentbank not installed — skipping bank ingest")
 
             # Unified report (Timeline + Collection tabs)
             if video_path is not None:
@@ -253,6 +296,7 @@ class MomentscanApp(vp.App):
             highlights=highlight_result.windows,
             collection=collection_result,
             identity=collection_result,  # backward compat
+            bank=getattr(self, "_ingest_result", None),
             frame_count=result.frame_count,
             duration_sec=result.duration_sec,
             actual_backend=result.actual_backend,
@@ -262,6 +306,7 @@ class MomentscanApp(vp.App):
     def teardown(self):
         self._frame_records = []
         self._collection_records = []
+        self._ingest_result = None
         # SIGINT 핸들러 복원
         if self._prev_sigint_handler is not None:
             signal.signal(signal.SIGINT, self._prev_sigint_handler)
@@ -280,6 +325,7 @@ def run(
     isolation: Optional[Any] = None,
     on_frame: Optional[Callable] = None,
     collection_path: Optional[Union[str, Path]] = None,
+    member_id: Optional[str] = None,
 ) -> Result:
     """Process a video and return highlight results.
 
@@ -299,6 +345,8 @@ def run(
         collection_path: Path to collection/catalog directory (e.g. catalogs/portrait-v1).
             Loads signal profiles and pose/pivot definitions.
             None = use built-in poses × AU-rule classification.
+        member_id: Unique member identifier for cumulative bank storage.
+            None = use video file stem as fallback.
 
     Returns:
         Result with highlights, collection, frame_count, duration_sec.
@@ -311,6 +359,7 @@ def run(
     app = MomentscanApp(
         analyzers=analyzers, output_dir=output_dir,
         collection_path=str(collection_path) if collection_path else None,
+        member_id=member_id,
     )
     return app.run(
         video,

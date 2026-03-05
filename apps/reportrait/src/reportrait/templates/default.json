@@ -1,0 +1,54 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder.png"
+    },
+    "_meta": {
+      "role": "reference",
+      "title": "Reference Image 1"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "placeholder2.png"
+    },
+    "_meta": {
+      "role": "reference",
+      "title": "Reference Image 2"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "a portrait photo",
+      "clip": ["5", 0]
+    },
+    "_meta": {
+      "role": "positive",
+      "title": "Positive Prompt"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "bad quality, blurry",
+      "clip": ["5", 0]
+    },
+    "_meta": {
+      "role": "negative",
+      "title": "Negative Prompt"
+    }
+  },
+  "5": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": ["6", 0],
+      "filename_prefix": "portrait"
+    },
+    "_meta": {
+      "title": "Save Output"
+    }
+  }
+}
