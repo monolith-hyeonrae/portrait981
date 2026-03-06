@@ -238,25 +238,18 @@ def annotate(self, obs) -> List[Mark]:
 
 ### BatchHighlightEngine 파이프라인
 
-```mermaid
-flowchart TD
-    IN["프레임별 14개 분석 결과<br/><i>on_frame 축적</i>"]
-    S1["<b>1. 특징 배열 구성</b><br/>FrameRecord → numpy 배열"]
-    S2["<b>2. 시간 변화량 계산</b><br/>EMA 기준선 대비 delta"]
-    S3["<b>3. 영상별 정규화</b><br/>MAD z-score → [0,1] 리스케일"]
-    S4{"<b>4. 품질 게이트</b><br/>신뢰도 · 블러 · 노출<br/>이진 필터"}
-    S5["<b>5. 스코어링</b><br/>Quality + Impact + Passenger"]
-    S6["<b>6. 시간 스무딩</b><br/>EMA(α=0.25) 노이즈 제거"]
-    S7["<b>7. 피크 탐지 + 윈도</b><br/>find_peaks → ±1초 윈도"]
-    OUT["<b>HighlightResult</b><br/>윈도별 타임스탬프 · 점수 · 베스트 프레임"]
-
-    IN --> S1 --> S2 --> S3 --> S4
-    S4 -->|PASS| S5 --> S6 --> S7 --> OUT
-    S4 -->|FAIL| X["제외"]
-
-    style S4 fill:#fff3cd,stroke:#ffc107
-    style OUT fill:#d4edda,stroke:#28a745
-    style X fill:#f8d7da,stroke:#dc3545
+```
+프레임별 14개 분석 결과 (on_frame 축적)
+    ↓
+[1] 특징 배열 구성    — FrameRecord → numpy 배열
+[2] 시간 변화량 계산  — EMA 기준선 대비 delta
+[3] 영상별 정규화     — MAD z-score → [0,1] 리스케일
+[4] 품질 게이트       — 얼굴 검출 신뢰도, 블러, 노출 등 이진 필터
+[5] 스코어링          — Quality + Impact + Passenger Bonus
+[6] 시간 스무딩       — EMA(α=0.25)로 노이즈 제거
+[7] 피크 탐지 + 윈도  — scipy.find_peaks → ±1초 윈도 + 베스트 프레임
+    ↓
+HighlightResult (윈도별 타임스탬프, 점수, 선택된 프레임)
 ```
 
 ### 핵심 알고리즘 설명
@@ -335,27 +328,18 @@ peaks = find_peaks(smooth_scores, prominence=prominence, distance=2.5sec)
 
 ### Collection Engine 파이프라인
 
-```mermaid
-flowchart TD
-    IN["CollectionRecord[]<br/><i>프레임별 ArcFace 임베딩 + 신호</i>"]
-    S1{"<b>1. 품질 게이트</b><br/>confidence · blur 필터"}
-    S2["<b>2. Medoid Prototype</b><br/>정면 프레임 중 가장 중심적인 임베딩"]
-    S3{"<b>3. 안정성 필터</b><br/>cos_sim ≥ 0.35"}
-    S4["<b>4. Pose 분류</b><br/>yaw/pitch → nearest PoseTarget"]
-    S5["<b>5. Category 분류</b><br/>카탈로그 유사도 or AU 규칙"]
-    S6["<b>6. Cell Score</b><br/>pose_fit × catalog_sim × (1+0.3×quality)"]
-    S7["<b>7. 그리드 선택</b><br/>셀별 top-k + 시간 중복 제거 (≥1.5초)"]
-    OUT["<b>PersonCollection</b><br/>pose × category 그리드"]
-
-    IN --> S1
-    S1 -->|PASS| S2 --> S3
-    S1 -->|FAIL| X1["제외"]
-    S3 -->|PASS| S4 --> S5 --> S6 --> S7 --> OUT
-    S3 -->|FAIL| X2["제외"]
-
-    style S1 fill:#fff3cd,stroke:#ffc107
-    style S3 fill:#fff3cd,stroke:#ffc107
-    style OUT fill:#d4edda,stroke:#28a745
+```
+CollectionRecord[] (프레임별 ArcFace 임베딩 + 신호)
+    ↓
+[1] 품질 게이트         — confidence, blur 필터
+[2] Medoid Prototype    — 정면 프레임 중 가장 중심적인 임베딩
+[3] 안정성 필터         — cos_sim(frame, prototype) ≥ 0.35
+[4] Pose 분류           — yaw/pitch → nearest PoseTarget
+[5] Category 분류       — 카탈로그 유사도 또는 AU 규칙 매칭
+[6] Cell Score 계산     — pose_fit × catalog_sim × (1 + 0.3×quality)
+[7] 그리드 선택         — 셀별 top-k + 시간 중복 제거 (≥1.5초 간격)
+    ↓
+PersonCollection (pose × category 그리드)
 ```
 
 ### 왜 그리드인가?
@@ -451,29 +435,17 @@ score = sigmoid(scale × (cos_pos - cos_neg))    # → [0, 1]
 
 인물당 3~8개의 **상태 노드**를 관리 (정면-중립, 측면-미소 등):
 
-```mermaid
-flowchart TD
-    IN["새 임베딩 도착"]
-    G{"<b>1. 품질 게이트</b><br/>quality ≥ 0.3?"}
-    FIND["<b>2. 최근접 노드 탐색</b><br/>cos_sim(new, nodes[])"]
-    BRANCH{"<b>3. 유사도 분기</b>"}
-    MERGE["<b>EMA 병합</b><br/>vec = 0.9×old + 0.1×new<br/><i>기존 상태 갱신</i>"]
-    NEW["<b>새 노드 생성</b><br/><i>새로운 상태 발견</i>"]
-    SKIP2["무시<br/><i>불확실 영역</i>"]
-    UPDATE["<b>4. 대표 이미지</b> top-3 갱신<br/><b>5. 히스토그램</b> yaw·expression 축적"]
-
-    IN --> G
-    G -->|"< 0.3"| SKIP1["스킵<br/><i>노이즈 방지</i>"]
-    G -->|"≥ 0.3"| FIND --> BRANCH
-    BRANCH -->|"cos ≥ 0.5"| MERGE --> UPDATE
-    BRANCH -->|"cos < 0.3"| NEW --> UPDATE
-    BRANCH -->|"0.3~0.5"| SKIP2
-
-    style G fill:#fff3cd,stroke:#ffc107
-    style MERGE fill:#d4edda,stroke:#28a745
-    style NEW fill:#cce5ff,stroke:#007bff
-    style SKIP1 fill:#f8d7da,stroke:#dc3545
-    style SKIP2 fill:#e2e3e5,stroke:#6c757d
+```
+새 임베딩 도착
+    ↓
+[1] 품질 게이트     — quality < 0.3 → 스킵 (노이즈 방지)
+[2] 최근접 노드 탐색 — cos_sim(new, nodes[]) → best_sim
+[3] 분기:
+    cos_sim ≥ 0.5 → EMA 병합: vec = 0.9×old + 0.1×new (기존 상태 갱신)
+    cos_sim < 0.3 → 새 노드 생성 (새로운 상태 발견)
+    0.3~0.5      → 무시 (불확실 영역, 관찰 더 필요)
+[4] 대표 이미지     — 노드당 top-3 (품질 기준 갱신)
+[5] 히스토그램 축적  — yaw_bin, expression_bin 카운트 누적
 ```
 
 ### 왜 멀티 노드인가?
