@@ -6,7 +6,7 @@ Consumes face.detect (required) and optional analyzers, produces ScoreResult.
 
 from typing import Optional
 
-from vpx.sdk import Module, Observation
+from vpx.sdk import Module, Observation, Capability, ModuleCapabilities
 
 from momentscan.algorithm.analyzers.frame_scoring.output import (
     ScoringConfig,
@@ -33,6 +33,18 @@ class FrameScoringAnalyzer(Module):
     @property
     def name(self) -> str:
         return "frame.scoring"
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities(
+            flags=Capability.DETERMINISTIC | Capability.THREAD_SAFE,
+        )
+
+    def initialize(self):
+        pass
+
+    def cleanup(self):
+        pass
 
     def process(self, frame, deps=None) -> Optional[Observation]:
         """Score a frame using available dependency observations.

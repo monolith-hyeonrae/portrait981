@@ -45,6 +45,8 @@ class QualityAnalyzer(Module):
         ...     print("Frame quality is acceptable")
     """
 
+    depends = []
+
     def __init__(
         self,
         blur_threshold: float = 100.0,
@@ -68,6 +70,12 @@ class QualityAnalyzer(Module):
         return ModuleCapabilities(
             flags=Capability.DETERMINISTIC | Capability.THREAD_SAFE,
         )
+
+    def initialize(self):
+        pass
+
+    def cleanup(self):
+        pass
 
     @property
     def processing_steps(self) -> List[ProcessingStep]:

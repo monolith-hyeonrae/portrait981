@@ -35,7 +35,7 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-face-parse       (BiSeNet, face segmentation)
           → vpx-face-au          (ONNX, Action Unit)
           → vpx-head-pose        (6DRepNet, 6DoF)
-          → vpx-portrait-score   (CLIP, aesthetic scoring + catalog)
+          → vpx-portrait-score   (backward-compat shim → momentscan)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
       → momentscan (분석/수집 앱)
@@ -64,7 +64,7 @@ portrait981/                    ← repo root
 │           ├── face-parse/     # BiSeNet face segmentation
 │           ├── face-au/        # ONNX Action Unit
 │           ├── head-pose/      # 6DRepNet 6DoF
-│           ├── portrait-score/ # CLIP aesthetic scoring + catalog
+│           ├── portrait-score/ # backward-compat shim (→ momentscan)
 │           ├── body-pose/      # YOLO-Pose
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
@@ -95,7 +95,7 @@ portrait981/                    ← repo root
 | vpx-face-parse | `libs/vpx/plugins/face-parse/` | 얼굴 세그멘테이션 (BiSeNet) |
 | vpx-face-au | `libs/vpx/plugins/face-au/` | Action Unit 분석 (ONNX) |
 | vpx-head-pose | `libs/vpx/plugins/head-pose/` | 6DoF 머리 포즈 (6DRepNet) |
-| vpx-portrait-score | `libs/vpx/plugins/portrait-score/` | Aesthetic scoring + 카탈로그 (CLIP) |
+| vpx-portrait-score | `libs/vpx/plugins/portrait-score/` | backward-compat shim (→ momentscan) |
 | vpx-body-pose | `libs/vpx/plugins/body-pose/` | 포즈 추정 (YOLO-Pose) |
 | vpx-hand-gesture | `libs/vpx/plugins/hand-gesture/` | 제스처 감지 (MediaPipe) |
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
