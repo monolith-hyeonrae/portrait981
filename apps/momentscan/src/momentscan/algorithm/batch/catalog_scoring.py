@@ -320,7 +320,7 @@ def load_clip_axes(catalog_path: Path) -> list:
         AxisDefinition 리스트. clip_axis 미정의 카테고리는 건너뜀.
         하나도 없으면 빈 리스트.
     """
-    from vpx.portrait_score.backends.clip_portrait import AxisDefinition
+    from momentscan.algorithm.analyzers.portrait_score.backends.clip_portrait import AxisDefinition
 
     categories_dir = catalog_path / "categories"
     if not categories_dir.is_dir():

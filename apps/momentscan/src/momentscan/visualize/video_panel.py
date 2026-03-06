@@ -58,7 +58,7 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from vpx.portrait_score.analyzer import PortraitScoreAnalyzer
+        from momentscan.algorithm.analyzers.portrait_score.analyzer import PortraitScoreAnalyzer
         modules["portrait.score"] = PortraitScoreAnalyzer()
     except ImportError:
         pass

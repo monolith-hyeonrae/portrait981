@@ -1,15 +1,10 @@
-from vpx.portrait_score.backends.clip_portrait import (
+"""Backward-compat shim — portrait.score has moved to momentscan."""
+
+from momentscan.algorithm.analyzers.portrait_score.backends import *  # noqa: F401, F403
+from momentscan.algorithm.analyzers.portrait_score.backends import (  # noqa: F401
     CLIPPortraitScorer,
     PromptBreakdown,
     AxisDefinition,
     AxisScore,
     CompositeDefinition,
 )
-
-__all__ = [
-    "CLIPPortraitScorer",
-    "PromptBreakdown",
-    "AxisDefinition",
-    "AxisScore",
-    "CompositeDefinition",
-]

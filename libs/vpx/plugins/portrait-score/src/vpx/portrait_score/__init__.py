@@ -1,5 +1,9 @@
-from vpx.portrait_score.analyzer import PortraitScoreAnalyzer
-from vpx.portrait_score.types import PortraitScoreOutput
+"""Backward-compat shim — portrait.score has moved to momentscan."""
+
+from momentscan.algorithm.analyzers.portrait_score import (  # noqa: F401
+    PortraitScoreAnalyzer,
+    PortraitScoreOutput,
+)
 
 __all__ = [
     "PortraitScoreAnalyzer",

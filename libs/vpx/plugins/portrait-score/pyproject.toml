@@ -1,9 +1,10 @@
 [project]
 name = "vpx-portrait-score"
 version = "0.3.0"
-description = "Portrait score analyzer — CLIP-based portrait quality scoring"
+description = "Backward-compat shim — portrait.score has moved to momentscan"
 requires-python = ">=3.10"
 dependencies = [
+    "momentscan",
     "vpx-sdk",
     "vpx-face-detect",
     "opencv-python",
@@ -20,8 +21,7 @@ caption = [
     "transformers>=4.30,<5",
 ]
 
-[project.entry-points."visualpath.modules"]
-"portrait.score" = "vpx.portrait_score:PortraitScoreAnalyzer"
+# Entry point removed — momentscan now registers portrait.score directly
 
 [build-system]
 requires = ["hatchling"]
@@ -33,3 +33,4 @@ packages = ["src/vpx"]
 [tool.uv.sources]
 vpx-sdk = { workspace = true }
 vpx-face-detect = { workspace = true }
+momentscan = { workspace = true }
