@@ -7,6 +7,7 @@ dependencies = [
     "visualbase",
     "visualpath[isolation]",
     "vpx-sdk",
+    "momentscan-report",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
     "scipy>=1.10.0",
@@ -81,3 +82,4 @@ vpx-body-pose = { workspace = true }
 vpx-hand-gesture = { workspace = true }
 vpx-portrait-score = { workspace = true }
 vpx-face-parse = { workspace = true }
+momentscan-report = { workspace = true }

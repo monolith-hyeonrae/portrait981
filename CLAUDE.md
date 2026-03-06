@@ -70,7 +70,8 @@ portrait981/                    ← repo root
 ├── apps/
 │   ├── momentscan/             # 얼굴/장면 분석 + 수집
 │   ├── momentbank/             # Identity memory bank + 프레임 저장
-│   └── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
+│   ├── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
+│   └── momentscan-report/      # HTML 리포트 생성 (Plotly)
 ├── docs/
 │   ├── ROADMAP.md
 │   └── planning/
@@ -103,6 +104,7 @@ portrait981/                    ← repo root
 | momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 |
 | momentbank | `apps/momentbank/` | Identity memory bank + 프레임 저장 |
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
+| momentscan-report | `apps/momentscan-report/` | HTML 리포트 생성 (Plotly) |
 
 ## Namespace Package 패턴
 

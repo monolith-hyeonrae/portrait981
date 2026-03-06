@@ -18,6 +18,7 @@ resolution-markers = [
 members = [
     "momentbank",
     "momentscan",
+    "momentscan-report",
     "reportrait",
     "visualbase",
     "visualpath",
@@ -2476,6 +2477,7 @@ name = "momentscan"
 version = "0.1.0"
 source = { editable = "apps/momentscan" }
 dependencies = [
+    { name = "momentscan-report" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "opencv-python" },
@@ -2531,6 +2533,7 @@ viz = [
 requires-dist = [
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.5" },
     { name = "momentscan", extras = ["face-detect", "face-expression", "body-pose", "hand-gesture", "portrait-score", "face-parse"], marker = "extra == 'local'", editable = "apps/momentscan" },
+    { name = "momentscan-report", editable = "apps/momentscan-report" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
     { name = "pandas", specifier = ">=2.0.0" },
@@ -2552,6 +2555,33 @@ requires-dist = [
     { name = "vpx-sdk", editable = "libs/vpx/sdk" },
 ]
 provides-extras = ["viz", "face-detect", "face-expression", "body-pose", "hand-gesture", "portrait-score", "face-parse", "local", "dev"]
+
+[[package]]
+name = "momentscan-report"
+version = "0.1.0"
+source = { editable = "apps/momentscan-report" }
+dependencies = [
+    { name = "momentscan" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python" },
+    { name = "visualbase" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "momentscan", editable = "apps/momentscan" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "opencv-python", specifier = ">=4.8.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "visualbase", editable = "libs/visualbase" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "mpmath"

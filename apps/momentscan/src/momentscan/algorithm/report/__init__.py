@@ -1,8 +1,5 @@
-"""Unified report generation.
+"""Unified report generation — delegated to momentscan-report package."""
 
-Combines Timeline (highlight) and Collection tabs into a single report.html.
-"""
-
-from momentscan.algorithm.report.export_unified import export_report
+from momentscan_report import export_report
 
 __all__ = ["export_report"]

@@ -183,13 +183,11 @@ def run_debug(args):
     )
 
     # --- Reset extract state + collection/catalog loading ---
-    from momentscan.main import Result
     from momentscan.algorithm.batch.extract import (
         extract_frame_record,
         reset_extract_state,
         set_catalog_profiles,
     )
-    from momentscan.algorithm.batch.highlight import BatchHighlightEngine
     from momentscan.algorithm.collection.extract import (
         extract_collection_record,
         reset_extract_state as reset_collection_extract_state,
@@ -261,98 +259,123 @@ def run_debug(args):
         finally:
             vb.disconnect()
 
-        # --- Batch highlight analysis ---
-        fps = int(args.fps)
-        duration_sec = frame_count / fps if frame_count > 0 else 0.0
-
-        print()
-        print(f"{BOLD}{'Batch':<10}{RESET}{DIM}Analyzing {len(frame_records)} frame records ({duration_sec:.1f}s){RESET}")
-
-        # 진단: 샘플 레코드 값 출력
-        if frame_records:
-            sample = frame_records[len(frame_records) // 2]  # 중간 프레임
-            face_pct = sum(1 for r in frame_records if r.face_detected) / len(frame_records) * 100
-            print(f"          {DIM}face_detected: {face_pct:.0f}% of frames{RESET}")
-            print(f"          {DIM}sample[{sample.frame_idx}]: conf={sample.face_confidence:.2f} area={sample.face_area_ratio:.3f} "
-                  f"blur={sample.blur_score:.0f} bright={sample.brightness:.0f} "
-                  f"yaw={sample.head_yaw:.1f} smile={sample.smile_intensity:.2f}{RESET}")
-
-        batch_engine = BatchHighlightEngine()
-        highlight_result = batch_engine.analyze(frame_records)
-
-        n_highlights = len(highlight_result.windows)
-        print(f"          {DIM}{n_highlights} highlights detected{RESET}")
-
-        if highlight_result.windows:
-            print()
-            print(f"{BOLD}{'Highlights':<10}{RESET}")
-            for w in highlight_result.windows:
-                reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
-                n_frames = len(w.selected_frames)
-                print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
-
-        # --- Collection analysis ---
-        collection_result = _run_collection_analysis(collection_records, _collection_path)
-
-        # Export batch results (always — timeseries.csv is useful even without highlights)
-        from pathlib import Path
-        from momentscan.algorithm.batch.export_frames import export_highlight_frames
-        from momentscan.algorithm.report import export_report
-
-        output_dir = getattr(args, 'output_dir', None)
-        if output_dir is not None:
-            out = Path(output_dir)
-        else:
-            from momentscan.paths import get_output_dir
-            out = get_output_dir(args.path)
-        out.mkdir(parents=True, exist_ok=True)
-        highlight_result.export(out)
-        if highlight_result.windows:
-            export_highlight_frames(Path(args.path), highlight_result, out)
-        if collection_result is not None:
-            from momentscan.algorithm.collection.export import (
-                export_metadata,
-                export_clips,
-            )
-            export_metadata(collection_result, out)
-            export_clips(Path(args.path), collection_result, collection_records, out)
-
-            # Bank ingest: save frames + ingest
-            try:
-                from momentbank.ingest import (
-                    save_selected_frames,
-                    ingest_collection,
-                )
-                mid = _member_id or Path(args.path).stem
-                frame_paths = save_selected_frames(
-                    args.path, collection_result,
-                    collection_records, mid,
-                )
-                ingest_result = ingest_collection(
-                    collection_result, collection_records,
-                    frame_paths=frame_paths, member_id=mid,
-                )
-                if ingest_result.stats:
-                    print(f"          {DIM}{ingest_result.summary()}{RESET}")
-                else:
-                    n_with_eid = sum(1 for r in collection_records if r.e_id is not None)
-                    print(f"          {DIM}Memory bank: no data ingested "
-                          f"(persons={len(collection_result.persons)}, "
-                          f"e_id={n_with_eid}/{len(collection_records)}){RESET}")
-            except ImportError:
-                pass
-            except Exception as exc:
-                print(f"          {DIM}Memory bank error: {exc}{RESET}")
-
-        export_report(
-            Path(args.path),
-            highlight_result=highlight_result,
-            collection_result=collection_result,
-            collection_records=collection_records,
-            output_dir=out,
+        # --- Batch analysis + collection + export ---
+        _run_batch_and_export(
+            args, frame_records, collection_records,
+            frame_count, _member_id, _collection_path, handler,
         )
-        _print_exports(out)
+    except KeyboardInterrupt:
+        print(f"\n{DIM}Interrupted — running batch analysis on {len(frame_records)} frames...{RESET}")
+        if len(frame_records) >= 3:
+            _run_batch_and_export(
+                args, frame_records, collection_records,
+                frame_count, _member_id, _collection_path, handler=None,
+            )
+        else:
+            print(f"{DIM}Too few frames for batch analysis{RESET}")
+    finally:
+        executor.cleanup()
+        handler.cleanup()
+        cleanup_observability(hub, file_sink)
 
+
+def _run_batch_and_export(args, frame_records, collection_records,
+                          frame_count, member_id, collection_path,
+                          handler=None):
+    """Run batch highlight + collection analysis, then export all results."""
+    from pathlib import Path
+    from momentscan.main import Result
+    from momentscan.algorithm.batch.highlight import BatchHighlightEngine
+    from momentscan.algorithm.batch.export_frames import export_highlight_frames
+    from momentscan.algorithm.report import export_report
+
+    fps = int(args.fps)
+    duration_sec = frame_count / fps if frame_count > 0 else 0.0
+
+    print()
+    print(f"{BOLD}{'Batch':<10}{RESET}{DIM}Analyzing {len(frame_records)} frame records ({duration_sec:.1f}s){RESET}")
+
+    if frame_records:
+        sample = frame_records[len(frame_records) // 2]
+        face_pct = sum(1 for r in frame_records if r.face_detected) / len(frame_records) * 100
+        print(f"          {DIM}face_detected: {face_pct:.0f}% of frames{RESET}")
+        print(f"          {DIM}sample[{sample.frame_idx}]: conf={sample.face_confidence:.2f} area={sample.face_area_ratio:.3f} "
+              f"blur={sample.blur_score:.0f} bright={sample.brightness:.0f} "
+              f"yaw={sample.head_yaw:.1f} smile={sample.smile_intensity:.2f}{RESET}")
+
+    batch_engine = BatchHighlightEngine()
+    highlight_result = batch_engine.analyze(frame_records)
+
+    n_highlights = len(highlight_result.windows)
+    print(f"          {DIM}{n_highlights} highlights detected{RESET}")
+
+    if highlight_result.windows:
+        print()
+        print(f"{BOLD}{'Highlights':<10}{RESET}")
+        for w in highlight_result.windows:
+            reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
+            n_frames = len(w.selected_frames)
+            print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
+
+    # Collection analysis
+    collection_result = _run_collection_analysis(collection_records, collection_path)
+
+    # Export
+    output_dir = getattr(args, 'output_dir', None)
+    if output_dir is not None:
+        out = Path(output_dir)
+    else:
+        from momentscan.paths import get_output_dir
+        out = get_output_dir(args.path)
+    out.mkdir(parents=True, exist_ok=True)
+    highlight_result.export(out)
+    if highlight_result.windows:
+        export_highlight_frames(Path(args.path), highlight_result, out)
+    if collection_result is not None:
+        from momentscan.algorithm.collection.export import (
+            export_metadata,
+            export_clips,
+        )
+        export_metadata(collection_result, out)
+        export_clips(Path(args.path), collection_result, collection_records, out)
+
+        # Bank ingest
+        try:
+            from momentbank.ingest import (
+                save_selected_frames,
+                ingest_collection,
+            )
+            mid = member_id or Path(args.path).stem
+            frame_paths = save_selected_frames(
+                args.path, collection_result,
+                collection_records, mid,
+            )
+            ingest_result = ingest_collection(
+                collection_result, collection_records,
+                frame_paths=frame_paths, member_id=mid,
+            )
+            if ingest_result.stats:
+                print(f"          {DIM}{ingest_result.summary()}{RESET}")
+            else:
+                n_with_eid = sum(1 for r in collection_records if r.e_id is not None)
+                print(f"          {DIM}Memory bank: no data ingested "
+                      f"(persons={len(collection_result.persons)}, "
+                      f"e_id={n_with_eid}/{len(collection_records)}){RESET}")
+        except ImportError:
+            pass
+        except Exception as exc:
+            print(f"          {DIM}Memory bank error: {exc}{RESET}")
+
+    export_report(
+        Path(args.path),
+        highlight_result=highlight_result,
+        collection_result=collection_result,
+        collection_records=collection_records,
+        output_dir=out,
+    )
+    _print_exports(out)
+
+    if handler is not None:
         result = Result(
             highlights=highlight_result.windows,
             collection=collection_result,
@@ -361,94 +384,6 @@ def run_debug(args):
             duration_sec=duration_sec,
         )
         handler.print_summary(result)
-    except KeyboardInterrupt:
-        # Graceful: 중단되어도 축적된 프레임으로 배치 분석 실행
-        fps = int(args.fps)
-        duration_sec = frame_count / fps if frame_count > 0 else 0.0
-
-        print(f"\n{DIM}Interrupted — running batch analysis on {len(frame_records)} frames...{RESET}")
-
-        if len(frame_records) >= 3:
-            batch_engine = BatchHighlightEngine()
-            highlight_result = batch_engine.analyze(frame_records)
-            n_highlights = len(highlight_result.windows)
-            print(f"{DIM}{n_highlights} highlights detected{RESET}")
-
-            if highlight_result.windows:
-                print()
-                print(f"{BOLD}{'Highlights':<10}{RESET}")
-                for w in highlight_result.windows:
-                    reason_str = ", ".join(f"{k}={v:.1f}" for k, v in w.reason.items()) if w.reason else ""
-                    n_frames = len(w.selected_frames)
-                    print(f"  #{w.window_id}  {DIM}{w.start_ms/1000:.1f}s-{w.end_ms/1000:.1f}s · score={w.score:.2f} · {n_frames} frames · {ITALIC}{reason_str}{RESET}")
-
-            # Collection analysis
-            collection_result = _run_collection_analysis(collection_records, _collection_path)
-
-            # Export batch results (always)
-            from pathlib import Path
-            from momentscan.algorithm.batch.export_frames import export_highlight_frames
-            from momentscan.algorithm.report import export_report
-
-            output_dir = getattr(args, 'output_dir', None)
-            if output_dir is not None:
-                out = Path(output_dir)
-            else:
-                from momentscan.paths import get_output_dir
-                out = get_output_dir(args.path)
-            out.mkdir(parents=True, exist_ok=True)
-            highlight_result.export(out)
-            if highlight_result.windows:
-                export_highlight_frames(Path(args.path), highlight_result, out)
-            if collection_result is not None:
-                from momentscan.algorithm.collection.export import (
-                    export_metadata,
-                    export_clips,
-                )
-                export_metadata(collection_result, out)
-                export_clips(Path(args.path), collection_result, collection_records, out)
-
-                # Bank ingest: save frames + ingest
-                try:
-                    from momentbank.ingest import (
-                        save_selected_frames,
-                        ingest_collection,
-                    )
-                    mid = _member_id or Path(args.path).stem
-                    frame_paths = save_selected_frames(
-                        args.path, collection_result,
-                        collection_records, mid,
-                    )
-                    ingest_result = ingest_collection(
-                        collection_result, collection_records,
-                        frame_paths=frame_paths, member_id=mid,
-                    )
-                    if ingest_result.stats:
-                        print(f"          {DIM}{ingest_result.summary()}{RESET}")
-                    else:
-                        n_with_eid = sum(1 for r in collection_records if r.e_id is not None)
-                        print(f"          {DIM}Memory bank: no data ingested "
-                              f"(persons={len(collection_result.persons)}, "
-                              f"e_id={n_with_eid}/{len(collection_records)}){RESET}")
-                except ImportError:
-                    pass
-                except Exception as exc:
-                    print(f"          {DIM}Memory bank error: {exc}{RESET}")
-
-            export_report(
-                Path(args.path),
-                highlight_result=highlight_result,
-                collection_result=collection_result,
-                collection_records=collection_records,
-                output_dir=out,
-            )
-            _print_exports(out)
-        else:
-            print(f"{DIM}Too few frames for batch analysis{RESET}")
-    finally:
-        executor.cleanup()
-        handler.cleanup()
-        cleanup_observability(hub, file_sink)
 
 
 def _run_collection_analysis(collection_records, collection_path=None):
