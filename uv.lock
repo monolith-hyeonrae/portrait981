@@ -19,6 +19,7 @@ members = [
     "momentbank",
     "momentscan",
     "momentscan-report",
+    "portrait981",
     "reportrait",
     "visualbase",
     "visualpath",
@@ -3699,6 +3700,32 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/8d/ee2e4b7de948090cfb3df37d401c521233daf97bfc54ddec5d61d1d31618/polars_runtime_32-1.38.1-cp310-abi3-win_amd64.whl", hash = "sha256:08c2b3b93509c1141ac97891294ff5c5b0c548a373f583eaaea873a4bf506437", size = 45680732, upload-time = "2026-02-06T18:12:19.097Z" },
     { url = "https://files.pythonhosted.org/packages/bf/18/72c216f4ab0c82b907009668f79183ae029116ff0dd245d56ef58aac48e7/polars_runtime_32-1.38.1-cp310-abi3-win_arm64.whl", hash = "sha256:6d07d0cc832bfe4fb54b6e04218c2c27afcfa6b9498f9f6bbf262a00d58cc7c4", size = 41639413, upload-time = "2026-02-06T18:12:22.044Z" },
 ]
+
+[[package]]
+name = "portrait981"
+version = "0.1.0"
+source = { editable = "apps/portrait981" }
+dependencies = [
+    { name = "momentbank" },
+    { name = "momentscan" },
+    { name = "reportrait" },
+    { name = "rich" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "momentbank", editable = "apps/momentbank" },
+    { name = "momentscan", editable = "apps/momentscan" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+    { name = "reportrait", editable = "apps/reportrait" },
+    { name = "rich", specifier = ">=13.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "prettytable"

@@ -54,6 +54,24 @@
 
 ---
 
+## ~~Phase 2 Embedding Experiment~~ ✓ 실험 완료 → 불필요
+
+DINOv2/SigLIP temporal delta를 시도했으나 ~2분 라이드 비디오에서 수치 feature 대비 이점 불충분.
+CLIP portrait scoring + 카탈로그 유사도로 도메인 특화 접근 채택.
+`vpx-vision-embed` → `vpx-portrait-score` → momentscan 내부 `portrait.score`로 정착.
+
+---
+
+## ~~코드베이스 리팩토링~~ ✓ 완료 (2026-03-09)
+
+- momentscan-report 패키지 분리 (3,052줄)
+- vpx-portrait-score → momentscan 내부 마이그레이션 (1,232줄)
+- 내부 analyzer Module 포맷 정규화 (depends, capabilities, lifecycle, annotate)
+- Protocol 기반 데이터 계약 (FIELD_SOURCES 57필드, CONSUMER_DEPS, 4 Protocol)
+
+---
+
 ## 메모
 
-- planning docs(momentscan.md, identity_builder.md, highlight_vector.md)에 `shot.quality` 참조 잔존 — 히스토리 기록으로 유지
+- planning docs(identity_builder.md, highlight_vector.md)에 `shot.quality`, `vpx-vision-embed` 참조 잔존 — 히스토리 기록으로 유지
+- vpx-portrait-score backward-compat shim 유지 중 — 외부 참조 확인 후 제거 예정

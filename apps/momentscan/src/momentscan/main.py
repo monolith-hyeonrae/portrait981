@@ -84,6 +84,18 @@ class MomentscanApp(vp.App):
             if hasattr(module, "_models_dir"):
                 module._models_dir = models_dir
 
+        # Inject catalog CLIP axes into portrait.score analyzer
+        # (must happen after modules are resolved, not in setup())
+        if self._collection_path and self._clip_axes:
+            for module in resolved:
+                if getattr(module, "name", "") == "portrait.score":
+                    module._clip_axes = self._clip_axes
+                    logger.info(
+                        "Injected %d catalog CLIP axes into portrait.score",
+                        len(self._clip_axes),
+                    )
+                    break
+
         return resolved
 
     def setup(self):
@@ -91,6 +103,7 @@ class MomentscanApp(vp.App):
         self._collection_records = []
         self._ingest_result = None
         self._interrupted = False
+        self._clip_axes = None
 
         # Reset extract module state for video-level isolation
         from momentscan.algorithm.batch.extract import reset_extract_state
@@ -115,17 +128,8 @@ class MomentscanApp(vp.App):
             set_collection_catalog_profiles(profiles)
             logger.info("Loaded %d signal-profile catalog categories", len(profiles))
 
-            # Inject catalog CLIP axes into portrait.score analyzer
-            clip_axes = load_clip_axes(catalog_path)
-            if clip_axes:
-                for module in self._modules:
-                    if getattr(module, "name", "") == "portrait.score":
-                        module._clip_axes = clip_axes
-                        logger.info(
-                            "Injected %d catalog CLIP axes into portrait.score",
-                            len(clip_axes),
-                        )
-                        break
+            # Store CLIP axes for injection in configure_modules()
+            self._clip_axes = load_clip_axes(catalog_path)
 
         # SIGINT를 잡아서 graceful shutdown → after_run() 보장
         self._prev_sigint_handler = signal.getsignal(signal.SIGINT)

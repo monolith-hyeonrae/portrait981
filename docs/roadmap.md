@@ -1,7 +1,7 @@
 # Portrait981 개발 로드맵
 
-> 최종 수정: 2026-02-11
-> 현재 상태: **Phase 17 완료** (vpx new 스캐폴딩)
+> 최종 수정: 2026-03-09
+> 현재 상태: **Phase 21 완료** (코드베이스 리팩토링 + 데이터 계약)
 
 ---
 
@@ -39,21 +39,26 @@
 | 패키지 | 성격 | CLI | 역할 | 상태 |
 |--------|------|-----|------|------|
 | `visualbase` | 범용 라이브러리 | `visualbase` | 미디어 I/O | ✅ 완료 (151 tests) |
-| `visualpath` | 범용 프레임워크 | - | FlowGraph, Backend, Isolation | ✅ 완료 (314 tests) |
+| `visualpath` | 범용 프레임워크 | - | FlowGraph, Backend, Interpreter | ✅ 완료 (411 tests) |
 | `visualpath-isolation` | 범용 프레임워크 | - | Worker 프로세스 격리 | ✅ 완료 (136 tests) |
 | `visualpath-pathway` | 범용 프레임워크 | - | Pathway 스트리밍 백엔드 | ✅ 완료 (80 tests) |
 | `visualpath-cli` | 범용 프레임워크 | `visualpath` | YAML 기반 파이프라인 CLI | ✅ 완료 (45 tests) |
-| `vpx-sdk` | 범용 라이브러리 | - | 모듈 SDK, PluginTestHarness | ✅ 완료 (43 tests) |
-| `vpx-runner` | 범용 도구 | `vpx` | Analyzer 러너 CLI + 스캐폴딩 | ✅ 완료 (55 tests) |
+| `vpx-sdk` | 범용 라이브러리 | - | 모듈 SDK, PluginTestHarness | ✅ 완료 (66 tests) |
+| `vpx-runner` | 범용 도구 | `vpx` | Analyzer 러너 CLI + 스캐폴딩 | ✅ 완료 (64 tests) |
 | `vpx-viz` | 범용 도구 | - | 시각화 오버레이 | ✅ 완료 |
 | `vpx-face-detect` | 범용 플러그인 | - | InsightFace SCRFD | ✅ 완료 |
 | `vpx-face-expression` | 범용 플러그인 | - | HSEmotion | ✅ 완료 |
+| `vpx-face-parse` | 범용 플러그인 | - | BiSeNet face segmentation | ✅ 완료 |
+| `vpx-face-au` | 범용 플러그인 | - | ONNX Action Unit | ✅ 완료 |
+| `vpx-head-pose` | 범용 플러그인 | - | 6DRepNet 6DoF | ✅ 완료 |
+| `vpx-portrait-score` | backward-compat shim | - | → momentscan 내부로 이전 | ✅ shim 유지 |
 | `vpx-body-pose` | 범용 플러그인 | - | YOLO-Pose | ✅ 완료 |
 | `vpx-hand-gesture` | 범용 플러그인 | - | MediaPipe Hands | ✅ 완료 |
-| `momentscan` | 981파크 앱 | `momentscan` | 얼굴/장면 분석, 하이라이트 | ✅ 완료 (327 tests) |
-| `momentbank` | 981파크 앱 | `vault` | member_id별 저장/검색 | ⬜ 예정 |
-| `reportrait` | 981파크 앱 | `reportrait` | I2I/I2V AI 재해석 | ⬜ 예정 |
-| `portrait981` | 981파크 앱 | `p981` | 전체 파이프라인 통합 | ⬜ 예정 |
+| `momentscan` | 981파크 앱 | `momentscan` | 얼굴/장면 분석, 하이라이트, 수집 | ✅ 완료 (584 tests) |
+| `momentscan-report` | 981파크 앱 | - | HTML 리포트 생성 (Plotly) | ✅ 완료 (12 tests) |
+| `momentbank` | 981파크 앱 | - | member_id별 저장/검색 | ✅ 완료 (61 tests) |
+| `reportrait` | 981파크 앱 | `reportrait` | I2I/I2V AI 변환 (ComfyUI) | ✅ 완료 (41 tests) |
+| `portrait981` | 981파크 앱 | `p981` | 전체 파이프라인 통합 | ✅ 완료 (47 tests) |
 
 ### 디렉토리 구조
 
@@ -73,10 +78,18 @@ portrait981/                        ← repo root (uv workspace)
 │       └── plugins/                # Analyzer 플러그인
 │           ├── face-detect/        # InsightFace SCRFD
 │           ├── face-expression/    # HSEmotion
+│           ├── face-parse/         # BiSeNet face segmentation
+│           ├── face-au/            # ONNX Action Unit
+│           ├── head-pose/          # 6DRepNet 6DoF
+│           ├── portrait-score/     # backward-compat shim (→ momentscan)
 │           ├── body-pose/          # YOLO-Pose
 │           └── hand-gesture/       # MediaPipe Hands
 ├── apps/
-│   └── momentscan/                 # 얼굴/장면 분석 앱
+│   ├── momentscan/                 # 얼굴/장면 분석 + 수집 앱
+│   ├── momentscan-report/          # HTML 리포트 생성 (Plotly)
+│   ├── momentbank/                 # Identity memory bank + 프레임 저장
+│   ├── reportrait/                 # AI 초상화 생성 (ComfyUI)
+│   └── portrait981/                # 통합 오케스트레이터 (E2E 파이프라인)
 ├── docs/
 │   ├── index.md                    # 문서 인덱스
 │   ├── architecture.md             # 아키텍처
@@ -174,13 +187,155 @@ Module boundary 설계 및 vpx 인프라 패키지 추가.
 | 17.2 | `cli.py` — `new` 서브커맨드 파서 및 핸들러 |
 | 17.3 | `test_scaffold.py` — 31 tests (dry-run, 파일 생성, workspace 등록, harness 검증) |
 
-### Phase 9a-9c: 981파크 완성 ⬜ 예정
+### Phase 18: 981파크 앱 파이프라인 구현 ✅ 완료 (2026-02-12 ~ 03-01)
+
+Batch Highlight 위에 Identity Collection + momentbank + reportrait 전체 파이프라인 완성.
+
+| 단계 | 패키지 | 내용 | 커밋 |
+|------|--------|------|------|
+| 18.1 | momentscan | ArcFace/DINOv2 임베딩 하이라이트 통합 | `884c4bf` |
+| 18.2 | momentscan, momentbank | vpx-vision-embed + momentbank 앱 | `e0f5784` |
+| 18.3 | momentscan | Phase 3 identity builder + 듀얼 임베딩 파이프라인 | `8c37341` |
+| 18.4 | momentscan | Pivot 기반 identity 수집 시스템 | `031634c` |
+| 18.5 | vpx | vpx-face-au (LibreFace AU) + vpx-head-pose (6DRepNet) | `d9be948` |
+| 18.6 | momentscan | face.gate + face.quality seg 개선 + 디버그 오버레이 | `e973ba6` |
+| 18.7 | momentscan | face.baseline (Welford online stats) + gate scoring 개선 | `70aa55b` |
+| 18.8 | momentscan | passenger suitability score + 리포트 업데이트 | `3036c45` |
+| 18.9 | momentscan | Reference-Guided Collection + 카탈로그 기반 Impact Score | `f9e6e5f` |
+| 18.10 | reportrait | CLI + momentbank ingest + distributed 병렬 수정 | `960abed` |
+
+**Phase 2 (Embedding Experiment) 결과**: DINOv2/SigLIP temporal delta를 시도했으나,
+~2분 라이드 비디오 특성에서 범용 임베딩의 temporal delta는 수치 feature 대비 이점이 불충분.
+대신 **CLIP 4축 portrait scoring** (disney_smile, charisma, wild_roar, playful_cute)과
+**카탈로그 기반 유사도**로 도메인 특화 접근을 채택하여 더 나은 결과를 얻음.
+→ Phase 2는 실험 완료, 별도 진행 불필요.
+
+**Phase 3 (Identity Collection) 진화**: 초기 버킷 기반(yaw×pitch×expression) 설계에서
+**Pose×Category 그리드 + 카탈로그 유사도 기반 수집**으로 발전.
+portrait.score(CLIP)가 momentscan 내부 모듈로 정착.
+
+### Phase 19: vpx-face-parse + quality gate 고도화 ✅ 완료 (2026-02-23 ~ 03-01)
+
+BiSeNet 세그멘테이션 기반 quality gate 5단계 체인 완성.
+
+| 단계 | 내용 |
+|------|------|
+| 19.1 | vpx-face-parse (BiSeNet) 플러그인 |
+| 19.2 | face.gate — 5단계 gate chain (confidence → blur → parsing → exposure → seg) |
+| 19.3 | face.quality — head crop blur/exposure + BiSeNet seg ratios (face/eye/mouth/hair) |
+| 19.4 | 3-level exposure fallback: contrast(mask) → brightness(absolute) → frame-level |
+| 19.5 | vision-embed → portrait-score 분리 + head_aesthetic scoring 제거 |
+
+### Phase 20: momentscan → reportrait E2E CLI ✅ 완료 (2026-03-01 ~ 03-05)
+
+3-app 파이프라인 CLI 연동 및 distributed 모드 안정화.
+
+| 단계 | 내용 |
+|------|------|
+| 20.1 | reportrait CLI (`reportrait generate`) — lookup_frames 연동, `--ref`/`--dry-run` |
+| 20.2 | reportrait ComfyClient — urllib REST, Bearer 토큰, URL 스킴 자동 보정 |
+| 20.3 | reportrait workflow injection — `_meta.role` 기반 LoadImage/prompt 자동 주입 |
+| 20.4 | momentbank ingest — debug CLI에서 자동 bank 저장 |
+| 20.5 | distributed 모드 — parallel 기본 활성화, ZMQ tuple 직렬화 버그 수정 |
+
+### Phase 21: 코드베이스 리팩토링 + 데이터 계약 ✅ 완료 (2026-03-08 ~ 03-09)
+
+아키텍처 경계 정리 및 모듈 표준화.
+
+| 단계 | 내용 | 커밋 |
+|------|------|------|
+| 21.1 | momentscan-report 패키지 분리 (3,052줄 → 독립 패키지, 12 tests) | `916d759` |
+| 21.2 | debug.py 중복 제거 (`_run_batch_and_export` 추출, 66줄 감소) | `916d759` |
+| 21.3 | vpx-portrait-score → momentscan 내부 마이그레이션 (1,232줄) | `8d059d3` |
+| 21.4 | 내부 analyzer Module 포맷 정규화 (depends, capabilities, lifecycle) | `7647d45` |
+| 21.5 | Protocol 기반 데이터 계약 (contracts.py: FIELD_SOURCES 57필드, CONSUMER_DEPS) | `0933caf` |
+| 21.6 | annotate() 메서드 추가 (quality, frame_scoring, face_baseline) + 검증 함수 | `060a4d3` |
+
+### Phase 22: portrait981 통합 오케스트레이터 ✅ 완료 (2026-03-09)
+
+scan → bank → generate E2E 파이프라인 통합 및 CLI.
+
+| 단계 | 내용 |
+|------|------|
+| 22.1 | `Portrait981Pipeline` — JobSpec → scan → lookup → generate → JobResult |
+| 22.2 | 2-Phase 배치 실행 — scan 순차(GPU+SIGINT) + generate 병렬(I/O) |
+| 22.3 | StepEvent 콜백 — 프레임 단위 실시간 진행 추적 |
+| 22.4 | Rich 라이브 테이블 — 배치 진행 현황 (스피너 + FPS + 프레임 카운터) |
+| 22.5 | PARTIAL 상태 — scan 성공 + generate 실패 시 생성만 재시도 가능 |
+| 22.6 | CLI (`p981`) — run, batch, scan, generate, status 서브커맨드 |
+| 22.7 | Ctrl+C 배치 중단 — `interrupt()` → 현재 스캔 완료 후 나머지 스킵 |
+
+### Phase 23: 서비스 인프라 연동 ⬜ 예정
+
+사내 인프라와의 연동 레이어 구축.
 
 | 단계 | 패키지 | 내용 | 상태 |
 |------|--------|------|------|
-| 9a | momentbank | member_id 기반 asset 저장 | ⬜ 예정 |
-| 9b | reportrait | I2I/I2V AI 변환 | ⬜ 예정 |
-| 9c | portrait981 | 전체 파이프라인 통합 | ⬜ 예정 |
+| 23.1 | visualbase | S3 미디어 소스 — fetch + 로컬 캐시, optional extra (`visualbase[s3]`) | ⬜ |
+| 23.2 | portrait981-worker | 서빙 레이어 — Kafka consumer / HTTP API | ⬜ Kafka 스펙 확인 후 |
+| 23.3 | portrait981-worker | 결과 S3 업로드 + 경로 응답 | ⬜ |
+| 23.4 | - | 메시지 포맷 확정 (상위 서비스 미팅 후) | ⬜ |
+
+```
+상위 서비스 (다른 팀)
+    │  Kafka 메시지 or HTTP 요청
+    ▼
+portrait981-worker (서빙 레이어)
+    │  요청 수신 → visualbase(S3 fetch) → p981 pipeline → 결과 S3 업로드
+    ▼
+응답 (S3 경로 반환)
+```
+
+**아키텍처 원칙 확립**:
+- vpx = "what do you see?" (범용, 도메인 비종속)
+- momentscan = "what does it mean for 981park?" (해석, 도메인 특화)
+- portrait.score (CLIP scoring)는 981파크 도메인 특화 → momentscan 내부가 적합
+
+---
+
+## 981파크 앱 현황 요약
+
+### momentscan (분석/수집)
+
+**3-Phase 진화 완료**:
+
+| Phase | 설명 | 상태 | 비고 |
+|-------|------|------|------|
+| Phase 1 | Batch Highlight (MAD z-score + peak detection) | ✅ 완료 | 9채널 scoring, HTML report |
+| Phase 2 | Embedding Experiment (DINOv2/SigLIP temporal delta) | ✅ 실험 완료 | CLIP portrait scoring으로 대체 |
+| Phase 3 | Identity Collection (Pose×Category 그리드) | ✅ 완료 | 카탈로그 기반 수집 |
+
+**14개 Analyzer DAG**:
+```
+face.detect → face.classify → face.baseline (stateful)
+     │ → face.expression, face.quality, face.parse, portrait.score, face.au, head.pose
+     └→ face.gate (depends: detect+classify, optional: quality+frame.quality+head.pose)
+body.pose, hand.gesture, frame.quality (independent)
+frame.scoring (depends: face.detect, optional: expression+classify+pose+quality)
+```
+
+### momentbank (저장/관리)
+
+- `ingest_collection()`: CollectionResult → member 디렉토리 저장
+- `lookup_frames(member_id, pose=, category=, top_k=)`: 참조 이미지 조회
+- JSON persistence (members.json)
+
+### reportrait (AI 변환)
+
+- `PortraitGenerator`: template load → ref inject → prompt inject → queue → wait → download
+- `ComfyClient`: urllib REST, Bearer 토큰 인증, RunPod proxy 지원
+- CLI: `reportrait generate` — `--ref`, `--pose`, `--category`, `--dry-run`, `--node`
+
+---
+
+## 남은 작업
+
+| 항목 | 우선순위 | 설명 |
+|------|---------|------|
+| visualbase S3 소스 | 높 | 사내 S3에서 미디어 소스 fetch + 로컬 캐시 |
+| portrait981-worker 서빙 레이어 | 높 | Kafka/HTTP 요청 수신 → p981 실행 → 결과 S3 업로드 → 경로 응답 |
+| 메시지 포맷 확정 | 높 | 상위 서비스 ↔ p981-worker 간 요청/응답 스펙 (Kafka 미팅 후) |
+| backward-compat shim 정리 | 낮 | vpx-portrait-score, export_report shim 제거 (외부 사용자 확인 후) |
 
 ---
 
@@ -198,9 +353,12 @@ Module boundary 설계 및 vpx 인프라 패키지 추가.
 ### 패키지 의존 방향
 ```
 visualpath → vpx-sdk → vpx-* → momentscan (app)
+                                    ↓
+                              momentbank → reportrait
 ```
 - Analyzer는 `vpx-sdk`에 의존, `momentscan`에 의존하지 않음
 - momentscan는 `vpx-*`를 optional extras로 참조
+- portrait.score는 도메인 특화 모듈이므로 momentscan 내부에 위치
 
 ### Analyzer 이름 규칙
 `domain.action` 점표기법 사용. 패키지명도 일치:
@@ -209,11 +367,18 @@ visualpath → vpx-sdk → vpx-* → momentscan (app)
 |----------|--------|--------|
 | `face.detect` | vpx-face-detect | `vpx.face_detect` |
 | `face.expression` | vpx-face-expression | `vpx.face_expression` |
-| `face.classify` | momentscan core | `momentscan.algorithm.analyzers.face_classifier` |
+| `face.parse` | vpx-face-parse | `vpx.face_parse` |
+| `face.au` | vpx-face-au | `vpx.face_au` |
+| `head.pose` | vpx-head-pose | `vpx.head_pose` |
 | `body.pose` | vpx-body-pose | `vpx.body_pose` |
 | `hand.gesture` | vpx-hand-gesture | `vpx.hand_gesture` |
+| `face.classify` | momentscan core | `momentscan.algorithm.analyzers.face_classifier` |
+| `face.quality` | momentscan core | `momentscan.algorithm.analyzers.face_quality` |
+| `face.gate` | momentscan core | `momentscan.algorithm.analyzers.frame_gate` |
+| `face.baseline` | momentscan core | `momentscan.algorithm.analyzers.face_baseline` |
+| `portrait.score` | momentscan core | `momentscan.algorithm.analyzers.portrait_score` |
 | `frame.quality` | momentscan core | `momentscan.algorithm.analyzers.quality` |
-| `mock.dummy` | momentscan core | `momentscan.algorithm.analyzers.dummy` |
+| `frame.scoring` | momentscan core | `momentscan.algorithm.analyzers.frame_scoring` |
 
 ### IPC 방식
 - FIFO/UDS 기본 지원
@@ -223,7 +388,7 @@ visualpath → vpx-sdk → vpx-* → momentscan (app)
 ### 실행 경로
 - 단일 실행 경로: `ms.run()` → `build_graph(isolation_config)` → `Backend.execute()`
 - `WorkerBackend`이 isolated 모듈을 `WorkerModule`로 래핑 후 `SimpleBackend`에 위임
-- `MomentscanPipeline`, `PipelineOrchestrator`는 deprecated (unified path로 위임)
+- `--distributed` 모드: 프로세스 격리 + 병렬 실행 동시 활성화
 
 ### Fanout 위치
 - Library 모드: momentscan 내부 스레드 병렬
@@ -236,14 +401,18 @@ visualpath → vpx-sdk → vpx-* → momentscan (app)
 | 패키지 | 디렉토리 | 테스트 수 |
 |--------|----------|----------|
 | visualbase | `libs/visualbase/tests/` | 151 |
-| visualpath core | `libs/visualpath/core/tests/` | 314 |
+| visualpath core | `libs/visualpath/core/tests/` | 411 |
 | visualpath-isolation | `libs/visualpath/isolation/tests/` | 136 |
 | visualpath-pathway | `libs/visualpath/pathway/tests/` | 80 |
 | visualpath-cli | `libs/visualpath/cli/tests/` | 45 |
-| vpx-sdk | `libs/vpx/sdk/tests/` | 43 |
-| vpx-runner | `libs/vpx/runner/tests/` | 55 |
-| momentscan | `apps/momentscan/tests/` | 326 |
-| **합계** | | **1,150** |
+| vpx-sdk | `libs/vpx/sdk/tests/` | 66 |
+| vpx-runner | `libs/vpx/runner/tests/` | 64 |
+| momentscan | `apps/momentscan/tests/` | 584 |
+| momentscan-report | `apps/momentscan-report/tests/` | 12 |
+| momentbank | `apps/momentbank/tests/` | 61 |
+| reportrait | `apps/reportrait/tests/` | 41 |
+| portrait981 | `apps/portrait981/tests/` | 47 |
+| **합계** | | **1,698** |
 
 ---
 
@@ -264,10 +433,21 @@ uv run pytest libs/visualpath/cli/tests/ -v
 uv run pytest libs/vpx/sdk/tests/ -v
 uv run pytest libs/vpx/runner/tests/ -v
 uv run pytest apps/momentscan/tests/ -v
+uv run pytest apps/momentscan-report/tests/ -v
+uv run pytest apps/momentbank/tests/ -v
+uv run pytest apps/reportrait/tests/ -v
+
+# portrait981 통합 테스트
+uv run pytest apps/portrait981/tests/ -v
+uv run p981 run video.mp4 --member-id test_1
+uv run p981 batch /path/to/videos/ --scan-only
 
 # E2E 테스트
 uv run momentscan process video.mp4 -o ./clips --fps 10
 
 # GR차량 모드 테스트
 uv run momentscan process video.mp4 --gokart -o ./clips
+
+# 디버그 모드
+uv run momentscan debug video.mp4 -e face,pose --distributed
 ```

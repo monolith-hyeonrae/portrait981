@@ -105,6 +105,7 @@ portrait981/                    ← repo root
 | momentbank | `apps/momentbank/` | Identity memory bank + 프레임 저장 |
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 | momentscan-report | `apps/momentscan-report/` | HTML 리포트 생성 (Plotly) |
+| portrait981 | `apps/portrait981/` | 통합 오케스트레이터 (E2E 파이프라인) |
 
 ## Namespace Package 패턴
 
