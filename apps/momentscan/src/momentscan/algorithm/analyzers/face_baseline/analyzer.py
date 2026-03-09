@@ -66,6 +66,23 @@ class FaceBaselineAnalyzer(Module):
         self._last_seen.clear()
         self._frame_counter = 0
 
+    def annotate(self, obs):
+        """Return LabelMark with baseline stats for main face."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import LabelMark
+
+        profiles = getattr(obs.data, "profiles", {})
+        main_profile = profiles.get("main")
+        if main_profile is None or main_profile.n < 2:
+            return []
+        return [LabelMark(
+            text=f"base:n={main_profile.n} area={main_profile.area_mean:.3f}",
+            x=0.01, y=0.92,
+            color=(200, 200, 200),
+            font_scale=0.35,
+        )]
+
     def process(
         self,
         frame: Any,

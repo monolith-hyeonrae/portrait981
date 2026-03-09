@@ -232,6 +232,22 @@ class QualityAnalyzer(Module):
             timing=timing,
         )
 
+    def annotate(self, obs):
+        """Return BarMarks for blur/brightness/contrast at top-left corner."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import BarMark
+
+        d = obs.data
+        return [
+            BarMark(x=0.01, y=0.02, w=0.10, value=min(d.blur_score / 300.0, 1.0),
+                    color=(0, 255, 0), label="blur"),
+            BarMark(x=0.01, y=0.04, w=0.10, value=d.brightness / 255.0,
+                    color=(255, 200, 0), label="bright"),
+            BarMark(x=0.01, y=0.06, w=0.10, value=min(d.contrast / 80.0, 1.0),
+                    color=(0, 200, 255), label="contrast"),
+        ]
+
     def _brightness_quality(self, brightness: float) -> float:
         """Convert brightness to quality score.
 

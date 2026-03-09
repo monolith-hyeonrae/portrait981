@@ -9,8 +9,9 @@ Architecture principle:
   momentscan = "what does it mean for 981park?" (interpretation, domain-specific)
 
 Usage:
-    from momentscan.algorithm.contracts import validate_record_fields
-    validate_record_fields(frame_record)  # raises if required fields missing
+    from momentscan.algorithm.contracts import validate_consumer_fields
+    missing = validate_consumer_fields("BatchHighlightEngine", frame_record)
+    assert not missing, f"Missing fields: {missing}"
 """
 
 from __future__ import annotations
@@ -140,3 +141,48 @@ def get_all_owned_fields() -> FrozenSet[str]:
     for fields in FIELD_SOURCES.values():
         result |= fields
     return frozenset(result)
+
+
+def validate_consumer_fields(consumer_name: str, record) -> list[str]:
+    """Check that a record has all required fields for a consumer.
+
+    Returns:
+        List of missing field names. Empty if all present.
+    """
+    deps = CONSUMER_DEPS.get(consumer_name)
+    if deps is None:
+        return []
+
+    required = deps.get("required", frozenset())
+    missing = []
+    for field_name in required:
+        if not hasattr(record, field_name):
+            missing.append(field_name)
+    return missing
+
+
+def check_field_sources_consistency() -> list[str]:
+    """Verify FIELD_SOURCES against actual FrameRecord/CollectionRecord fields.
+
+    Returns:
+        List of warnings (declared fields not found in dataclass, or
+        dataclass fields without a declared owner).
+    """
+    from momentscan.algorithm.batch.types import FrameRecord
+    from dataclasses import fields as dc_fields
+
+    record_fields = {f.name for f in dc_fields(FrameRecord)}
+    owned = get_all_owned_fields()
+    warnings = []
+
+    # Fields declared in FIELD_SOURCES but not in FrameRecord
+    for name in sorted(owned - record_fields):
+        warnings.append(f"declared but not in FrameRecord: {name}")
+
+    # Exclude structural fields (frame_idx, timestamp_ms, composites)
+    structural = {"frame_idx", "timestamp_ms", "composites"}
+    unowned = record_fields - owned - structural
+    for name in sorted(unowned):
+        warnings.append(f"FrameRecord.{name} has no declared owner")
+
+    return warnings

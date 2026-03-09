@@ -46,6 +46,21 @@ class FrameScoringAnalyzer(Module):
     def cleanup(self):
         pass
 
+    def annotate(self, obs):
+        """Return LabelMark with total score at bottom-left corner."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import LabelMark
+
+        r = obs.data
+        color = (0, 255, 0) if not r.is_filtered else (128, 128, 128)
+        return [LabelMark(
+            text=f"score:{r.total_score:.2f}",
+            x=0.01, y=0.95,
+            color=color,
+            font_scale=0.4,
+        )]
+
     def process(self, frame, deps=None) -> Optional[Observation]:
         """Score a frame using available dependency observations.
 
