@@ -267,23 +267,28 @@ scan → bank → generate E2E 파이프라인 통합 및 CLI.
 
 ### Phase 23: 서비스 인프라 연동 ⬜ 예정
 
-사내 인프라와의 연동 레이어 구축.
+사내 인프라(Kafka, S3)와의 연동 레이어 구축.
+상세 설계: [portrait981-serve.md](planning/apps/portrait981-serve.md)
 
 | 단계 | 패키지 | 내용 | 상태 |
 |------|--------|------|------|
 | 23.1 | visualbase | S3 미디어 소스 — fetch + 로컬 캐시, optional extra (`visualbase[s3]`) | ⬜ |
-| 23.2 | portrait981-worker | 서빙 레이어 — Kafka consumer / HTTP API | ⬜ Kafka 스펙 확인 후 |
-| 23.3 | portrait981-worker | 결과 S3 업로드 + 경로 응답 | ⬜ |
-| 23.4 | - | 메시지 포맷 확정 (상위 서비스 미팅 후) | ⬜ |
+| 23.2 | portrait981-serve | Kafka consumer — 신규 이벤트 구독 (상위 팀 생성), E2E 자동 처리 | ⬜ Kafka 미팅 후 |
+| 23.3 | portrait981-serve | REST API — scan-only, generate-only, test, 상태 조회 | ⬜ |
+| 23.4 | portrait981-serve | Kafka producer — `portraitCreatedEvent` 발행, 결과 S3 업로드 | ⬜ |
+| 23.5 | portrait981-serve | ComfyUI 노드풀 라우팅 (가용 노드 선택) | ⬜ |
 
 ```
-상위 서비스 (다른 팀)
-    │  Kafka 메시지 or HTTP 요청
+cju-activity-status-api
+    │  [Kafka] 신규 이벤트 (Avro, 상위 팀 생성)
     ▼
-portrait981-worker (서빙 레이어)
-    │  요청 수신 → visualbase(S3 fetch) → p981 pipeline → 결과 S3 업로드
+portrait981-serve (scan 노드, GPU 중급)
+    │  S3 fetch → scan (로컬) → bank
+    │  generate → ComfyUI 노드풀 (GPU 고급, 별도 장비)
+    │  결과 S3 업로드
+    │  [Kafka] portraitCreatedEvent
     ▼
-응답 (S3 경로 반환)
+상위 서비스
 ```
 
 **아키텍처 원칙 확립**:
@@ -333,8 +338,9 @@ frame.scoring (depends: face.detect, optional: expression+classify+pose+quality)
 | 항목 | 우선순위 | 설명 |
 |------|---------|------|
 | visualbase S3 소스 | 높 | 사내 S3에서 미디어 소스 fetch + 로컬 캐시 |
-| portrait981-worker 서빙 레이어 | 높 | Kafka/HTTP 요청 수신 → p981 실행 → 결과 S3 업로드 → 경로 응답 |
-| 메시지 포맷 확정 | 높 | 상위 서비스 ↔ p981-worker 간 요청/응답 스펙 (Kafka 미팅 후) |
+| portrait981-serve | 높 | Kafka(E2E) + REST(scan/generate/test/status), Avro 직렬화 |
+| ComfyUI 노드풀 라우팅 | 중 | 가용 generate 노드 선택 (GPU 고급, 별도 장비) |
+| Kafka 미팅 | 높 | 수신 토픽 확정 (상위 팀 생성), 발행 토픽 등록, consumer group 규약 |
 | backward-compat shim 정리 | 낮 | vpx-portrait-score, export_report shim 제거 (외부 사용자 확인 후) |
 
 ---
