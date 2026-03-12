@@ -35,10 +35,11 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-face-parse       (BiSeNet, face segmentation)
           → vpx-face-au          (ONNX, Action Unit)
           → vpx-head-pose        (6DRepNet, 6DoF)
-          → vpx-portrait-score   (backward-compat shim → momentscan)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
+      → visualbind (multi-observer signal binding, PoC)
       → momentscan (분석/수집 앱)
+          → momentscan-plugins (7개 내부 analyzer 플러그인)
       → momentbank (저장/관리)
       → reportrait (AI 초상화 생성, ComfyUI 브릿지)
 ```
@@ -58,17 +59,24 @@ portrait981/                    ← repo root
 │       ├── sdk/                # vpx-sdk (모듈 SDK)
 │       ├── runner/             # vpx-runner (Analyzer 러너)
 │       ├── viz/                # vpx-viz (시각화)
-│       └── plugins/            # Analyzer 플러그인
+│       └── plugins/            # Analyzer 플러그인 (7개 vpx)
 │           ├── face-detect/    # InsightFace SCRFD
 │           ├── face-expression/# HSEmotion
 │           ├── face-parse/     # BiSeNet face segmentation
 │           ├── face-au/        # ONNX Action Unit
 │           ├── head-pose/      # 6DRepNet 6DoF
-│           ├── portrait-score/ # backward-compat shim (→ momentscan)
 │           ├── body-pose/      # YOLO-Pose
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
 │   ├── momentscan/             # 얼굴/장면 분석 + 수집
+│   ├── momentscan-plugins/     # momentscan 내부 analyzer 플러그인 (7개)
+│   │   ├── face-classify/      # 역할 분류
+│   │   ├── face-quality/       # 얼굴 품질 (blur/exposure + seg)
+│   │   ├── face-baseline/      # Welford online stats
+│   │   ├── face-gate/          # per-face quality gate
+│   │   ├── frame-quality/      # 프레임 전체 blur/brightness
+│   │   ├── frame-scoring/      # 프레임 스코어링
+│   │   └── portrait-score/     # CLIP 4축 aesthetic scoring
 │   ├── momentbank/             # Identity memory bank + 프레임 저장
 │   ├── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
 │   ├── momentscan-report/      # HTML 리포트 생성 (Plotly)
@@ -96,13 +104,20 @@ portrait981/                    ← repo root
 | vpx-face-parse | `libs/vpx/plugins/face-parse/` | 얼굴 세그멘테이션 (BiSeNet) |
 | vpx-face-au | `libs/vpx/plugins/face-au/` | Action Unit 분석 (ONNX) |
 | vpx-head-pose | `libs/vpx/plugins/head-pose/` | 6DoF 머리 포즈 (6DRepNet) |
-| vpx-portrait-score | `libs/vpx/plugins/portrait-score/` | backward-compat shim (→ momentscan) |
 | vpx-body-pose | `libs/vpx/plugins/body-pose/` | 포즈 추정 (YOLO-Pose) |
 | vpx-hand-gesture | `libs/vpx/plugins/hand-gesture/` | 제스처 감지 (MediaPipe) |
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
 | vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
 | vpx-viz | `libs/vpx/viz/` | 시각화 도구 |
+| visualbind | `libs/visualbind/` | Multi-observer signal binding (PoC) |
 | momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 |
+| momentscan-face-classify | `apps/momentscan-plugins/face-classify/` | 역할 분류 |
+| momentscan-face-quality | `apps/momentscan-plugins/face-quality/` | 얼굴 품질 (blur/exposure + seg) |
+| momentscan-face-baseline | `apps/momentscan-plugins/face-baseline/` | Welford online stats |
+| momentscan-face-gate | `apps/momentscan-plugins/face-gate/` | per-face quality gate |
+| momentscan-frame-quality | `apps/momentscan-plugins/frame-quality/` | 프레임 전체 blur/brightness |
+| momentscan-frame-scoring | `apps/momentscan-plugins/frame-scoring/` | 프레임 스코어링 |
+| momentscan-portrait-score | `apps/momentscan-plugins/portrait-score/` | CLIP 4축 aesthetic scoring |
 | momentbank | `apps/momentbank/` | Identity memory bank + 프레임 저장 |
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 | momentscan-report | `apps/momentscan-report/` | HTML 리포트 생성 (Plotly) |
@@ -113,13 +128,13 @@ portrait981/                    ← repo root
 
 두 개의 namespace를 여러 패키지가 공유:
 
-**`vpx` namespace** (4개 analyzer + sdk + runner + viz 패키지):
+**`vpx` namespace** (7개 analyzer + sdk + runner + viz 패키지):
 - 각 `libs/vpx/*/src/vpx/__init__.py`에 `pkgutil.extend_path` 사용
 
-**`momentscan` namespace** (core 패키지):
-- `momentscan/__init__.py`
-- `momentscan/algorithm/__init__.py`
-- `momentscan/algorithm/analyzers/__init__.py` (vpx에서 re-import)
+**`momentscan` namespace** (core + 7개 내부 analyzer 플러그인):
+- `apps/momentscan/`: core 패키지
+- `apps/momentscan-plugins/*/`: 7개 analyzer 플러그인 (face-classify, face-quality, face-baseline, face-gate, frame-quality, frame-scoring, portrait-score)
+- 각 플러그인의 `src/momentscan/__init__.py`에 `pkgutil.extend_path` 사용
 
 ## Import 경로
 
@@ -138,11 +153,15 @@ from vpx.face_expression import ExpressionAnalyzer
 from vpx.body_pose import PoseAnalyzer
 from vpx.hand_gesture import GestureAnalyzer
 
-# momentscan-specific (vpx 플러그인 구조)
-from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
-from momentscan.algorithm.analyzers.face_classifier import ClassifiedFace, FaceClassifierOutput
-from momentscan.algorithm.analyzers.quality import QualityAnalyzer
-from momentscan.algorithm.analyzers.quality import QualityOutput
+# momentscan 내부 analyzer (momentscan-plugins)
+from momentscan.face_classify import FaceClassifierAnalyzer
+from momentscan.face_classify.types import ClassifiedFace
+from momentscan.face_classify.output import FaceClassifierOutput
+from momentscan.face_quality import FaceQualityAnalyzer
+from momentscan.frame_quality import QualityAnalyzer
+
+# visualbind (multi-observer signal binding)
+from visualbind import HintCollector, AgreementEngine, PairMiner, TripletEncoder
 
 # DummyAnalyzer (visualpath core, 테스트 전용)
 from visualpath.core import DummyAnalyzer
@@ -153,9 +172,10 @@ from visualpath.core import DummyAnalyzer
 ```bash
 cd /home/hyeonrae/repo/monolith/portrait981
 uv sync --all-packages --all-extras   # 전체 workspace 동기화
-uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트 (558)
+uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트
 uv run pytest apps/momentbank/tests/ -v    # momentbank 테스트 (61)
 uv run pytest apps/reportrait/tests/ -v    # reportrait 테스트 (41)
+uv run pytest libs/visualbind/tests/ -v    # visualbind 테스트 (58)
 ```
 
 ## vpx CLI
@@ -172,8 +192,9 @@ vpx run face.detect,face.expression --input video.mp4 --fps 5
 vpx new face.landmark                          # vpx 플러그인 생성
 vpx new face.landmark --depends face.detect    # 의존 모듈 지정
 vpx new face.landmark --no-backend             # backends/ 생략
-vpx new scene.transition --internal            # momentscan 내부 모듈
 vpx new face.landmark --dry-run                # 미리보기
+vpx new face.landmark --namespace momentscan   # momentscan namespace 플러그인
+vpx new face.landmark --namespace myns --output /path/to/dir  # 커스텀 namespace + 출력 경로
 ```
 
 `vpx new`는 파일 생성 후 root `pyproject.toml`의 workspace members에 자동 등록한다.

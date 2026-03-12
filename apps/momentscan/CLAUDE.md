@@ -12,11 +12,6 @@ src/momentscan/
 ├── algorithm/
 │   ├── analyzers/
 │   │   ├── __init__.py        # Lazy import, Output 타입 re-export
-│   │   ├── face_classifier/   # FaceClassifierAnalyzer (역할 분류)
-│   │   ├── face_quality/      # FaceQualityAnalyzer (head crop blur/exposure + seg)
-│   │   ├── face_baseline/     # FaceBaselineAnalyzer (Welford online stats)
-│   │   ├── frame_gate/        # FrameGateAnalyzer (per-face quality gate)
-│   │   ├── quality/           # QualityAnalyzer (프레임 전체 blur/brightness)
 │   │   └── source.py          # SourceProcessor, BackendPreprocessor
 │   ├── batch/                 # Phase 1: 배치 하이라이트 분석
 │   │   ├── types.py           # FrameRecord, HighlightConfig, HighlightWindow, HighlightResult
@@ -39,7 +34,19 @@ src/momentscan/
 ├── visualize/                 # DebugVisualizer, 타이밍 오버레이, stats_panel
 ```
 
-ML 의존성이 필요한 analyzer는 별도 패키지로 분리됨 (vpx-face-detect, vpx-face-expression, vpx-body-pose, vpx-hand-gesture).
+내부 analyzer는 `apps/momentscan-plugins/`로 분리됨 (momentscan namespace 공유):
+```
+apps/momentscan-plugins/
+├── face-classify/       # FaceClassifierAnalyzer (역할 분류)
+├── face-quality/        # FaceQualityAnalyzer (head crop blur/exposure + seg)
+├── face-baseline/       # FaceBaselineAnalyzer (Welford online stats)
+├── face-gate/           # FrameGateAnalyzer (per-face quality gate)
+├── frame-quality/       # QualityAnalyzer (프레임 전체 blur/brightness)
+├── frame-scoring/       # FrameScoringAnalyzer (프레임 스코어링)
+└── portrait-score/      # PortraitScoreAnalyzer (CLIP 4축 aesthetic)
+```
+
+ML 의존성이 필요한 외부 analyzer는 vpx 플러그인으로 분리됨 (vpx-face-detect, vpx-face-expression, vpx-body-pose, vpx-hand-gesture, vpx-face-au, vpx-head-pose, vpx-face-parse).
 
 ## High-Level API
 
@@ -110,17 +117,18 @@ class ExpressionAnalyzer(Module):
 |----------|------|---------|--------|---------|-------|
 | FaceDetectionAnalyzer | `face.detect` | - | vpx-face-detect | InsightFace SCRFD | detect → tracking → roi_filter |
 | ExpressionAnalyzer | `face.expression` | face.detect | vpx-face-expression | HSEmotion | expression → aggregation |
-| FaceClassifierAnalyzer | `face.classify` | face.detect | momentscan (core) | 내장 로직 | track_update → classify → role_assignment |
+| FaceClassifierAnalyzer | `face.classify` | face.detect | momentscan-face-classify | 내장 로직 | track_update → classify → role_assignment |
 | FaceParseAnalyzer | `face.parse` | face.detect | vpx-face-parse | BiSeNet | 19-class face segmentation |
-| FaceQualityAnalyzer | `face.quality` | face.detect | momentscan (core) | OpenCV + BiSeNet mask | head crop blur/exposure + seg ratios (face/eye/mouth/hair) |
-| FrameGateAnalyzer | `face.gate` | face.detect, face.classify | momentscan (core) | 내장 로직 | per-face quality gate (confidence, blur, exposure, parsing) |
-| FaceBaselineAnalyzer | `face.baseline` | face.detect, face.classify | momentscan (core) | 내장 로직 | Welford online stats (STATEFUL) |
+| FaceQualityAnalyzer | `face.quality` | face.detect | momentscan-face-quality | OpenCV + BiSeNet mask | head crop blur/exposure + seg ratios (face/eye/mouth/hair) |
+| FrameGateAnalyzer | `face.gate` | face.detect, face.classify | momentscan-face-gate | 내장 로직 | per-face quality gate (confidence, blur, exposure, parsing) |
+| FaceBaselineAnalyzer | `face.baseline` | face.detect, face.classify | momentscan-face-baseline | 내장 로직 | Welford online stats (STATEFUL) |
 | FaceAUAnalyzer | `face.au` | face.detect | vpx-face-au | ONNX | Action Unit 분석 (AU6/12/25/26) |
 | HeadPoseAnalyzer | `head.pose` | face.detect | vpx-head-pose | 6DRepNet | 6DoF head pose (yaw/pitch/roll) |
-| PortraitScoreAnalyzer | `portrait.score` | face.detect | vpx-portrait-score | CLIP | 4축 aesthetic scoring + composites |
+| PortraitScoreAnalyzer | `portrait.score` | face.detect | momentscan-portrait-score | CLIP | 4축 aesthetic scoring + composites |
+| FrameScoringAnalyzer | `frame.scoring` | face.detect, face.classify, face.gate | momentscan-frame-scoring | 내장 로직 | 0.35×Quality + 0.65×Impact 스코어링 |
 | PoseAnalyzer | `body.pose` | - | vpx-body-pose | YOLO-Pose | pose_estimation → hands_raised/wave → aggregation |
 | GestureAnalyzer | `hand.gesture` | - | vpx-hand-gesture | MediaPipe Hands | hand_detection → gesture_classification → aggregation |
-| QualityAnalyzer | `frame.quality` | - | momentscan (core) | OpenCV | grayscale → blur/brightness/contrast |
+| QualityAnalyzer | `frame.quality` | - | momentscan-frame-quality | OpenCV | grayscale → blur/brightness/contrast |
 
 ## FaceClassifierAnalyzer
 
