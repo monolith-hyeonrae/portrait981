@@ -17,6 +17,7 @@ from momentbank.ingest import lookup_frames
 from reportrait.generator import PortraitGenerator
 from reportrait.types import GenerationConfig, GenerationRequest
 
+from portrait981.node_pool import NodePool
 from portrait981.types import (
     JobHandle,
     JobResult,
@@ -51,6 +52,7 @@ class Portrait981Pipeline:
         self._config = config or PipelineConfig()
         self._on_step = on_step
         self._member_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+        self._node_pool = NodePool(self._config.comfy_urls)
         self._gen_executor: Optional[ThreadPoolExecutor] = None
         self._shutdown = False
         self._interrupted = False
@@ -440,7 +442,11 @@ class Portrait981Pipeline:
         return ref_paths, ref_count, elapsed
 
     def _do_generate(self, handle: JobHandle, ref_paths: list) -> tuple:
-        """Run PortraitGenerator. Returns (result, error_str, elapsed_sec)."""
+        """Run PortraitGenerator. Returns (result, error_str, elapsed_sec).
+
+        Acquires a ComfyUI node from the pool; on failure marks it unhealthy
+        so subsequent requests route to a healthy node.
+        """
         job = handle.job
         ref_count = len(ref_paths)
         handle.status = JobStatus.GENERATING
@@ -448,8 +454,10 @@ class Portrait981Pipeline:
                    detail=f"{ref_count} refs, workflow={job.workflow}")
         gen_start = time.monotonic()
 
+        comfy_url = self._node_pool.acquire()
+
         gen_config = GenerationConfig(
-            comfy_url=self._config.comfy_url,
+            comfy_url=comfy_url,
             api_key=self._config.api_key,
             workflow_template=job.workflow,
         )
@@ -464,8 +472,11 @@ class Portrait981Pipeline:
         generation_result = None
         try:
             generation_result = PortraitGenerator(gen_config).generate(request)
+            self._node_pool.release(comfy_url)
         except Exception as e:
             gen_error = str(e)
+            self._node_pool.mark_unhealthy(comfy_url)
+            self._node_pool.release(comfy_url)
 
         elapsed = time.monotonic() - gen_start
 

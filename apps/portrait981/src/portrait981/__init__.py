@@ -1,5 +1,6 @@
 """portrait981 — Unified orchestrator for the 981park portrait pipeline."""
 
+from portrait981.node_pool import NodePool
 from portrait981.pipeline import Portrait981Pipeline
 from portrait981.types import (
     JobHandle,
@@ -13,6 +14,7 @@ from portrait981.types import (
 )
 
 __all__ = [
+    "NodePool",
     "Portrait981Pipeline",
     "JobHandle",
     "JobResult",

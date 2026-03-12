@@ -86,7 +86,7 @@ class PipelineConfig:
 
     max_scan_workers: int = 1
     max_generate_workers: int = 2
-    comfy_url: str = "http://127.0.0.1:8188"
+    comfy_urls: list[str] = field(default_factory=lambda: ["http://127.0.0.1:8188"])
     api_key: Optional[str] = None
     default_collection_path: Optional[str] = None
     default_workflow: str = "default"

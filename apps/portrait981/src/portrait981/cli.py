@@ -134,7 +134,7 @@ def _console_progress(event: StepEvent) -> None:
 
 def _handle_run(args: argparse.Namespace) -> None:
     config = PipelineConfig(
-        comfy_url=args.comfy_url,
+        comfy_urls=[args.comfy_url],
         api_key=args.api_key,
         default_collection_path=args.collection,
     )
@@ -166,7 +166,7 @@ def _handle_batch(args: argparse.Namespace) -> None:
 
     config = PipelineConfig(
         max_scan_workers=args.workers,
-        comfy_url=args.comfy_url,
+        comfy_urls=[args.comfy_url],
         api_key=args.api_key,
         default_collection_path=args.collection,
     )
@@ -212,7 +212,7 @@ def _handle_batch(args: argparse.Namespace) -> None:
 
 def _handle_scan(args: argparse.Namespace) -> None:
     config = PipelineConfig(
-        comfy_url=args.comfy_url,
+        comfy_urls=[args.comfy_url],
         api_key=args.api_key,
     )
     job = JobSpec(
@@ -232,7 +232,7 @@ def _handle_scan(args: argparse.Namespace) -> None:
 
 def _handle_generate(args: argparse.Namespace) -> None:
     config = PipelineConfig(
-        comfy_url=args.comfy_url,
+        comfy_urls=[args.comfy_url],
         api_key=args.api_key,
     )
     job = JobSpec(

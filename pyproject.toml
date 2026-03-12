@@ -21,6 +21,7 @@ members = [
     "apps/reportrait",
     "apps/momentscan-report",
     "apps/portrait981",
+    "apps/portrait981-serve",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.

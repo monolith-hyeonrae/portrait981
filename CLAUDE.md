@@ -71,7 +71,8 @@ portrait981/                    ← repo root
 │   ├── momentscan/             # 얼굴/장면 분석 + 수집
 │   ├── momentbank/             # Identity memory bank + 프레임 저장
 │   ├── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
-│   └── momentscan-report/      # HTML 리포트 생성 (Plotly)
+│   ├── momentscan-report/      # HTML 리포트 생성 (Plotly)
+│   └── portrait981-serve/      # 서빙 레이어 (REST API + S3 + 노드풀)
 ├── docs/
 │   ├── ROADMAP.md
 │   └── planning/
@@ -106,6 +107,7 @@ portrait981/                    ← repo root
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 | momentscan-report | `apps/momentscan-report/` | HTML 리포트 생성 (Plotly) |
 | portrait981 | `apps/portrait981/` | 통합 오케스트레이터 (E2E 파이프라인) |
+| portrait981-serve | `apps/portrait981-serve/` | 서빙 레이어 (REST API + S3 + 노드풀) |
 
 ## Namespace Package 패턴
 
