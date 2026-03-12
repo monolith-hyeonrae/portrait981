@@ -47,7 +47,7 @@ class DebugFrameHandler:
     ):
         from momentscan.visualize import DebugVisualizer
         from momentscan.visualize.embed_tracker import EmbedTracker
-        from momentscan.algorithm.analyzers.frame_scoring import FrameScorer
+        from momentscan.frame_scoring import FrameScorer
 
         self.show_window = show_window
         self.output_path = output_path

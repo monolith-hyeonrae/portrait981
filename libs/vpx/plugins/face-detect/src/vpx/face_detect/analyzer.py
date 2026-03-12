@@ -249,7 +249,7 @@ class FaceDetectionAnalyzer(Module):
                 source=self.name,
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
-                signals={"face_count": 0},
+                signals={"face_count": 0.0},
                 data=FaceDetectOutput(faces=[], detected_faces=[], image_size=(w, h)),
                 metadata={"_metrics": {"detection_count": 0}},
                 timing=timing,
@@ -285,7 +285,7 @@ class FaceDetectionAnalyzer(Module):
             source=self.name,
             frame_id=frame.frame_id,
             t_ns=frame.t_src_ns,
-            signals={"face_count": len(face_observations)},
+            signals={"face_count": float(len(face_observations))},
             data=FaceDetectOutput(
                 faces=face_observations,
                 detected_faces=detected_faces,
@@ -340,7 +340,7 @@ class FaceDetectionAnalyzer(Module):
                     source=self.name,
                     frame_id=frame.frame_id,
                     t_ns=frame.t_src_ns,
-                    signals={"face_count": 0},
+                    signals={"face_count": 0.0},
                     data=FaceDetectOutput(
                         faces=[], detected_faces=[], image_size=(w, h)
                     ),
@@ -379,7 +379,7 @@ class FaceDetectionAnalyzer(Module):
                 source=self.name,
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
-                signals={"face_count": len(face_observations)},
+                signals={"face_count": float(len(face_observations))},
                 data=FaceDetectOutput(
                     faces=face_observations,
                     detected_faces=detected_faces,

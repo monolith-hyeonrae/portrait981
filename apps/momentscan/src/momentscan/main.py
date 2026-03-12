@@ -63,6 +63,7 @@ class MomentscanApp(vp.App):
         self._collection_records: list = []
         self._interrupted = False
         self._prev_sigint_handler = None
+        self._clip_axes = None
 
     def configure_modules(self, modules):
         from vpx.sdk.paths import get_models_dir

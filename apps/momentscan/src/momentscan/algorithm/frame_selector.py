@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
 import logging
 
-from momentscan.algorithm.analyzers.frame_scoring.output import ScoreResult
+from momentscan.frame_scoring.output import ScoreResult
 
 logger = logging.getLogger(__name__)
 

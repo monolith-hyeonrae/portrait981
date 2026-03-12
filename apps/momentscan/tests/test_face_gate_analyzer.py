@@ -3,7 +3,7 @@
 import pytest
 
 from vpx.sdk import Observation
-from momentscan.algorithm.analyzers.face_gate import FaceGateAnalyzer, FaceGateConfig
+from momentscan.face_gate import FaceGateAnalyzer, FaceGateConfig
 
 
 # ── Mock helpers ──
@@ -171,7 +171,7 @@ class TestFaceGateAnalyzer:
 
         assert obs.data.main_gate_passed is True
         assert obs.data.main_fail_reasons == ()
-        assert obs.signals["gate_passed"] is True
+        assert obs.signals["gate_passed"] == 1.0
         assert len(obs.data.results) == 1
         assert obs.data.results[0].gate_passed is True
 
@@ -218,8 +218,8 @@ class TestFaceGateAnalyzer:
 
         # Main passes, noise and transient are rejected
         assert obs.data.main_gate_passed is True
-        assert obs.signals["faces_gated"] == 3
-        assert obs.signals["faces_passed"] == 1
+        assert obs.signals["faces_gated"] == 3.0
+        assert obs.signals["faces_passed"] == 1.0
 
         noise_result = next(r for r in obs.data.results if r.face_id == 2)
         assert noise_result.gate_passed is False
@@ -541,9 +541,9 @@ class TestFaceGateAnalyzer:
         }
         obs = analyzer.process(MockFrame(), deps=deps)
 
-        assert obs.signals["faces_gated"] == 2
-        assert obs.signals["faces_passed"] == 2
-        assert obs.signals["gate_passed"] is True
+        assert obs.signals["faces_gated"] == 2.0
+        assert obs.signals["faces_passed"] == 2.0
+        assert obs.signals["gate_passed"] == 1.0
 
     def test_gate_contrast_pass(self):
         """Good local contrast should pass exposure gate."""

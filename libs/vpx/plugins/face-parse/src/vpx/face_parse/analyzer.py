@@ -126,7 +126,7 @@ class FaceParseAnalyzer(Module):
                 source=self.name,
                 frame_id=frame.frame_id,
                 t_ns=frame.t_src_ns,
-                signals={"faces_parsed": 0},
+                signals={"faces_parsed": 0.0},
                 data=FaceParseOutput(),
             )
 
@@ -148,11 +148,41 @@ class FaceParseAnalyzer(Module):
             else:
                 face_bboxes.append((0.0, 0.0, 0.0, 0.0))
 
+        signals: Dict[str, float] = {"faces_parsed": float(len(results))}
+
+        # Expose main face segmentation ratios from class_map
+        if results:
+            main = results[0]
+            cmap = main.class_map
+            total = cmap.size
+            if total > 0:
+                import numpy as np
+
+                counts = np.bincount(cmap.ravel(), minlength=19)
+                # Grouped regions (CelebAMask-HQ 19 classes):
+                #   skin: 1
+                #   hair: 17
+                #   face features: 2-5 (brows+eyes), 10 (nose), 11-13 (mouth+lips)
+                #   occlusion: 6 (glasses), 15 (necklace), 16 (cloth), 18 (hat)
+                skin = int(counts[1])
+                hair = int(counts[17])
+                features = int(
+                    counts[2] + counts[3] + counts[4] + counts[5]
+                    + counts[10] + counts[11] + counts[12] + counts[13]
+                )
+                occlusion = int(
+                    counts[6] + counts[15] + counts[16] + counts[18]
+                )
+                signals["skin_ratio"] = skin / total
+                signals["hair_ratio"] = hair / total
+                signals["features_ratio"] = features / total
+                signals["occlusion_ratio"] = occlusion / total
+
         return Observation(
             source=self.name,
             frame_id=frame.frame_id,
             t_ns=frame.t_src_ns,
-            signals={"faces_parsed": len(results)},
+            signals=signals,
             data=FaceParseOutput(results=results, face_bboxes=face_bboxes),
             metadata={"_metrics": {"faces_parsed": len(results)}},
             timing=timing,

@@ -9,7 +9,6 @@ members = [
     "libs/vpx/plugins/face-expression",
     "libs/vpx/plugins/body-pose",
     "libs/vpx/plugins/hand-gesture",
-    "libs/vpx/plugins/portrait-score",
     "libs/vpx/plugins/face-au",
     "libs/vpx/plugins/head-pose",
     "libs/vpx/plugins/face-parse",
@@ -22,6 +21,13 @@ members = [
     "apps/momentscan-report",
     "apps/portrait981",
     "apps/portrait981-serve",
+    "apps/momentscan-plugins/frame-quality",
+    "apps/momentscan-plugins/face-classify",
+    "apps/momentscan-plugins/face-quality",
+    "apps/momentscan-plugins/face-gate",
+    "apps/momentscan-plugins/face-baseline",
+    "apps/momentscan-plugins/frame-scoring",
+    "apps/momentscan-plugins/portrait-score",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.

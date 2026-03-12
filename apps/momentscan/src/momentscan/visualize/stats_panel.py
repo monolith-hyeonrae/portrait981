@@ -11,7 +11,7 @@ import numpy as np
 
 from vpx.sdk import Observation
 from vpx.face_detect.types import FaceObservation
-from momentscan.algorithm.analyzers.frame_scoring.output import ScoreResult
+from momentscan.frame_scoring.output import ScoreResult
 from momentscan.visualize.components import (
     COLOR_DARK_BGR,
     COLOR_WHITE_BGR,

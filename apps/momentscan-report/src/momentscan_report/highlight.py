@@ -396,7 +396,7 @@ def _build_chart_data(result: HighlightResult) -> Dict[str, Any]:
         }
 
     # ── Gate thresholds (for reference lines on module subplots) ──
-    from momentscan.algorithm.analyzers.face_gate.output import FaceGateConfig
+    from momentscan.face_gate.output import FaceGateConfig
     gate_cfg = FaceGateConfig()
     data["gate_thresholds"] = {
         "face_confidence": [gate_cfg.face_confidence_min],

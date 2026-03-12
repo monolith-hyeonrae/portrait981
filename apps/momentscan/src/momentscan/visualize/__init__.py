@@ -22,7 +22,7 @@ from visualbase import Frame
 
 from vpx.sdk import Observation
 from vpx.viz.renderer import render_marks
-from momentscan.algorithm.analyzers.frame_scoring.output import ScoreResult
+from momentscan.frame_scoring.output import ScoreResult
 from momentscan.visualize.layout import LayoutManager
 from momentscan.visualize.video_panel import VideoPanel
 from momentscan.visualize.stats_panel import StatsPanel
@@ -90,7 +90,7 @@ class AnalyzerVisualizer:
         except ImportError:
             pass
         try:
-            from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
+            from momentscan.face_classify import FaceClassifierAnalyzer
             self._modules["face.classify"] = FaceClassifierAnalyzer()
         except ImportError:
             pass

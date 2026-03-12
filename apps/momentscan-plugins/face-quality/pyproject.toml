@@ -1,0 +1,26 @@
+[project]
+name = "momentscan-face-quality"
+version = "0.1.0"
+description = "Per-face quality analyzer (blur, exposure, contrast, segmentation)"
+requires-python = ">=3.10"
+dependencies = [
+    "vpx-sdk",
+    "opencv-python>=4.0",
+    "numpy>=1.24.0",
+]
+
+[project.entry-points."visualpath.modules"]
+"face.quality" = "momentscan.face_quality:FaceQualityAnalyzer"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/momentscan"]
+
+[tool.uv.sources]
+vpx-sdk = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

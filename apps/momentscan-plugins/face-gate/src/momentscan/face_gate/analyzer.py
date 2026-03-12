@@ -1,0 +1,420 @@
+"""Face gate analyzer — per-face independent quality gate in the DAG.
+
+Replaces frame.gate with per-face gate judgments using face.classify roles.
+Each face is independently evaluated with role-specific thresholds.
+
+Exposure judgment uses local contrast (CV = std/mean) when face.quality
+provides mask-based metrics, falling back to absolute brightness otherwise.
+
+depends: ["face.detect", "face.classify"]
+optional_depends: ["face.quality", "head.pose"]
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+if TYPE_CHECKING:
+    from visualbase import Frame
+
+from vpx.sdk import Module, Observation
+from visualpath.core.capabilities import Capability, ModuleCapabilities
+from momentscan.face_gate.output import (
+    FaceGateConfig,
+    FaceGateResult,
+    FaceGateOutput,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_get(obs: Any, attr_path: str, default: float = 0.0) -> float:
+    """Get a value from obs by dot path, supporting both attrs and dict keys."""
+    if obs is None:
+        return default
+    obj = obs
+    for part in attr_path.split("."):
+        if obj is None:
+            return default
+        if isinstance(obj, dict):
+            obj = obj.get(part)
+        else:
+            obj = getattr(obj, part, None)
+    if obj is None:
+        return default
+    if isinstance(obj, (int, float)):
+        return float(obj)
+    return default
+
+
+class FaceGateAnalyzer(Module):
+    """Per-face quality gate analyzer.
+
+    Evaluates gate conditions independently for each classified face:
+
+    - main: full gate (area, blur, exposure, yaw, pitch)
+    - passenger: suitability score (0.0–1.0), always gate_passed=True
+    - transient/noise: auto-rejected
+
+    depends: ["face.detect", "face.classify"]
+    optional_depends: ["face.quality", "head.pose"]
+    """
+
+    depends = ["face.detect", "face.classify"]
+    optional_depends = ["face.quality", "frame.quality", "head.pose"]
+
+    def __init__(self, config: FaceGateConfig | None = None):
+        self.config = config or FaceGateConfig()
+        self._stats_total = 0
+        self._stats_fail = 0
+        self._stats_reasons: Dict[str, int] = {}
+
+    @property
+    def name(self) -> str:
+        return "face.gate"
+
+    @property
+    def capabilities(self) -> ModuleCapabilities:
+        return ModuleCapabilities(
+            flags=Capability.DETERMINISTIC | Capability.THREAD_SAFE,
+        )
+
+    def initialize(self) -> None:
+        self._stats_total = 0
+        self._stats_fail = 0
+        self._stats_reasons = {}
+
+    def cleanup(self) -> None:
+        if self._stats_total > 0:
+            pass_count = self._stats_total - self._stats_fail
+            logger.info(
+                "face.gate summary: %d/%d passed (%.0f%%), fail reasons: %s",
+                pass_count, self._stats_total,
+                100.0 * pass_count / self._stats_total,
+                dict(self._stats_reasons) if self._stats_reasons else "none",
+            )
+
+    def process(
+        self,
+        frame: "Frame",
+        deps: Optional[Dict[str, Observation]] = None,
+    ) -> Observation:
+        deps = deps or {}
+        cfg = self.config
+
+        # Required deps
+        face_obs = deps.get("face.detect")
+        classify_obs = deps.get("face.classify")
+
+        # Optional deps
+        face_q_obs = deps.get("face.quality")
+        head_pose_obs = deps.get("head.pose")
+        frame_q_obs = deps.get("frame.quality")
+
+        # Extract classified faces
+        classified_faces: List[Any] = []
+        if classify_obs is not None:
+            data = getattr(classify_obs, "data", None)
+            if data is not None:
+                classified_faces = getattr(data, "faces", []) or []
+
+        # If no classifier output, fall back to face.detect for basic gate
+        if not classified_faces and face_obs is not None:
+            face_data = getattr(face_obs, "data", None)
+            if face_data is not None:
+                raw_faces = getattr(face_data, "faces", []) or []
+                if raw_faces:
+                    # Wrap raw faces as "main" (largest) for backward compat
+                    main = max(raw_faces, key=lambda f: getattr(f, "area_ratio", 0.0))
+                    classified_faces = [_MockClassified(main, "main")]
+
+        # Extract per-face quality results (face.quality)
+        face_quality_map: Dict[int, Any] = {}
+        if face_q_obs is not None:
+            fq_data = getattr(face_q_obs, "data", None)
+            if fq_data is not None:
+                for fr in getattr(fq_data, "face_results", []):
+                    face_quality_map[fr.face_id] = fr
+                # Fallback: main face compat fields
+                if not face_quality_map:
+                    face_quality_map[-1] = fq_data  # sentinel for main face
+
+        # Extract head.pose estimates (index-aligned with face.detect faces)
+        head_estimates: List[Any] = []
+        if head_pose_obs is not None:
+            hp_data = getattr(head_pose_obs, "data", None)
+            if hp_data is not None:
+                head_estimates = getattr(hp_data, "estimates", []) or []
+
+        # Frame-level blur/exposure fallback
+        frame_blur = _safe_get(frame_q_obs, "signals.blur_score", 0.0) if frame_q_obs else 0.0
+        frame_bright = _safe_get(frame_q_obs, "signals.brightness", 0.0) if frame_q_obs else 0.0
+
+        # Build face_id -> pose estimate mapping
+        face_id_to_pose: Dict[int, Any] = {}
+        if face_obs is not None and head_estimates:
+            face_data = getattr(face_obs, "data", None)
+            if face_data is not None:
+                raw_faces = getattr(face_data, "faces", []) or []
+                for i, f in enumerate(raw_faces):
+                    if i < len(head_estimates):
+                        face_id_to_pose[getattr(f, "face_id", i)] = head_estimates[i]
+
+        # Per-face gate judgment
+        results: List[FaceGateResult] = []
+        main_result: Optional[FaceGateResult] = None
+
+        for cf in classified_faces:
+            face = getattr(cf, "face", cf)
+            role = getattr(cf, "role", "main")
+            face_id = getattr(face, "face_id", 0)
+            fails: List[str] = []
+
+            face_bbox = tuple(getattr(face, "bbox", (0.0, 0.0, 0.0, 0.0)))
+
+            # Auto-reject noise/transient
+            if role in ("noise", "transient"):
+                results.append(FaceGateResult(
+                    face_id=face_id,
+                    role=role,
+                    gate_passed=False,
+                    fail_reasons=("gate.role.rejected",),
+                    face_bbox=face_bbox,
+                ))
+                continue
+
+            # Face metrics
+            confidence = float(getattr(face, "confidence", 0.0))
+            area_ratio = float(getattr(face, "area_ratio", 0.0))
+
+            # Per-face quality lookup
+            fq = face_quality_map.get(face_id) or face_quality_map.get(-1)
+            face_blur = float(getattr(fq, "face_blur", 0.0)) if fq else 0.0
+            face_exposure = float(getattr(fq, "face_exposure", 0.0)) if fq else 0.0
+            parsing_coverage = float(getattr(fq, "parsing_coverage", 0.0)) if fq else 0.0
+
+            # Passenger: suitability score (soft threshold, no hard gate)
+            if role == "passenger":
+                conf_score = (
+                    min(confidence / cfg.passenger_confidence_min, 1.0)
+                    if cfg.passenger_confidence_min > 0 else 1.0
+                )
+                parse_score = (
+                    min(parsing_coverage / cfg.parsing_coverage_min, 1.0)
+                    if parsing_coverage > 0 and cfg.parsing_coverage_min > 0 else 1.0
+                )
+                suitability = conf_score * parse_score
+                results.append(FaceGateResult(
+                    face_id=face_id,
+                    role=role,
+                    gate_passed=True,
+                    fail_reasons=(),
+                    suitability=suitability,
+                    confidence=confidence,
+                    face_bbox=face_bbox,
+                    face_area_ratio=area_ratio,
+                    face_blur=face_blur,
+                    exposure=face_exposure,
+                    parsing_coverage=parsing_coverage,
+                ))
+                continue
+
+            # Main face: confidence check
+            if confidence < cfg.face_confidence_min:
+                fails.append("gate.detect.confidence")
+
+            # Blur: face.quality per-face preferred, frame fallback
+            if face_blur > 0:
+                if face_blur < cfg.face_blur_min:
+                    fails.append("gate.blur.face")
+            elif frame_blur > 0:
+                if frame_blur < cfg.frame_blur_min:
+                    fails.append("gate.blur.frame")
+
+            # Parsing coverage: BiSeNet segmentation coverage (0 = 미측정 → skip)
+            if parsing_coverage > 0 and parsing_coverage < cfg.parsing_coverage_min:
+                fails.append("gate.parsing.coverage")
+
+            # Exposure: prefer local contrast metrics, fallback to absolute brightness
+            face_contrast = float(getattr(fq, "face_contrast", 0.0)) if fq else 0.0
+            clipped_ratio = float(getattr(fq, "clipped_ratio", 0.0)) if fq else 0.0
+            crushed_ratio = float(getattr(fq, "crushed_ratio", 0.0)) if fq else 0.0
+
+            if face_contrast > 0:
+                # face.quality mask-based local contrast
+                if face_contrast < cfg.contrast_min:
+                    fails.append("gate.exposure.contrast")
+                if clipped_ratio > cfg.clipped_max:
+                    fails.append("gate.exposure.white")
+                if crushed_ratio > cfg.crushed_max:
+                    fails.append("gate.exposure.black")
+            elif face_exposure > 0:
+                # face.quality absolute brightness fallback
+                if not (cfg.exposure_min <= face_exposure <= cfg.exposure_max):
+                    fails.append("gate.exposure.brightness")
+            elif frame_bright > 0:
+                # frame-level absolute brightness fallback
+                if not (cfg.exposure_min <= frame_bright <= cfg.exposure_max):
+                    fails.append("gate.exposure.brightness")
+
+            # Seg-based gates (require successful parsing)
+            seg_mouth = float(getattr(fq, "seg_mouth", 0.0)) if fq else 0.0
+            seg_face = float(getattr(fq, "seg_face", 0.0)) if fq else 0.0
+
+            if parsing_coverage >= cfg.parsing_coverage_min:
+                mask_detected = seg_mouth < cfg.seg_mouth_min
+                if not mask_detected:
+                    # No mask → seg boundary reliable → precise exposure check
+                    if seg_face < cfg.seg_face_min:
+                        fails.append("gate.exposure.seg_face")
+                # Mask detected → skip seg_face check, existing exposure chain
+                # (face_contrast → face_exposure → frame_bright) serves as fallback
+
+            # Pose: main only (passenger doesn't need frontal pose)
+            yaw = float(getattr(face, "yaw", 0.0))
+            pitch = float(getattr(face, "pitch", 0.0))
+
+            # Override with precise head.pose if available
+            pose_est = face_id_to_pose.get(face_id)
+            if pose_est is not None:
+                est_yaw = getattr(pose_est, "yaw", None)
+                if est_yaw is not None:
+                    yaw = float(est_yaw)
+                est_pitch = getattr(pose_est, "pitch", None)
+                if est_pitch is not None:
+                    pitch = float(est_pitch)
+
+            gate_passed = len(fails) == 0
+            result = FaceGateResult(
+                face_id=face_id,
+                role=role,
+                gate_passed=gate_passed,
+                fail_reasons=tuple(fails),
+                face_bbox=face_bbox,
+                face_area_ratio=area_ratio,
+                face_blur=face_blur,
+                exposure=face_exposure,
+                head_yaw=yaw,
+                head_pitch=pitch,
+                face_contrast=face_contrast,
+                clipped_ratio=clipped_ratio,
+                crushed_ratio=crushed_ratio,
+                parsing_coverage=parsing_coverage,
+                seg_mouth=seg_mouth,
+                seg_face=seg_face,
+            )
+            results.append(result)
+
+            if role == "main" and main_result is None:
+                main_result = result
+
+        # Frame-level gate (main face based)
+        if main_result is not None:
+            main_gate_passed = main_result.gate_passed
+            main_fail_reasons = main_result.fail_reasons
+        elif not classified_faces:
+            # No faces at all
+            main_gate_passed = False
+            main_fail_reasons = ("gate.detect.missing",)
+        else:
+            # All faces are noise/transient
+            main_gate_passed = False
+            main_fail_reasons = ("gate.role.no_main",)
+
+        output = FaceGateOutput(
+            results=results,
+            main_gate_passed=main_gate_passed,
+            main_fail_reasons=main_fail_reasons,
+        )
+
+        # Stats tracking
+        self._stats_total += 1
+        if not main_gate_passed:
+            self._stats_fail += 1
+            for reason in main_fail_reasons:
+                self._stats_reasons[reason] = self._stats_reasons.get(reason, 0) + 1
+
+        # Logging
+        frame_id = getattr(frame, "frame_id", 0)
+        faces_passed = sum(1 for r in results if r.gate_passed)
+        if self._stats_total == 1:
+            dep_names = sorted(deps.keys()) if deps else []
+            logger.info(
+                "face.gate first frame: deps=%s, main_gate=%s, fails=%s, faces=%d/%d passed",
+                dep_names, main_gate_passed, list(main_fail_reasons),
+                faces_passed, len(results),
+            )
+        elif not main_gate_passed:
+            logger.debug(
+                "face.gate FAIL frame=%d: %s (%d/%d faces passed)",
+                frame_id, list(main_fail_reasons), faces_passed, len(results),
+            )
+
+        return Observation(
+            source=self.name,
+            frame_id=frame_id,
+            t_ns=getattr(frame, "t_src_ns", 0),
+            signals={
+                "gate_passed": 1.0 if main_gate_passed else 0.0,
+                "fail_count": float(len(main_fail_reasons)) if not main_gate_passed else 0.0,
+                "faces_gated": float(len(results)),
+                "faces_passed": float(faces_passed),
+            },
+            data=output,
+        )
+
+    def annotate(self, obs):
+        """Return LabelMark with gate status at each face's bbox position."""
+        if obs is None or obs.data is None:
+            return []
+        from vpx.sdk.marks import LabelMark
+
+        results = getattr(obs.data, "results", [])
+        if not results:
+            return []
+
+        marks = []
+        for r in results:
+            if r.face_bbox == (0.0, 0.0, 0.0, 0.0):
+                continue
+            bx, by, bw, bh = r.face_bbox
+
+            if r.role == "passenger":
+                # Passenger: show suitability score instead of gate status
+                suit = r.suitability
+                if suit >= 0.8:
+                    color = (0, 255, 0)    # green
+                elif suit >= 0.4:
+                    color = (0, 165, 255)  # orange
+                else:
+                    color = (0, 0, 255)    # red
+                marks.append(LabelMark(
+                    text=f"suit:{suit:.2f}",
+                    x=bx,
+                    y=by + bh + 0.008,
+                    color=color,
+                    font_scale=0.35,
+                ))
+            else:
+                # Main / other: binary gate label
+                color = (0, 255, 0) if r.gate_passed else (0, 0, 255)
+                fail_label = ",".join(
+                    f.removeprefix("gate.") for f in r.fail_reasons[:2]
+                ) if r.fail_reasons else "OK"
+                marks.append(LabelMark(
+                    text=f"gate:{fail_label}",
+                    x=bx,
+                    y=by + bh + 0.008,
+                    color=color,
+                    font_scale=0.35,
+                ))
+        return marks
+
+
+class _MockClassified:
+    """Minimal wrapper when face.classify is not available."""
+
+    def __init__(self, face, role: str):
+        self.face = face
+        self.role = role

@@ -7,6 +7,13 @@ dependencies = [
     "visualbase",
     "visualpath[isolation]",
     "vpx-sdk",
+    "momentscan-frame-quality",
+    "momentscan-face-classify",
+    "momentscan-face-quality",
+    "momentscan-face-gate",
+    "momentscan-face-baseline",
+    "momentscan-frame-scoring",
+    "momentscan-portrait-score",
     "momentscan-report",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
@@ -51,13 +58,14 @@ momentscan = "momentscan.cli:main"
 # Register core modules as plugins for visualpath.
 # ML analyzers are registered by their sub-packages (vpx-face-detect, etc.)
 [project.entry-points."visualpath.modules"]
-"face.classify" = "momentscan.algorithm.analyzers.face_classifier:FaceClassifierAnalyzer"
-"frame.quality" = "momentscan.algorithm.analyzers.quality:QualityAnalyzer"
-"frame.scoring" = "momentscan.algorithm.analyzers.frame_scoring:FrameScoringAnalyzer"
-"face.quality" = "momentscan.algorithm.analyzers.face_quality:FaceQualityAnalyzer"
-"face.baseline" = "momentscan.algorithm.analyzers.face_baseline:FaceBaselineAnalyzer"
-"face.gate" = "momentscan.algorithm.analyzers.face_gate:FaceGateAnalyzer"
-"portrait.score" = "momentscan.algorithm.analyzers.portrait_score:PortraitScoreAnalyzer"
+# All analyzers moved to momentscan-plugins packages:
+# face.classify → momentscan-face-classify
+# face.quality → momentscan-face-quality
+# face.gate → momentscan-face-gate
+# face.baseline → momentscan-face-baseline
+# frame.quality → momentscan-frame-quality
+# frame.scoring → momentscan-frame-scoring
+# portrait.score → momentscan-portrait-score
 
 [build-system]
 requires = ["hatchling"]
@@ -83,4 +91,11 @@ vpx-face-expression = { workspace = true }
 vpx-body-pose = { workspace = true }
 vpx-hand-gesture = { workspace = true }
 vpx-face-parse = { workspace = true }
+momentscan-frame-quality = { workspace = true }
+momentscan-face-classify = { workspace = true }
+momentscan-face-quality = { workspace = true }
+momentscan-face-gate = { workspace = true }
+momentscan-face-baseline = { workspace = true }
+momentscan-frame-scoring = { workspace = true }
+momentscan-portrait-score = { workspace = true }
 momentscan-report = { workspace = true }

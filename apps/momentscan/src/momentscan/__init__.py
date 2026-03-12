@@ -15,7 +15,7 @@ With options:
     >>> result = ms.run("video.mp4", output_dir="./output")
 
 Frame Scoring:
-    >>> from momentscan.algorithm.analyzers.frame_scoring import FrameScorer
+    >>> from momentscan.frame_scoring import FrameScorer
     >>> scorer = FrameScorer()
     >>> result = scorer.score(face_obs=face_obs, quality_obs=quality_obs)
     >>> print(f"Score: {result.total_score:.2f}")

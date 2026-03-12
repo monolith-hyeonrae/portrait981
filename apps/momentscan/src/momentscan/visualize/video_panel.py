@@ -43,7 +43,7 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from momentscan.algorithm.analyzers.face_classifier import FaceClassifierAnalyzer
+        from momentscan.face_classify import FaceClassifierAnalyzer
         modules["face.classify"] = FaceClassifierAnalyzer()
     except ImportError:
         pass
@@ -58,7 +58,7 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from momentscan.algorithm.analyzers.portrait_score.analyzer import PortraitScoreAnalyzer
+        from momentscan.portrait_score.analyzer import PortraitScoreAnalyzer
         modules["portrait.score"] = PortraitScoreAnalyzer()
     except ImportError:
         pass
@@ -68,12 +68,12 @@ def _build_default_modules() -> Dict[str, object]:
     except ImportError:
         pass
     try:
-        from momentscan.algorithm.analyzers.face_quality import FaceQualityAnalyzer
+        from momentscan.face_quality import FaceQualityAnalyzer
         modules["face.quality"] = FaceQualityAnalyzer()
     except ImportError:
         pass
     try:
-        from momentscan.algorithm.analyzers.face_gate import FaceGateAnalyzer
+        from momentscan.face_gate import FaceGateAnalyzer
         modules["face.gate"] = FaceGateAnalyzer()
     except ImportError:
         pass
