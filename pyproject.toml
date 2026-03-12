@@ -1,6 +1,7 @@
 [tool.uv.workspace]
 members = [
     "libs/visualbase",
+    "libs/visualbind",
     "libs/visualpath/core",
     "libs/visualpath/isolation",
     "libs/visualpath/cli",

@@ -30,6 +30,7 @@ members = [
     "portrait981-serve",
     "reportrait",
     "visualbase",
+    "visualbind",
     "visualpath",
     "visualpath-cli",
     "visualpath-isolation",
@@ -6314,6 +6315,27 @@ requires-dist = [
     { name = "pyzmq", marker = "extra == 'zmq'", specifier = ">=25.0.0" },
 ]
 provides-extras = ["dev", "zmq", "webrtc"]
+
+[[package]]
+name = "visualbind"
+version = "0.1.0"
+source = { editable = "libs/visualbind" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "visualpath"
