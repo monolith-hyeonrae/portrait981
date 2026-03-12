@@ -1,9 +1,10 @@
-"""Scaffold a new vpx module (plugin or momentscan-internal).
+"""Scaffold a new analysis module (vpx plugin or namespace plugin).
 
 Usage from CLI:
-    vpx new face.landmark
-    vpx new face.landmark --depends face.detect
-    vpx new scene.transition --internal
+    vpx new face.landmark                              # vpx plugin (libs/vpx/plugins/)
+    vpx new face.landmark --depends face.detect        # with dependency
+    vpx new face.landmark --namespace momentscan        # momentscan plugin (at CWD)
+    vpx new face.landmark --namespace momentscan --output ./plugins  # at specified path
 """
 
 from __future__ import annotations
@@ -34,14 +35,18 @@ def _find_repo_root() -> Path:
 # Name derivation
 # ---------------------------------------------------------------------------
 
-def derive_names(module_name: str) -> dict:
+def derive_names(module_name: str, namespace: str = "vpx") -> dict:
     """Derive all conventional names from a dot-notation module name.
 
     >>> derive_names("face.landmark")
     {'module_name': 'face.landmark', 'domain': 'face', 'action': 'landmark',
      'class_name': 'FaceLandmarkAnalyzer', 'output_class': 'FaceLandmarkOutput',
-     'package_name': 'vpx-face-landmark', 'python_module': 'face_landmark',
-     'dir_name': 'face-landmark'}
+     'namespace': 'vpx', 'package_name': 'vpx-face-landmark',
+     'python_module': 'face_landmark', 'dir_name': 'face-landmark'}
+
+    >>> derive_names("face.landmark", namespace="momentscan")
+    {'module_name': 'face.landmark', ...,
+     'namespace': 'momentscan', 'package_name': 'momentscan-face-landmark', ...}
     """
     if "." not in module_name:
         raise ValueError(
@@ -61,14 +66,15 @@ def derive_names(module_name: str) -> dict:
         "action": action,
         "class_name": f"{camel}Analyzer",
         "output_class": f"{camel}Output",
-        "package_name": f"vpx-{domain}-{action}",
+        "namespace": namespace,
+        "package_name": f"{namespace}-{domain}-{action}",
         "python_module": f"{domain}_{action}",
         "dir_name": f"{domain}-{action}",
     }
 
 
 # ---------------------------------------------------------------------------
-# Templates
+# Templates (vpx plugin)
 # ---------------------------------------------------------------------------
 
 def _tpl_pyproject(names: dict, depends: List[str]) -> str:
@@ -113,16 +119,17 @@ __path__ = pkgutil.extend_path(__path__, __name__)
 
 
 def _tpl_init(names: dict, has_backend: bool) -> str:
+    ns = names["namespace"]
     lines = [
-        f'from vpx.{names["python_module"]}.analyzer import {names["class_name"]}',
-        f'from vpx.{names["python_module"]}.output import {names["output_class"]}',
+        f'from {ns}.{names["python_module"]}.analyzer import {names["class_name"]}',
+        f'from {ns}.{names["python_module"]}.output import {names["output_class"]}',
     ]
     all_names = [names["class_name"], names["output_class"]]
 
     if has_backend:
         backend_class = names["class_name"].replace("Analyzer", "Backend")
         lines.append(
-            f'from vpx.{names["python_module"]}.backends.base import {backend_class}'
+            f'from {ns}.{names["python_module"]}.backends.base import {backend_class}'
         )
         all_names.append(backend_class)
 
@@ -136,17 +143,8 @@ __all__ = [{all_str}]
 '''
 
 
-def _tpl_init_internal(names: dict, app_python: str = "momentscan") -> str:
-    pkg = f'{app_python}.algorithm.analyzers.{names["python_module"]}'
-    return f'''\
-from {pkg}.analyzer import {names["class_name"]}
-from {pkg}.output import {names["output_class"]}
-
-__all__ = ["{names["class_name"]}", "{names["output_class"]}"]
-'''
-
-
 def _tpl_analyzer(names: dict, depends: List[str]) -> str:
+    ns = names["namespace"]
     depends_attr = ""
     if depends:
         deps_str = ", ".join(f'"{d}"' for d in depends)
@@ -162,71 +160,7 @@ def _tpl_analyzer(names: dict, depends: List[str]) -> str:
 from typing import Optional
 
 from vpx.sdk import Module, Observation, ModuleCapabilities
-from vpx.{names["python_module"]}.output import {names["output_class"]}
-
-
-class {names["class_name"]}(Module):
-    """{names["class_name"].replace("Analyzer", "")} analyzer.
-
-    Analyzes frames and produces {names["output_class"]}.
-    """{depends_attr}
-
-    @property
-    def name(self) -> str:
-        return "{names["module_name"]}"
-
-    @property
-    def capabilities(self) -> ModuleCapabilities:
-        return ModuleCapabilities()
-
-    def initialize(self) -> None:
-        """Load models and resources."""
-        pass
-
-    def cleanup(self) -> None:
-        """Release resources."""
-        pass
-
-    def process(self, frame, deps=None) -> Optional[Observation]:
-        """Process a single frame.
-
-        Args:
-            frame: Input frame with .data (BGR ndarray), .frame_id, .t_src_ns.{deps_docstring}
-
-        Returns:
-            Observation with {names["output_class"]} in .data.
-        """
-        output = {names["output_class"]}()
-
-        return Observation(
-            source=self.name,
-            frame_id=frame.frame_id,
-            t_ns=frame.t_src_ns,
-            signals={{}},
-            data=output,
-        )
-'''
-
-
-def _tpl_analyzer_internal(names: dict, depends: List[str], app_python: str = "momentscan") -> str:
-    depends_attr = ""
-    if depends:
-        deps_str = ", ".join(f'"{d}"' for d in depends)
-        depends_attr = f"\n    depends = [{deps_str}]"
-
-    deps_docstring = ""
-    if depends:
-        deps_docstring = f"\n            deps: Dependency observations ({', '.join(depends)})."
-
-    pkg = f'{app_python}.algorithm.analyzers.{names["python_module"]}'
-
-    return f'''\
-"""Analyzer module for {names["module_name"]}."""
-
-from typing import Optional
-
-from vpx.sdk import Module, Observation, ModuleCapabilities
-from {pkg}.output import {names["output_class"]}
+from {ns}.{names["python_module"]}.output import {names["output_class"]}
 
 
 class {names["class_name"]}(Module):
@@ -324,11 +258,12 @@ class {backend_class}(Protocol):
 
 
 def _tpl_test(names: dict) -> str:
+    ns = names["namespace"]
     return f'''\
 """Basic tests for {names["module_name"]} analyzer."""
 
 from vpx.sdk.testing import FakeFrame, PluginTestHarness, assert_valid_observation
-from vpx.{names["python_module"]} import {names["class_name"]}
+from {ns}.{names["python_module"]} import {names["class_name"]}
 
 
 class Test{names["class_name"]}:
@@ -351,6 +286,49 @@ class Test{names["class_name"]}:
 
     def test_name(self):
         assert self.analyzer.name == "{names["module_name"]}"
+'''
+
+
+# ---------------------------------------------------------------------------
+# Templates (namespace plugin — e.g. momentscan)
+# ---------------------------------------------------------------------------
+
+def _tpl_ns_pyproject(names: dict, depends: List[str]) -> str:
+    """pyproject.toml for a namespace plugin (non-vpx)."""
+    ns = names["namespace"]
+    dep_lines = '    "vpx-sdk",\n'
+    for dep in depends:
+        dep_names = derive_names(dep)
+        dep_lines += f'    "{dep_names["package_name"]}",\n'
+
+    source_lines = 'vpx-sdk = { workspace = true }\n'
+    for dep in depends:
+        dep_names = derive_names(dep)
+        source_lines += f'{dep_names["package_name"]} = {{ workspace = true }}\n'
+
+    return f'''\
+[project]
+name = "{names["package_name"]}"
+version = "0.1.0"
+description = "{names["class_name"].replace("Analyzer", "")} analyzer"
+requires-python = ">=3.10"
+dependencies = [
+{dep_lines}]
+
+[project.entry-points."visualpath.modules"]
+"{names["module_name"]}" = "{ns}.{names["python_module"]}:{names["class_name"]}"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/{ns}"]
+
+[tool.uv.sources]
+{source_lines}
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 '''
 
 
@@ -391,6 +369,17 @@ def _register_workspace_member(root: Path, member_path: str) -> None:
     pyproject.write_text(text)
 
 
+def _compute_member_path(root: Path, plugin_dir: Path) -> Optional[str]:
+    """Compute workspace member path relative to repo root.
+
+    Returns None if plugin_dir is outside the repo.
+    """
+    try:
+        return str(plugin_dir.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Scaffold functions
 # ---------------------------------------------------------------------------
@@ -402,12 +391,12 @@ def scaffold_plugin(
     dry_run: bool = False,
     repo_root: Optional[Path] = None,
 ) -> List[Path]:
-    """Scaffold a vpx plugin package.
+    """Scaffold a vpx plugin package at libs/vpx/plugins/.
 
     Returns list of created (or would-be-created) file paths.
     """
     depends = depends or []
-    names = derive_names(module_name)
+    names = derive_names(module_name, namespace="vpx")
     root = repo_root or _find_repo_root()
 
     plugin_dir = root / "libs" / "vpx" / "plugins" / names["dir_name"]
@@ -451,53 +440,77 @@ def scaffold_plugin(
     return paths
 
 
-def scaffold_internal(
+def scaffold_namespace_plugin(
     module_name: str,
+    namespace: str,
     depends: Optional[List[str]] = None,
+    no_backend: bool = False,
     dry_run: bool = False,
+    output_dir: Optional[Path] = None,
     repo_root: Optional[Path] = None,
-    app_name: str = "momentscan",
 ) -> List[Path]:
-    """Scaffold an app-internal analyzer sub-package.
+    """Scaffold an independent plugin package with a custom namespace.
+
+    Creates a full package (pyproject.toml, tests, namespace init) at the
+    specified output directory or CWD.  The namespace determines the Python
+    import path (e.g. ``momentscan.face_landmark``).
 
     Args:
-        module_name: Module name in dot notation (e.g. 'scene.transition').
+        module_name: Module name in dot notation (e.g. 'face.landmark').
+        namespace: Python namespace (e.g. 'momentscan').
         depends: Dependency module names.
+        no_backend: Skip backends/ directory generation.
         dry_run: Print file list without creating anything.
-        repo_root: Repository root override.
-        app_name: Target app name (default: 'momentscan').
+        output_dir: Base directory for the plugin package. Defaults to CWD.
+        repo_root: Repository root override (for workspace registration).
 
     Returns list of created (or would-be-created) file paths.
     """
     depends = depends or []
-    names = derive_names(module_name)
-    root = repo_root or _find_repo_root()
+    names = derive_names(module_name, namespace=namespace)
 
-    app_python = app_name.replace("-", "_")
-
-    pkg_dir = (
-        root / "apps" / app_name / "src"
-        / app_python / "algorithm" / "analyzers" / names["python_module"]
-    )
+    base_dir = output_dir or Path.cwd()
+    plugin_dir = base_dir / names["dir_name"]
+    ns_dir = plugin_dir / "src" / namespace
+    src_dir = ns_dir / names["python_module"]
+    test_dir = plugin_dir / "tests"
 
     files: List[tuple[Path, str]] = [
-        (pkg_dir / "__init__.py", _tpl_init_internal(names, app_python)),
-        (pkg_dir / "analyzer.py", _tpl_analyzer_internal(names, depends, app_python)),
-        (pkg_dir / "output.py", _tpl_output(names)),
+        (plugin_dir / "pyproject.toml", _tpl_ns_pyproject(names, depends)),
+        (ns_dir / "__init__.py", _tpl_namespace_init()),
+        (src_dir / "__init__.py", _tpl_init(names, has_backend=not no_backend)),
+        (src_dir / "analyzer.py", _tpl_analyzer(names, depends)),
+        (src_dir / "output.py", _tpl_output(names)),
     ]
+
+    if not no_backend:
+        backend_dir = src_dir / "backends"
+        files.append((backend_dir / "__init__.py", _tpl_backend_init()))
+        files.append((backend_dir / "base.py", _tpl_backend_base(names)))
+
+    files.append((test_dir / f"test_{names['python_module']}.py", _tpl_test(names)))
 
     paths = [f[0] for f in files]
 
     if dry_run:
         return paths
 
-    if pkg_dir.exists():
+    if plugin_dir.exists():
         raise FileExistsError(
-            f"Directory already exists: {pkg_dir}"
+            f"Directory already exists: {plugin_dir}"
         )
 
     for path, content in files:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+
+    # Register in workspace if inside the repo
+    try:
+        root = repo_root or _find_repo_root()
+        member_path = _compute_member_path(root, plugin_dir)
+        if member_path:
+            _register_workspace_member(root, member_path)
+    except RuntimeError:
+        pass  # Not inside a workspace — skip registration
 
     return paths

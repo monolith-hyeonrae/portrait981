@@ -63,17 +63,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # vpx new
-    new_p = sub.add_parser("new", help="Scaffold a new vpx module")
+    new_p = sub.add_parser("new", help="Scaffold a new analysis module")
     new_p.add_argument("name", help="Module name in dot notation (e.g. face.landmark)")
     new_p.add_argument(
-        "--internal",
-        action="store_true",
-        help="Create as app-internal module instead of vpx plugin",
+        "--namespace",
+        default=None,
+        help=(
+            "Python namespace for the plugin (e.g. 'momentscan'). "
+            "Creates an independent plugin package at CWD (or --output). "
+            "Without this flag, creates a vpx plugin at libs/vpx/plugins/."
+        ),
     )
     new_p.add_argument(
-        "--app",
-        default="momentscan",
-        help="Target app for --internal modules (default: momentscan)",
+        "--output",
+        default=None,
+        help="Base directory for plugin creation (default: CWD). Used with --namespace.",
     )
     new_p.add_argument(
         "--depends",
@@ -242,17 +246,20 @@ class _StopIteration(Exception):
 
 def _cmd_new(args: argparse.Namespace) -> None:
     """Handle ``vpx new``."""
-    from vpx.runner.scaffold import scaffold_plugin, scaffold_internal
+    from vpx.runner.scaffold import scaffold_plugin, scaffold_namespace_plugin
 
     depends = [d.strip() for d in args.depends.split(",") if d.strip()]
 
     try:
-        if args.internal:
-            paths = scaffold_internal(
+        if args.namespace:
+            output_dir = Path(args.output) if args.output else None
+            paths = scaffold_namespace_plugin(
                 args.name,
+                namespace=args.namespace,
                 depends=depends,
+                no_backend=args.no_backend,
                 dry_run=args.dry_run,
-                app_name=args.app,
+                output_dir=output_dir,
             )
         else:
             paths = scaffold_plugin(

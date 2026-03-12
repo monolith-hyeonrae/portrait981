@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from vpx.runner.scaffold import derive_names, scaffold_plugin, scaffold_internal
+from vpx.runner.scaffold import derive_names, scaffold_plugin, scaffold_namespace_plugin
 
 # Minimal workspace pyproject.toml for tests
 _WORKSPACE_TOML = """\
@@ -32,9 +32,17 @@ class TestDeriveNames:
         assert names["action"] == "landmark"
         assert names["class_name"] == "FaceLandmarkAnalyzer"
         assert names["output_class"] == "FaceLandmarkOutput"
+        assert names["namespace"] == "vpx"
         assert names["package_name"] == "vpx-face-landmark"
         assert names["python_module"] == "face_landmark"
         assert names["dir_name"] == "face-landmark"
+
+    def test_custom_namespace(self):
+        names = derive_names("face.landmark", namespace="momentscan")
+        assert names["namespace"] == "momentscan"
+        assert names["package_name"] == "momentscan-face-landmark"
+        assert names["class_name"] == "FaceLandmarkAnalyzer"
+        assert names["python_module"] == "face_landmark"
 
     def test_different_domain(self):
         names = derive_names("scene.transition")
@@ -77,38 +85,6 @@ class TestScaffoldPluginDryRun:
         original = (repo / "pyproject.toml").read_text()
         scaffold_plugin("face.landmark", dry_run=True, repo_root=repo)
         assert (repo / "pyproject.toml").read_text() == original
-
-
-class TestScaffoldInternalDryRun:
-    def test_dry_run_returns_paths(self, repo):
-        paths = scaffold_internal(
-            "scene.transition", dry_run=True, repo_root=repo
-        )
-        names = [p.name for p in paths]
-
-        assert "__init__.py" in names
-        assert "analyzer.py" in names
-        assert "output.py" in names
-        # internal modules don't have backends or tests
-        assert "base.py" not in names
-        assert len(paths) == 3
-
-    def test_dry_run_does_not_create_files(self, repo):
-        scaffold_internal("scene.transition", dry_run=True, repo_root=repo)
-        pkg_dir = (
-            repo / "apps" / "momentscan" / "src"
-            / "momentscan" / "algorithm" / "analyzers" / "scene_transition"
-        )
-        assert not pkg_dir.exists()
-
-    def test_dry_run_custom_app(self, repo):
-        paths = scaffold_internal(
-            "scene.transition", dry_run=True, repo_root=repo, app_name="reportrait"
-        )
-        # Paths should point to the custom app
-        path_strs = [str(p) for p in paths]
-        assert any("apps/reportrait" in s for s in path_strs)
-        assert not any("apps/momentscan" in s for s in path_strs)
 
 
 class TestScaffoldPluginCreatesFiles:
@@ -220,108 +196,194 @@ class TestWorkspaceRegistration:
         assert final.count('"libs/vpx/plugins/body-track"') == 1
 
 
-class TestScaffoldInternalCreatesFiles:
-    def test_creates_all_files(self, repo):
-        paths = scaffold_internal("scene.transition", repo_root=repo)
+class TestScaffoldNamespacePluginDryRun:
+    def test_dry_run_returns_paths(self, tmp_path):
+        paths = scaffold_namespace_plugin(
+            "scene.transition",
+            namespace="momentscan",
+            dry_run=True,
+            output_dir=tmp_path,
+        )
+        names = [p.name for p in paths]
 
-        for p in paths:
-            assert p.exists(), f"Missing: {p}"
+        assert "pyproject.toml" in names
+        assert "analyzer.py" in names
+        assert "output.py" in names
+        assert "test_scene_transition.py" in names
 
-    def test_internal_init_content(self, repo):
-        scaffold_internal("scene.transition", repo_root=repo)
+    def test_dry_run_does_not_create_files(self, tmp_path):
+        scaffold_namespace_plugin(
+            "scene.transition",
+            namespace="momentscan",
+            dry_run=True,
+            output_dir=tmp_path,
+        )
+        assert not (tmp_path / "scene-transition").exists()
 
-        content = (
-            repo / "apps" / "momentscan" / "src"
-            / "momentscan" / "algorithm" / "analyzers" / "scene_transition"
-            / "__init__.py"
-        ).read_text()
-
-        assert "SceneTransitionAnalyzer" in content
-        assert "SceneTransitionOutput" in content
-        assert "momentscan.algorithm.analyzers.scene_transition" in content
-
-    def test_internal_analyzer_uses_app_import_path(self, repo):
-        """Internal module analyzer.py should use app import path, not vpx.*."""
-        scaffold_internal("scene.transition", repo_root=repo)
-
-        content = (
-            repo / "apps" / "momentscan" / "src"
-            / "momentscan" / "algorithm" / "analyzers" / "scene_transition"
-            / "analyzer.py"
-        ).read_text()
-
-        # Should import from app path, NOT vpx path
-        assert "momentscan.algorithm.analyzers.scene_transition.output" in content
-        assert "vpx.scene_transition" not in content
-
-    def test_internal_does_not_modify_workspace(self, repo):
-        """Internal modules are sub-packages, not workspace members."""
-        original = (repo / "pyproject.toml").read_text()
-        scaffold_internal("scene.transition", repo_root=repo)
-        assert (repo / "pyproject.toml").read_text() == original
+    def test_dry_run_no_backend(self, tmp_path):
+        paths = scaffold_namespace_plugin(
+            "scene.transition",
+            namespace="momentscan",
+            no_backend=True,
+            dry_run=True,
+            output_dir=tmp_path,
+        )
+        names = [p.name for p in paths]
+        assert "base.py" not in names
 
 
-class TestScaffoldInternalCustomApp:
-    """Tests for --app flag with scaffold_internal."""
-
-    def test_custom_app_creates_files(self, repo):
-        paths = scaffold_internal(
-            "scene.transition", repo_root=repo, app_name="reportrait"
+class TestScaffoldNamespacePluginCreatesFiles:
+    def test_creates_all_files(self, tmp_path):
+        paths = scaffold_namespace_plugin(
+            "scene.transition",
+            namespace="momentscan",
+            output_dir=tmp_path,
         )
         for p in paths:
             assert p.exists(), f"Missing: {p}"
 
-    def test_custom_app_file_structure(self, repo):
-        scaffold_internal(
-            "scene.transition", repo_root=repo, app_name="reportrait"
+    def test_file_structure(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            output_dir=tmp_path,
         )
-        base = (
-            repo / "apps" / "reportrait" / "src"
-            / "reportrait" / "algorithm" / "analyzers" / "scene_transition"
-        )
-        assert (base / "__init__.py").exists()
-        assert (base / "analyzer.py").exists()
-        assert (base / "output.py").exists()
 
-    def test_custom_app_init_content(self, repo):
-        scaffold_internal(
-            "scene.transition", repo_root=repo, app_name="reportrait"
+        base = tmp_path / "face-gate"
+        assert (base / "pyproject.toml").exists()
+        assert (base / "src" / "momentscan" / "__init__.py").exists()
+        assert (base / "src" / "momentscan" / "face_gate" / "__init__.py").exists()
+        assert (base / "src" / "momentscan" / "face_gate" / "analyzer.py").exists()
+        assert (base / "src" / "momentscan" / "face_gate" / "output.py").exists()
+        assert (base / "tests" / "test_face_gate.py").exists()
+
+    def test_no_backend_skips_backends_dir(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            no_backend=True,
+            output_dir=tmp_path,
         )
+
+        base = tmp_path / "face-gate"
+        assert not (base / "src" / "momentscan" / "face_gate" / "backends").exists()
+
+    def test_pyproject_content(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            depends=["face.detect"],
+            output_dir=tmp_path,
+        )
+
+        content = (tmp_path / "face-gate" / "pyproject.toml").read_text()
+        assert 'name = "momentscan-face-gate"' in content
+        assert '"face.gate" = "momentscan.face_gate:FaceGateAnalyzer"' in content
+        assert 'packages = ["src/momentscan"]' in content
+        assert '"vpx-face-detect"' in content
+
+    def test_namespace_init(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            output_dir=tmp_path,
+        )
+
         content = (
-            repo / "apps" / "reportrait" / "src"
-            / "reportrait" / "algorithm" / "analyzers" / "scene_transition"
-            / "__init__.py"
+            tmp_path / "face-gate" / "src" / "momentscan" / "__init__.py"
+        ).read_text()
+        assert "pkgutil.extend_path" in content
+
+    def test_analyzer_uses_namespace_import(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            depends=["face.detect"],
+            output_dir=tmp_path,
+        )
+
+        content = (
+            tmp_path / "face-gate" / "src" / "momentscan" / "face_gate" / "analyzer.py"
         ).read_text()
 
-        assert "reportrait.algorithm.analyzers.scene_transition" in content
-        assert "momentscan" not in content
+        assert "from momentscan.face_gate.output import FaceGateOutput" in content
+        assert "class FaceGateAnalyzer(Module):" in content
+        assert 'depends = ["face.detect"]' in content
 
-    def test_custom_app_analyzer_import_path(self, repo):
-        """Analyzer should import from app path, not vpx.*."""
-        scaffold_internal(
-            "scene.transition", repo_root=repo, app_name="reportrait"
+    def test_init_uses_namespace_import(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            output_dir=tmp_path,
         )
+
         content = (
-            repo / "apps" / "reportrait" / "src"
-            / "reportrait" / "algorithm" / "analyzers" / "scene_transition"
-            / "analyzer.py"
+            tmp_path / "face-gate" / "src" / "momentscan" / "face_gate" / "__init__.py"
         ).read_text()
 
-        assert "reportrait.algorithm.analyzers.scene_transition.output" in content
-        assert "vpx.scene_transition" not in content
-        assert "momentscan" not in content
+        assert "from momentscan.face_gate.analyzer" in content
+        assert "from momentscan.face_gate.output" in content
 
-    def test_hyphenated_app_name(self, repo):
-        scaffold_internal(
-            "scene.transition", repo_root=repo, app_name="traffic-monitor"
+    def test_test_uses_namespace_import(self, tmp_path):
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            output_dir=tmp_path,
         )
-        content = (
-            repo / "apps" / "traffic-monitor" / "src"
-            / "traffic_monitor" / "algorithm" / "analyzers" / "scene_transition"
-            / "__init__.py"
-        ).read_text()
 
-        assert "traffic_monitor.algorithm.analyzers.scene_transition" in content
+        content = (tmp_path / "face-gate" / "tests" / "test_face_gate.py").read_text()
+        assert "from momentscan.face_gate import FaceGateAnalyzer" in content
+
+    def test_custom_namespace(self, tmp_path):
+        """User can use any namespace, not just momentscan."""
+        scaffold_namespace_plugin(
+            "scene.detect",
+            namespace="myapp",
+            output_dir=tmp_path,
+        )
+
+        base = tmp_path / "scene-detect"
+        content = (base / "pyproject.toml").read_text()
+        assert 'name = "myapp-scene-detect"' in content
+        assert '"scene.detect" = "myapp.scene_detect:SceneDetectAnalyzer"' in content
+        assert 'packages = ["src/myapp"]' in content
+
+        analyzer = (base / "src" / "myapp" / "scene_detect" / "analyzer.py").read_text()
+        assert "from myapp.scene_detect.output" in analyzer
+
+
+class TestNamespacePluginWorkspaceRegistration:
+    def test_registers_when_inside_repo(self, repo):
+        """Plugin inside repo should be auto-registered in workspace."""
+        output_dir = repo / "apps" / "custom-plugins"
+        output_dir.mkdir(parents=True)
+
+        scaffold_namespace_plugin(
+            "face.gate",
+            namespace="momentscan",
+            output_dir=output_dir,
+            repo_root=repo,
+        )
+
+        content = (repo / "pyproject.toml").read_text()
+        assert '"apps/custom-plugins/face-gate"' in content
+
+    def test_skips_registration_outside_repo(self, repo, tmp_path):
+        """Plugin outside repo should not be registered."""
+        # Create a truly external directory (not under repo root)
+        import tempfile
+        with tempfile.TemporaryDirectory() as ext:
+            external_dir = Path(ext)
+
+            scaffold_namespace_plugin(
+                "face.gate",
+                namespace="momentscan",
+                output_dir=external_dir,
+                repo_root=repo,
+            )
+
+            content = (repo / "pyproject.toml").read_text()
+            assert "face-gate" not in content
 
 
 class TestRefuseExistingDirectory:
@@ -333,11 +395,19 @@ class TestRefuseExistingDirectory:
         with pytest.raises(FileExistsError, match="already exists"):
             scaffold_plugin("face.landmark", repo_root=repo)
 
-    def test_internal_refuses_existing(self, repo):
-        scaffold_internal("scene.transition", repo_root=repo)
+    def test_namespace_plugin_refuses_existing(self, tmp_path):
+        scaffold_namespace_plugin(
+            "scene.transition",
+            namespace="momentscan",
+            output_dir=tmp_path,
+        )
 
         with pytest.raises(FileExistsError, match="already exists"):
-            scaffold_internal("scene.transition", repo_root=repo)
+            scaffold_namespace_plugin(
+                "scene.transition",
+                namespace="momentscan",
+                output_dir=tmp_path,
+            )
 
 
 class TestGeneratedModulePassesHarness:
@@ -413,17 +483,30 @@ class TestCLINewParser:
         args = parser.parse_args(["new", "face.landmark"])
         assert args.command == "new"
         assert args.name == "face.landmark"
-        assert args.internal is False
+        assert args.namespace is None
+        assert args.output is None
         assert args.depends == ""
         assert args.no_backend is False
         assert args.dry_run is False
 
-    def test_parse_internal(self):
+    def test_parse_namespace(self):
         from vpx.runner.cli import _build_parser
 
         parser = _build_parser()
-        args = parser.parse_args(["new", "scene.transition", "--internal"])
-        assert args.internal is True
+        args = parser.parse_args(["new", "scene.transition", "--namespace", "momentscan"])
+        assert args.namespace == "momentscan"
+
+    def test_parse_namespace_with_output(self):
+        from vpx.runner.cli import _build_parser
+
+        parser = _build_parser()
+        args = parser.parse_args([
+            "new", "scene.transition",
+            "--namespace", "momentscan",
+            "--output", "/tmp/plugins",
+        ])
+        assert args.namespace == "momentscan"
+        assert args.output == "/tmp/plugins"
 
     def test_parse_depends(self):
         from vpx.runner.cli import _build_parser
@@ -448,35 +531,20 @@ class TestCLINewParser:
         args = parser.parse_args(["new", "face.landmark", "--dry-run"])
         assert args.dry_run is True
 
-    def test_parse_app_flag(self):
-        from vpx.runner.cli import _build_parser
-
-        parser = _build_parser()
-        args = parser.parse_args([
-            "new", "scene.transition",
-            "--internal", "--app", "reportrait",
-        ])
-        assert args.internal is True
-        assert args.app == "reportrait"
-
-    def test_parse_app_default(self):
-        from vpx.runner.cli import _build_parser
-
-        parser = _build_parser()
-        args = parser.parse_args(["new", "scene.transition", "--internal"])
-        assert args.app == "momentscan"
-
     def test_parse_all_flags(self):
         from vpx.runner.cli import _build_parser
 
         parser = _build_parser()
         args = parser.parse_args([
             "new", "face.landmark",
-            "--internal", "--depends", "face.detect,body.pose",
-            "--app", "reportrait",
+            "--namespace", "momentscan",
+            "--output", "./plugins",
+            "--depends", "face.detect,body.pose",
+            "--no-backend",
             "--dry-run",
         ])
-        assert args.internal is True
+        assert args.namespace == "momentscan"
+        assert args.output == "./plugins"
         assert args.depends == "face.detect,body.pose"
-        assert args.app == "reportrait"
+        assert args.no_backend is True
         assert args.dry_run is True
