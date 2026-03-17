@@ -347,7 +347,7 @@ def run(
         profile: Execution profile ("lite" or "platform").
         isolation: Optional IsolationConfig for explicit module isolation.
         on_frame: Optional per-frame callback ``(frame, terminal_results) -> bool``.
-        collection_path: Path to collection/catalog directory (e.g. catalogs/portrait-v1).
+        collection_path: Path to collection/catalog directory (e.g. data/catalogs/portrait-v1).
             Loads signal profiles and pose/pivot definitions.
             None = use built-in poses × AU-rule classification.
         member_id: Unique member identifier for cumulative bank storage.
@@ -359,7 +359,7 @@ def run(
     Example:
         >>> result = ms.run("video.mp4")
         >>> result = ms.run("video.mp4", output_dir="./output")
-        >>> result = ms.run("video.mp4", collection_path="catalogs/portrait-v1")
+        >>> result = ms.run("video.mp4", collection_path="data/catalogs/portrait-v1")
     """
     app = MomentscanApp(
         analyzers=analyzers, output_dir=output_dir,

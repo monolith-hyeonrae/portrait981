@@ -3,10 +3,10 @@
 참조 이미지를 파이프라인 analyzer로 분석하여 카테고리별 시그널 프로파일을 생성.
 
 Usage:
-    1. CLI: ``momentscan catalog-build catalogs/portrait-v1``
+    1. CLI: ``momentscan catalog-build data/catalogs/portrait-v1``
     2. Python:
         >>> from momentscan.algorithm.batch.catalog_build import build_catalog_profiles
-        >>> profiles = build_catalog_profiles(Path("catalogs/portrait-v1"))
+        >>> profiles = build_catalog_profiles(Path("data/catalogs/portrait-v1"))
 """
 
 from __future__ import annotations

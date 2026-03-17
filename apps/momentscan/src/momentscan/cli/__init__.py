@@ -133,7 +133,7 @@ Examples:
     )
     debug_parser.add_argument(
         "--collection", type=str, metavar="PATH",
-        help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
+        help="Path to collection/catalog directory (e.g. data/catalogs/portrait-v1). "
              "Loads signal profiles and pose/pivot definitions. "
              "Without this flag, uses built-in poses × AU-rule classification."
     )
@@ -170,7 +170,7 @@ Examples:
     )
     proc_parser.add_argument(
         "--collection", type=str, metavar="PATH",
-        help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
+        help="Path to collection/catalog directory (e.g. data/catalogs/portrait-v1). "
              "Loads signal profiles and pose/pivot definitions. "
              "Without this flag, uses built-in poses × AU-rule classification."
     )
@@ -215,7 +215,7 @@ Examples:
     )
     collect_parser.add_argument(
         "--collection", type=str, metavar="PATH",
-        help="Path to collection/catalog directory (e.g. catalogs/portrait-v1). "
+        help="Path to collection/catalog directory (e.g. data/catalogs/portrait-v1). "
              "Loads signal profiles and pose/pivot definitions. "
              "Without this flag, uses built-in poses × AU-rule classification."
     )
@@ -293,7 +293,7 @@ Examples:
     )
     catalog_parser.add_argument(
         "path",
-        help="Path to catalog directory (e.g. catalogs/portrait-v1)",
+        help="Path to catalog directory (e.g. data/catalogs/portrait-v1)",
     )
     catalog_parser.add_argument(
         "--no-cache", action="store_true",

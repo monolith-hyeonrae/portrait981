@@ -3,8 +3,8 @@
 참조 이미지를 파이프라인으로 분석하여 시그널 프로파일을 생성한다.
 
 Usage:
-    momentscan catalog-build catalogs/portrait-v1
-    momentscan catalog-build catalogs/portrait-v1 --no-cache
+    momentscan catalog-build data/catalogs/portrait-v1
+    momentscan catalog-build data/catalogs/portrait-v1 --no-cache
 """
 
 import sys
