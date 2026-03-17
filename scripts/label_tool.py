@@ -86,46 +86,59 @@ def generate_html(frames_info, categories, video_name):
 <title>Anchor Set Label Tool</title>
 <style>
 * {{ box-sizing: border-box; }}
-body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; color: #eee; }}
-.toolbar {{ position: sticky; top: 0; z-index: 100; background: #0f0f23; padding: 12px 20px;
-    border-bottom: 2px solid #e94560; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }}
+body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; color: #eee;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden; }}
+.toolbar {{ background: #0f0f23; padding: 10px 20px; border-bottom: 2px solid #e94560;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; flex-shrink: 0; }}
 .toolbar h1 {{ margin: 0; font-size: 18px; color: #e94560; }}
 .progress {{ font-size: 14px; color: #aaa; }}
 .progress b {{ color: #4CAF50; font-size: 18px; }}
 .toolbar button {{ padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }}
 .btn-export {{ background: #4CAF50; color: #fff; }}
-.btn-export:hover {{ background: #388E3C; }}
 .btn-reset {{ background: #666; color: #fff; }}
 .filter-group {{ display: flex; gap: 6px; }}
 .filter-btn {{ background: #333; color: #ccc; padding: 4px 10px; border: 1px solid #555;
     border-radius: 3px; cursor: pointer; font-size: 12px; }}
 .filter-btn.active {{ background: #e94560; color: #fff; border-color: #e94560; }}
-.grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 10px; padding: 16px; }}
-.card {{ background: #16213e; border-radius: 8px; padding: 10px; transition: opacity .2s; }}
-.card.disagree {{ border-left: 3px solid #e94560; }}
-.card.labeled {{ opacity: 0.7; }}
-.card img {{ width: 100%; border-radius: 4px; }}
-.preds {{ margin: 6px 0; }}
-.pred {{ display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; margin: 1px; }}
-.meta {{ font-size: 11px; color: #888; margin-bottom: 6px; }}
-.buttons {{ display: flex; flex-wrap: wrap; gap: 4px; }}
-.cat-btn {{ padding: 4px 10px; border: 1px solid #444; border-radius: 4px; background: #222;
-    color: #ccc; cursor: pointer; font-size: 12px; transition: all .15s; }}
-.cat-btn:hover {{ background: #444; color: #fff; }}
-.cat-btn.selected {{ color: #fff; font-weight: bold; border-width: 2px; }}
-.cat-btn.reject {{ background: #d32f2f; }}
-.cat-btn.skip {{ background: #333; }}
-.cat-btn.none {{ background: #333; }}
-.current-label {{ font-size: 11px; color: #4CAF50; margin-top: 4px; }}
+.main {{ flex: 1; display: flex; overflow: hidden; }}
+.focus-panel {{ flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 20px; min-width: 0; }}
+.focus-img {{ max-width: 100%; max-height: 55vh; border-radius: 8px; object-fit: contain; }}
+.focus-meta {{ margin: 12px 0 6px; font-size: 14px; color: #aaa; }}
+.focus-preds {{ margin: 6px 0; }}
+.pred {{ display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 13px; margin: 2px; }}
+.focus-label {{ font-size: 16px; color: #4CAF50; margin: 8px 0; font-weight: bold; }}
+.buttons {{ display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }}
+.cat-btn {{ padding: 8px 18px; border: 2px solid #444; border-radius: 6px; background: #222;
+    color: #ccc; cursor: pointer; font-size: 14px; transition: all .15s; }}
+.cat-btn:hover {{ background: #444; color: #fff; transform: scale(1.05); }}
+.cat-btn.selected {{ color: #fff; font-weight: bold; }}
+.cat-btn.reject {{ border-color: #d32f2f; }}
+.cat-btn.skip {{ border-color: #555; }}
+.cat-btn.none {{ border-color: #555; }}
+.nav {{ display: flex; gap: 12px; margin-top: 14px; align-items: center; }}
+.nav button {{ padding: 10px 24px; border: none; border-radius: 6px; background: #333;
+    color: #eee; cursor: pointer; font-size: 16px; }}
+.nav button:hover {{ background: #555; }}
+.nav button:disabled {{ opacity: 0.3; cursor: default; }}
+.nav .pos {{ font-size: 14px; color: #aaa; min-width: 80px; text-align: center; }}
+.sidebar {{ width: 180px; overflow-y: auto; background: #0f0f23; border-left: 1px solid #333;
+    flex-shrink: 0; }}
+.thumb {{ width: 100%; padding: 4px; cursor: pointer; opacity: 0.5; transition: opacity .15s;
+    border-left: 3px solid transparent; }}
+.thumb:hover {{ opacity: 0.8; }}
+.thumb.active {{ opacity: 1; border-left-color: #e94560; }}
+.thumb.labeled {{ border-left-color: #4CAF50; }}
+.thumb img {{ width: 100%; border-radius: 3px; display: block; }}
+.shortcut-hint {{ font-size: 11px; color: #555; text-align: center; margin-top: 8px; }}
 </style>
 </head><body>
 
 <div class="toolbar">
-    <h1>Anchor Set Label Tool</h1>
+    <h1>Label Tool</h1>
     <div class="progress">
         <b id="count">0</b> / <span id="total">{len(frames_info)}</span> labeled
-        &nbsp;| Video: {video_name}
+        &nbsp;| {video_name}
     </div>
     <div class="filter-group">
         <button class="filter-btn active" data-filter="all">All</button>
@@ -137,7 +150,10 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
     <button class="btn-reset" onclick="resetLabels()">Reset All</button>
 </div>
 
-<div class="grid" id="grid"></div>
+<div class="main">
+    <div class="focus-panel" id="focus"></div>
+    <div class="sidebar" id="sidebar"></div>
+</div>
 
 <script>
 const FRAMES = {frames_json};
@@ -148,70 +164,96 @@ const STORAGE_KEY = "label_tool_{video_name.replace('.', '_')}";
 
 let labels = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{}}');
 let currentFilter = 'all';
+let filteredList = [];
+let currentPos = 0;
 
 function getColor(cat) {{ return CAT_COLORS[cat] || '#666'; }}
 
-function renderCards() {{
-    const grid = document.getElementById('grid');
-    grid.innerHTML = '';
-
-    // Sort: unlabeled first, then labeled
-    const sorted = [...FRAMES].sort((a, b) => {{
+function buildFilteredList() {{
+    filteredList = FRAMES.filter(f => {{
+        if (currentFilter === 'unlabeled') return labels[f.index] === undefined;
+        if (currentFilter === 'labeled') return labels[f.index] !== undefined;
+        if (currentFilter === 'disagree') return f.is_disagree;
+        return true;
+    }});
+    // unlabeled + disagree first
+    filteredList.sort((a, b) => {{
         const la = labels[a.index] !== undefined ? 1 : 0;
         const lb = labels[b.index] !== undefined ? 1 : 0;
         if (la !== lb) return la - lb;
-        // Disagree first within group
         if (a.is_disagree !== b.is_disagree) return a.is_disagree ? -1 : 1;
         return a.index - b.index;
     }});
+}}
 
-    let shown = 0;
-    for (const f of sorted) {{
+function renderSidebar() {{
+    const sb = document.getElementById('sidebar');
+    sb.innerHTML = '';
+    filteredList.forEach((f, pos) => {{
+        const div = document.createElement('div');
         const isLabeled = labels[f.index] !== undefined;
-        if (currentFilter === 'unlabeled' && isLabeled) continue;
-        if (currentFilter === 'labeled' && !isLabeled) continue;
-        if (currentFilter === 'disagree' && !f.is_disagree) continue;
+        div.className = 'thumb' + (pos === currentPos ? ' active' : '') + (isLabeled ? ' labeled' : '');
+        div.innerHTML = `<img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">`;
+        div.onclick = () => {{ currentPos = pos; renderFocus(); renderSidebar(); }};
+        sb.appendChild(div);
+        if (pos === currentPos) div.scrollIntoView({{ block: 'nearest' }});
+    }});
+}}
 
-        const card = document.createElement('div');
-        card.className = 'card' + (f.is_disagree ? ' disagree' : '') + (isLabeled ? ' labeled' : '');
-        card.id = 'card-' + f.index;
-
-        const label = labels[f.index];
-        const labelHtml = label ? `<div class="current-label">Label: ${{label}}</div>` : '';
-
-        card.innerHTML = `
-            <img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">
-            <div class="meta">Frame #${{f.index}}${{f.is_disagree ? ' | DISAGREE' : ''}}</div>
-            <div class="preds">
-                <span class="pred" style="background:${{getColor(f.catalog)}}">Cat: ${{f.catalog}}</span>
-                <span class="pred" style="background:${{getColor(f.lr)}}">LR: ${{f.lr}}</span>
-                <span class="pred" style="background:${{getColor(f.xgb)}}">XGB: ${{f.xgb}}</span>
-            </div>
-            <div class="buttons" id="btns-${{f.index}}"></div>
-            ${{labelHtml}}
-        `;
-        grid.appendChild(card);
-
-        const btns = card.querySelector('.buttons');
-        for (const cat of CATEGORIES) {{
-            const btn = document.createElement('button');
-            btn.className = 'cat-btn' + (label === cat ? ' selected' : '');
-            btn.textContent = cat;
-            if (label === cat) btn.style.background = getColor(cat);
-            btn.onclick = () => setLabel(f.index, cat);
-            btns.appendChild(btn);
-        }}
-        for (const special of ['reject', 'skip', 'none']) {{
-            const btn = document.createElement('button');
-            btn.className = 'cat-btn ' + special + (label === special ? ' selected' : '');
-            btn.textContent = special;
-            if (label === special) btn.style.background = special === 'reject' ? '#d32f2f' : '#888';
-            btn.onclick = () => setLabel(f.index, special);
-            btns.appendChild(btn);
-        }}
-        shown++;
+function renderFocus() {{
+    const panel = document.getElementById('focus');
+    if (filteredList.length === 0) {{
+        panel.innerHTML = '<p style="color:#888">No frames to show</p>';
+        updateCount();
+        return;
     }}
+    if (currentPos >= filteredList.length) currentPos = filteredList.length - 1;
+    if (currentPos < 0) currentPos = 0;
+
+    const f = filteredList[currentPos];
+    const label = labels[f.index];
+    const labelHtml = label
+        ? `<div class="focus-label">Label: ${{label}}</div>`
+        : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
+
+    let btnsHtml = '<div class="buttons">';
+    for (const cat of CATEGORIES) {{
+        const sel = label === cat;
+        const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
+        btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}}</button>`;
+    }}
+    for (const sp of ['reject', 'skip', 'none']) {{
+        const sel = label === sp;
+        const bg = sel ? (sp === 'reject' ? 'background:#d32f2f;color:#fff;' : 'background:#888;color:#fff;') : '';
+        btnsHtml += `<button class="cat-btn ${{sp}}${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{sp}}')">${{sp}}</button>`;
+    }}
+    btnsHtml += '</div>';
+
+    panel.innerHTML = `
+        <img class="focus-img" src="data:image/jpeg;base64,${{IMAGES[f.index]}}">
+        <div class="focus-meta">Frame #${{f.index}} &nbsp; ${{currentPos + 1}} / ${{filteredList.length}}
+            ${{f.is_disagree ? '&nbsp; <span style="color:#e94560">DISAGREE</span>' : ''}}</div>
+        <div class="focus-preds">
+            <span class="pred" style="background:${{getColor(f.catalog)}}">Cat: ${{f.catalog}}</span>
+            <span class="pred" style="background:${{getColor(f.lr)}}">LR: ${{f.lr}}</span>
+            <span class="pred" style="background:${{getColor(f.xgb)}}">XGB: ${{f.xgb}}</span>
+        </div>
+        ${{labelHtml}}
+        ${{btnsHtml}}
+        <div class="nav">
+            <button onclick="go(-1)" ${{currentPos <= 0 ? 'disabled' : ''}}>&larr; Prev</button>
+            <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
+            <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next &rarr;</button>
+        </div>
+        <div class="shortcut-hint">Keyboard: &larr; &rarr; navigate &nbsp;|&nbsp; 1-${{CATEGORIES.length}} category &nbsp;|&nbsp; r reject &nbsp;|&nbsp; s skip</div>
+    `;
     updateCount();
+}}
+
+function go(delta) {{
+    currentPos = Math.max(0, Math.min(filteredList.length - 1, currentPos + delta));
+    renderFocus();
+    renderSidebar();
 }}
 
 function setLabel(index, label) {{
@@ -221,12 +263,12 @@ function setLabel(index, label) {{
         labels[index] = label;
     }}
     localStorage.setItem(STORAGE_KEY, JSON.stringify(labels));
-    renderCards();
+    renderFocus();
+    renderSidebar();
 }}
 
 function updateCount() {{
-    const count = Object.keys(labels).length;
-    document.getElementById('count').textContent = count;
+    document.getElementById('count').textContent = Object.keys(labels).length;
 }}
 
 function exportLabels() {{
@@ -254,11 +296,28 @@ function exportLabels() {{
 }}
 
 function resetLabels() {{
-    if (!confirm('Reset all labels? This cannot be undone.')) return;
+    if (!confirm('Reset all labels?')) return;
     labels = {{}};
     localStorage.removeItem(STORAGE_KEY);
-    renderCards();
+    buildFilteredList();
+    currentPos = 0;
+    renderFocus();
+    renderSidebar();
 }}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {{
+    if (e.key === 'ArrowLeft') go(-1);
+    else if (e.key === 'ArrowRight') go(1);
+    else if (e.key === 'r') {{ if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, 'reject'); }}
+    else if (e.key === 's') {{ if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, 'skip'); }}
+    else {{
+        const n = parseInt(e.key);
+        if (n >= 1 && n <= CATEGORIES.length && filteredList[currentPos]) {{
+            setLabel(filteredList[currentPos].index, CATEGORIES[n - 1]);
+        }}
+    }}
+}});
 
 // Filter buttons
 document.querySelectorAll('.filter-btn').forEach(btn => {{
@@ -266,11 +325,16 @@ document.querySelectorAll('.filter-btn').forEach(btn => {{
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentFilter = btn.dataset.filter;
-        renderCards();
+        buildFilteredList();
+        currentPos = 0;
+        renderFocus();
+        renderSidebar();
     }});
 }});
 
-renderCards();
+buildFilteredList();
+renderFocus();
+renderSidebar();
 </script>
 </body></html>"""
 
