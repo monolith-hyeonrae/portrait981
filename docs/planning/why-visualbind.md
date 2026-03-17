@@ -802,6 +802,27 @@ visualbind가 성숙하면 visualpath가 필요 없어진다.**
 
 ---
 
+## visualbind와 visualgrow
+
+이론적 프레이밍은 visualbind와 visualgrow 모두에 적용된다.
+실제 구현은 두 패키지로 분리:
+
+```
+visualbind  = 지금 이 순간의 판단 (정적)
+              signals (45D), strategies (Catalog/XGBoost/TwoStage), selector
+              "관찰 결과를 어떻게 판단할지"
+
+visualgrow  = 매일 데이터로 성장하는 적응 (동적)
+              crowds pseudo-label, 재학습, drift 적응, few-shot, concept seed
+              "어떻게 계속 개선할지"
+```
+
+why-visualbind.md의 이론 (축별 독립 근사, Berkson's paradox, Projected Crowds)은
+visualgrow가 crowds consensus를 구현할 때의 이론적 기반이 된다.
+
+---
+
 ## 다음 단계
 
-구체적인 아키텍처, MVP 경로, 실험 설계, 안전장치는 `how-visualbind.md`에서 다룬다.
+- 정적 판단 아키텍처, 패키지 구조, CLI, MVP 결과: `how-visualbind.md`
+- 동적 적응 시스템 (crowds pseudo-label, 재학습, drift): `how-visualgrow.md`
