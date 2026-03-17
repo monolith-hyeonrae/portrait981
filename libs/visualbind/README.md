@@ -88,6 +88,30 @@ momentscan process video.mp4 -o output/ --bind-model models/bind_v1.json
 `--bind-model` 지정 시 bind_scores가 highlight scoring에 반영.
 catalog_scores와 공존 (replacing이 아닌 blending).
 
+## 프레임 선택 (selector)
+
+기존 BatchHighlightEngine (7단계: delta→normalize→gate→score→smooth→peak→window)을
+3단계로 대체:
+
+```python
+from visualbind import select_frames, TreeStrategy
+
+strategy = TreeStrategy.load("models/bind_v1")
+result = select_frames(
+    vectors,           # (N, 21) signal matrix
+    strategy,
+    top_k=5,           # 카테고리당 상위 5프레임
+    gate_mask=gate,    # quality gate (boolean)
+)
+
+for cat, frames in result.per_category.items():
+    print(f"{cat}: {[f.index for f in frames]}")
+```
+
+peak detection은 "변화가 큰 순간"을 찾지만,
+최적 portrait은 "안정적으로 좋은 순간"의 한가운데일 수 있다.
+직접 concept score로 선택하는 것이 더 정확하다.
+
 ## CLI
 
 ```bash
