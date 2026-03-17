@@ -1,35 +1,41 @@
-"""VisualBind — multi-observer signal binding via weak supervision.
+"""VisualBind — multi-observer signal binding framework.
 
-    >>> from visualbind import HintCollector, AgreementEngine, CrossCheck
-    >>> collector = HintCollector({"face.expression": {"signals": ["happy"]}})
-    >>> engine = AgreementEngine([CrossCheck("face.expression", "happy", "face.au", "AU12")])
+Combines outputs from multiple vision analyzers (AU, emotion, pose, CLIP, etc.)
+into unified per-frame scores via pluggable binding strategies.
+
+    >>> from visualbind import CatalogStrategy, extract_signal_vector_from_dict
+    >>> strategy = CatalogStrategy()
+    >>> strategy.fit({"warm_smile": ref_vectors, "cool_gaze": ref_vectors2})
+    >>> scores = strategy.predict(frame_vec)
 """
 
-from visualbind.types import (
-    HintVector,
-    HintFrame,
-    CrossCheck,
-    AgreementResult,
-    CheckResult,
-    SourceSpec,
+from visualbind.signals import (
+    SIGNAL_FIELDS,
+    SIGNAL_RANGES,
+    normalize_signal,
+    get_signal_fields,
+    extract_signal_vector_from_dict,
 )
-from visualbind.collector import HintCollector
-from visualbind.agreement import AgreementEngine
-from visualbind.pairing import PairMiner, ContrastivePair, PairMiningResult
-from visualbind.encoder import TripletEncoder, TrainHistory
+from visualbind.profile import CategoryProfile, load_profiles, save_profiles
+from visualbind.analyzer import compute_correlation_matrix, compute_neff
+from visualbind.strategies import BindingStrategy
+from visualbind.strategies.catalog import CatalogStrategy
 
 __all__ = [
-    "HintCollector",
-    "AgreementEngine",
-    "PairMiner",
-    "TripletEncoder",
-    "HintVector",
-    "HintFrame",
-    "CrossCheck",
-    "AgreementResult",
-    "CheckResult",
-    "SourceSpec",
-    "ContrastivePair",
-    "PairMiningResult",
-    "TrainHistory",
+    # signals
+    "SIGNAL_FIELDS",
+    "SIGNAL_RANGES",
+    "normalize_signal",
+    "get_signal_fields",
+    "extract_signal_vector_from_dict",
+    # profile
+    "CategoryProfile",
+    "load_profiles",
+    "save_profiles",
+    # analyzer
+    "compute_correlation_matrix",
+    "compute_neff",
+    # strategies
+    "BindingStrategy",
+    "CatalogStrategy",
 ]

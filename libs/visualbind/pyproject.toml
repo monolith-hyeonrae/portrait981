@@ -1,13 +1,22 @@
 [project]
 name = "visualbind"
-version = "0.1.0"
-description = "Multi-observer signal binding framework via weak supervision"
+version = "0.2.0"
+description = "Multi-observer signal binding framework"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.24",
+    "pyarrow>=12.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
+train = [
+    "scikit-learn>=1.3",
+    "xgboost>=2.0",
+    "crowd-kit>=1.0",
+    "pandas>=2.0",
+    "plotly>=5.0",
+]
 dev = ["pytest>=7.0.0"]
 
 [build-system]
