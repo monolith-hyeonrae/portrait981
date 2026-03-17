@@ -752,7 +752,8 @@ visualbind  — Bind & Transcend (통합 학습, 발판을 넘어서는 모델)
 ```
 
 visualpath는 초창기에 어쩔 수 없이 필요한 **발판(scaffolding)**이다.
-visualbind는 이 발판 위에서 자라서, 궁극적으로는 visualpath 전체를 단일 모델로 distill한다.
+visualbind는 이 발판이 만들어낸 pseudo-label을 소비하여, 궁극적으로는 visualpath 전체를 단일 모델로 distill한다.
+Phase 간 모델 파라미터 전이는 없다 — 전이되는 것은 pseudo-label 생성 파이프라인과 검증 인프라이다.
 
 ```
 Phase 1: visualpath → 24D signal → Student → 판단 개선 (Teacher 조합 개선)
