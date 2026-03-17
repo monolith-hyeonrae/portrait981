@@ -209,6 +209,101 @@ visualgrow monitor --model ./models/latest.pkl --anchor ./anchor_set/
 
 ---
 
+## 궁극적 비전: 도메인 특화 모델 생산
+
+visualgrow의 최종 목표는 strategy 재학습에 머무르지 않는다.
+**14개 frozen 모델의 지식을 통합한 도메인 특화 모델을 자율적으로 생산**하는 것이다.
+
+### 자기 강화 루프
+
+```
+시작:    14개 외부 frozen 모델 → visualpath에서 실행
+              ↓
+         visualgrow가 매일 데이터 + crowds consensus로 학습
+              ↓
+생산:    도메인 특화 모델 생산 (Student)
+              ↓
+장착:    생산된 모델이 visualpath의 frozen 모델을 대체
+              ↓
+강화:    더 나은 teacher → 더 나은 pseudo-label → 더 나은 Student
+              ↓
+성숙:    단일 도메인 모델이 14개 모듈 전체를 대체
+         visualpath 퇴역
+```
+
+### 생산 가능한 모델
+
+**1. 얼굴 상태 임베딩 모델**
+
+14개 teacher의 지식이 합쳐진 feature space.
+표정, AU, 포즈, 품질, 감정을 모두 인코딩한 단일 벡터.
+
+```
+Teacher 14개 (각각 부분적 관측)
+  → crowds supervision → Student 학습
+  → Student의 중간 feature = 얼굴 상태의 rich embedding
+  → face retrieval: "이 표정과 비슷한 프레임 찾기"
+  → face clustering: 비슷한 상태끼리 자동 그룹핑
+```
+
+**2. 도메인 특화 얼굴 검출기**
+
+범용 InsightFace SCRFD는 우리 환경(차량 내부, 특정 카메라, 조명)에서 miss 발생.
+매일 데이터에서 "face.detect + face.parse + face.quality" crowds 합의로
+이 환경에 특화된 검출기를 자동 학습.
+
+```
+학습 데이터: 매일 10M+ 프레임에서 자동 생성
+→ 범용 모델보다 우리 도메인에서 정확
+→ fine-tuning 없이 crowds supervision만으로 달성
+```
+
+**3. 야외 강인 얼굴 인식기**
+
+981파크의 데이터는 야외/차량 환경이라 조명 변화, 역광, 그림자, 진동이 극심.
+이 환경에서 매일 축적되는 데이터로 학습된 얼굴 인식기는
+**야외 환경에 강인한 범용 모델**로도 가치가 있다.
+
+```
+실내 학습 모델 (ArcFace 등):
+  → 실내 데이터로 학습 → 야외 성능 저하 (domain gap)
+
+우리 데이터:
+  → 야외/차량 환경 매일 3000건 × 365일
+  → 자연스러운 조명 변화, 다양한 고객
+  → 이 환경에서 crowds supervision으로 학습된 모델
+  → 야외 face recognition benchmark에서 경쟁력 있을 수 있음
+```
+
+이것은 981파크 내부 도구를 넘어서 **범용적으로 활용될 수 있는 자산**이다.
+
+**4. 통합 모델 (궁극)**
+
+검출 + 인식 + 표정 + 포즈 + 품질 → 하나의 모델.
+Florence-2가 대규모 인프라로 달성한 것을 도메인 스케일로.
+
+```
+Florence-2:  수백 개 모델 → FLD-5B (54억 annotation) → unified model (대규모 compute)
+visualgrow:  14개 모델 → crowds pseudo-label (일 10M+) → domain Student (GPU 1개)
+```
+
+### visualpath와의 관계 변화
+
+```
+현재:    visualpath = 14개 frozen 모델 실행 (inference 필수)
+         visualbind = 판단 (strategy)
+         visualgrow = 적응 (재학습)
+
+성숙:    visualpath = annotation 공장 (학습 시에만)
+         visualgrow = 도메인 모델 생산
+         Student = inference 전담 (14개 모듈 → 단일 모델)
+
+궁극:    visualpath = 퇴역 (새 도메인 bootstrapping 용도만)
+         visualgrow가 생산한 모델이 시스템의 핵심
+```
+
+---
+
 ## 설계 문서
 
 | 문서 | 범위 |
