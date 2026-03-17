@@ -14,7 +14,6 @@ from typing import List, Optional
 import numpy as np
 
 from ..profile import CategoryProfile
-from ..signals import _NDIM
 
 logger = logging.getLogger(__name__)
 
@@ -50,20 +49,24 @@ def compute_importance_weights(
     cat_names = sorted(category_vectors.keys())
     n_cats = len(cat_names)
 
+    # Infer dimensionality from data
+    first_vecs = next(iter(category_vectors.values()))
+    ndim = first_vecs.shape[1] if first_vecs.ndim == 2 else len(first_vecs)
+
     # Per-category mean and variance
-    cat_means = np.zeros((n_cats, _NDIM), dtype=np.float64)
-    cat_vars = np.zeros((n_cats, _NDIM), dtype=np.float64)
+    cat_means = np.zeros((n_cats, ndim), dtype=np.float64)
+    cat_vars = np.zeros((n_cats, ndim), dtype=np.float64)
 
     for ci, name in enumerate(cat_names):
         vecs = category_vectors[name]  # (N, D)
         if len(vecs) == 0:
             continue
         cat_means[ci] = vecs.mean(axis=0)
-        cat_vars[ci] = vecs.var(axis=0) if len(vecs) > 1 else np.zeros(_NDIM)
+        cat_vars[ci] = vecs.var(axis=0) if len(vecs) > 1 else np.zeros(ndim)
 
     result = {}
     for ci, name in enumerate(cat_names):
-        fisher_sum = np.zeros(_NDIM, dtype=np.float64)
+        fisher_sum = np.zeros(ndim, dtype=np.float64)
         n_pairs = 0
         for cj in range(n_cats):
             if cj == ci:
@@ -76,7 +79,7 @@ def compute_importance_weights(
         if n_pairs > 0:
             fisher = fisher_sum / n_pairs
         else:
-            fisher = np.ones(_NDIM, dtype=np.float64)
+            fisher = np.ones(ndim, dtype=np.float64)
 
         # sqrt transform: dynamic range compression
         fisher = np.sqrt(fisher)
@@ -86,7 +89,7 @@ def compute_importance_weights(
         if total > 0:
             weights = fisher / total
         else:
-            weights = np.ones(_NDIM, dtype=np.float64) / _NDIM
+            weights = np.ones(ndim, dtype=np.float64) / ndim
         result[name] = weights
 
     return result

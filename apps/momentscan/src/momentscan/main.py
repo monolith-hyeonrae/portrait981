@@ -116,9 +116,8 @@ class MomentscanApp(vp.App):
 
         # Signal-profile catalog loading (from collection directory)
         if self._collection_path:
-            from momentscan.algorithm.batch.catalog_scoring import (
-                load_profiles, load_clip_axes,
-            )
+            from visualbind.profile import load_profiles
+            from momentscan.algorithm.batch.catalog_scoring import load_clip_axes
             from momentscan.algorithm.batch.extract import set_catalog_profiles
             from momentscan.algorithm.collection.extract import (
                 set_catalog_profiles as set_collection_catalog_profiles,

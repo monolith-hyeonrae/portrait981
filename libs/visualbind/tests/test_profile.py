@@ -74,6 +74,7 @@ class TestSaveLoadProfiles:
             "mean_signals": [0.0, 0.1],  # wrong dimension
             "importance_weights": [0.5, 0.5],
             "n_refs": 1,
+            "signal_fields": list(SIGNAL_FIELDS),  # 23 fields vs 2 values
         }
         (cat_dir / "_profile.json").write_text(json.dumps(data))
         with pytest.raises(ValueError, match="signals"):

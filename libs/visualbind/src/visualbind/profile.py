@@ -19,7 +19,7 @@ from typing import List
 import numpy as np
 import yaml
 
-from .signals import SIGNAL_FIELDS, _NDIM
+from .signals import SIGNAL_FIELDS as _VB_SIGNAL_FIELDS, _NDIM
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +81,21 @@ def load_profiles(catalog_path: Path) -> List[CategoryProfile]:
         mean_signals = np.array(data["mean_signals"], dtype=np.float64)
         importance_weights = np.array(data["importance_weights"], dtype=np.float64)
 
-        if len(mean_signals) != _NDIM:
+        # Dimension validation: use signal_fields from JSON metadata when present
+        # (supports loading profiles with different dimensionality, e.g. 21D legacy).
+        # When signal_fields is absent, accept any self-consistent dimension.
+        stored_fields = data.get("signal_fields")
+        if stored_fields:
+            expected_ndim = len(stored_fields)
+            if len(mean_signals) != expected_ndim:
+                raise ValueError(
+                    f"Profile '{cat_dir.name}' has {len(mean_signals)} signals "
+                    f"(expected {expected_ndim}). Regenerate profiles."
+                )
+        if len(mean_signals) != len(importance_weights):
             raise ValueError(
                 f"Profile '{cat_dir.name}' has {len(mean_signals)} signals "
-                f"(expected {_NDIM}). Regenerate profiles."
+                f"but {len(importance_weights)} weights — dimension mismatch."
             )
 
         profiles.append(CategoryProfile(
@@ -106,13 +117,19 @@ def load_profiles(catalog_path: Path) -> List[CategoryProfile]:
 def save_profiles(
     catalog_path: Path,
     profiles: List[CategoryProfile],
+    signal_fields: tuple[str, ...] | list[str] | None = None,
 ) -> None:
     """Save ``_profile.json`` for each category.
 
     Args:
         catalog_path: catalog root directory.
         profiles: profiles to save.
+        signal_fields: field names to store as metadata.  ``None`` uses the
+            visualbind default :data:`SIGNAL_FIELDS`.  Callers with a different
+            dimensionality (e.g. momentscan 21D) should pass their own field tuple.
     """
+    fields_meta = list(signal_fields) if signal_fields is not None else list(_VB_SIGNAL_FIELDS)
+
     for profile in profiles:
         cat_dir = catalog_path / "categories" / profile.name
         cat_dir.mkdir(parents=True, exist_ok=True)
@@ -122,7 +139,7 @@ def save_profiles(
             "mean_signals": profile.mean_signals.tolist(),
             "importance_weights": profile.importance_weights.tolist(),
             "n_refs": profile.n_refs,
-            "signal_fields": list(SIGNAL_FIELDS),
+            "signal_fields": fields_meta,
         }
 
         profile_path = cat_dir / "_profile.json"

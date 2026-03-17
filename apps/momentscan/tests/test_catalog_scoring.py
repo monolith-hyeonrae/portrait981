@@ -323,6 +323,7 @@ class TestLoadSaveProfiles:
             "mean_signals": [0.5, 0.5],  # wrong dim
             "importance_weights": [0.5, 0.5],
             "n_refs": 1,
+            "signal_fields": list(SIGNAL_FIELDS),  # 21 fields vs 2 values
         }))
 
         with pytest.raises(ValueError, match="has 2 signals"):

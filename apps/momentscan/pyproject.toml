@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "visualbase",
     "visualpath[isolation]",
+    "visualbind",
     "vpx-sdk",
     "momentscan-frame-quality",
     "momentscan-face-classify",
@@ -85,6 +86,7 @@ python_functions = ["test_*"]
 visualbase = { workspace = true }
 visualpath = { workspace = true }
 visualpath-isolation = { workspace = true }
+visualbind = { workspace = true }
 vpx-sdk = { workspace = true }
 vpx-face-detect = { workspace = true }
 vpx-face-expression = { workspace = true }

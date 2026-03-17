@@ -2596,6 +2596,7 @@ dependencies = [
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "visualbase" },
+    { name = "visualbind" },
     { name = "visualpath", extra = ["isolation"] },
     { name = "vpx-sdk" },
 ]
@@ -2674,6 +2675,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'portrait-score'", specifier = ">=2.0" },
     { name = "transformers", marker = "extra == 'portrait-caption'", specifier = ">=4.30,<5" },
     { name = "visualbase", editable = "libs/visualbase" },
+    { name = "visualbind", editable = "libs/visualbind" },
     { name = "visualpath", extras = ["isolation"], editable = "libs/visualpath/core" },
     { name = "vpx-body-pose", marker = "extra == 'body-pose'", editable = "libs/vpx/plugins/body-pose" },
     { name = "vpx-face-detect", marker = "extra == 'face-detect'", editable = "libs/vpx/plugins/face-detect" },
