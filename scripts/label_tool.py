@@ -23,13 +23,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("label_tool")
 
 
-def frame_to_base64(frame_bgr, max_width=280):
+def frame_to_base64(frame_bgr, max_width=640):
     """OpenCV frame -> base64 JPEG."""
     h, w = frame_bgr.shape[:2]
     if w > max_width:
         scale = max_width / w
         frame_bgr = cv2.resize(frame_bgr, (max_width, int(h * scale)))
-    _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 65])
+    _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return base64.b64encode(buf).decode("ascii")
 
 
