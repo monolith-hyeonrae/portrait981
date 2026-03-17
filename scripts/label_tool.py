@@ -114,6 +114,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
     color: #ccc; cursor: pointer; font-size: 12px; transition: all .15s; }}
 .cat-btn:hover {{ background: #444; color: #fff; }}
 .cat-btn.selected {{ color: #fff; font-weight: bold; border-width: 2px; }}
+.cat-btn.reject {{ background: #d32f2f; }}
 .cat-btn.skip {{ background: #333; }}
 .cat-btn.none {{ background: #333; }}
 .current-label {{ font-size: 11px; color: #4CAF50; margin-top: 4px; }}
@@ -200,11 +201,11 @@ function renderCards() {{
             btn.onclick = () => setLabel(f.index, cat);
             btns.appendChild(btn);
         }}
-        for (const special of ['skip', 'none']) {{
+        for (const special of ['reject', 'skip', 'none']) {{
             const btn = document.createElement('button');
             btn.className = 'cat-btn ' + special + (label === special ? ' selected' : '');
             btn.textContent = special;
-            if (label === special) btn.style.background = '#888';
+            if (label === special) btn.style.background = special === 'reject' ? '#d32f2f' : '#888';
             btn.onclick = () => setLabel(f.index, special);
             btns.appendChild(btn);
         }}
