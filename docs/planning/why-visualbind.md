@@ -316,27 +316,25 @@ z는 crowds가 가리키는 방향으로 이동하되 연속 정보의 풍부함
 VisualBind의 구조는 Learning from Crowds와 비슷해 보이지만, **동치가 아니라 확장**이다.
 기존 프레임워크가 다루지 않는 설정이 존재한다.
 
-기존 연구 지형에는 빈 자리가 있다:
+기존 연구 지형을 정리하면:
 
 ```
-          이산 출력          연속 출력
-        ┌─────────────┬─────────────┐
-같은    │ Dawid-Skene  │ (비어있음)   │
-task    │ Snorkel      │             │
-        ├─────────────┼─────────────┤
-다른    │ (비어있음)    │ Multi-modal │
-task    │              │ fusion      │
-        └─────────────┴─────────────┘
-
-VisualBind는 네 사분면을 연결:
-  - 다른 task의 연속 출력 (frozen 모델)
-  → 추상 개념 경계의 축별 독립 근사 (threshold)
-  → 같은 task의 이산 투표
-  - 동시에 연속 출력도 활용 (dual-mode)
+          이산 출력                    연속 출력
+        ┌──────────────────┬──────────────────────┐
+같은    │ Dawid-Skene       │ Multi-task KD         │
+task    │ Snorkel           │ (Ghiasi 2021 등)      │
+        ├──────────────────┼──────────────────────┤
+다른    │ LUPI              │ Multi-modal fusion    │
+task    │ (Vapnik 2009)     │ Feature distillation  │
+        └──────────────────┴──────────────────────┘
 ```
 
-**추상 개념의 축별 독립 근사 과정과 그에 따른 정보 손실 · cross-modal 상관 소실을
-명시적으로 다루는 프레임워크가 없다.** 이것이 빈 자리이다.
+각 사분면에 기존 연구가 존재한다. 그러나 **축별 독립 근사(threshold)에 의한 정보 손실 —
+구체적으로 cross-modal 상관의 소실과 그 복구 — 을 명시적으로 다루는 연구는 부재**하다.
+
+VisualBind는 이 구체적 문제를 다룬다:
+- 다른 task의 연속 출력 → 축별 독립 근사(threshold) → 같은 task의 이산 투표
+- 동시에 연속 출력도 활용하여 근사 시 소실된 상관을 복구 (dual-mode)
 
 ### Snorkel과의 진짜 차이
 
@@ -680,17 +678,14 @@ Noisy labeling function들의 조합으로 annotation 없이 학습하는 프레
 > **핵심 차이**: 단일 foundation model이 아닌 **cross-task crowds 합의**로 pseudo-label 생성.
 > 대규모 인프라 불필요 (GPU 1개 + 도메인 데이터).
 
-### 빈 사분면 — VisualBind가 차지하는 자리
+### VisualBind가 다루는 구체적 문제
 
-기존 연구는 네 사분면 중 세 곳만 다뤘다:
+기존 연구는 각 사분면을 개별적으로 다룬다 (Crowds, KD, LUPI, Fusion 등).
+그러나 **축별 독립 근사에 의한 cross-modal 상관 소실과 그 복구**를 명시적으로 다루는 연구는 부재.
 
-- **같은 task + 이산 출력**: Dawid-Skene, Snorkel
-- **다른 task + 연속 출력**: Multi-modal fusion
-- **같은 task + 연속 출력**, **다른 task + 이산 출력**: 비어있음
-
-Projected Crowds는 사영(τ)으로 네 사분면을 연결한다.
-다른 task의 연속 출력이 사영을 거쳐 같은 task의 이산 투표가 되고,
-동시에 사영 전 연속 출력도 활용한다.
+VisualBind는 이 구체적 문제를 해결한다:
+- 축별 독립 근사(threshold)가 만드는 정보 손실을 형식화
+- 근사 전 연속 정보와 근사 후 이산 투표를 dual-mode로 동시 활용하여 복구
 
 ### 논문 Contribution
 
