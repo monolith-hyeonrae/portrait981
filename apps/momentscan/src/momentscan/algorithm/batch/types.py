@@ -90,14 +90,20 @@ class FrameRecord:
     au9_nose_wrinkler: float = 0.0  # AU9: 코 찡그림
     au12_lip_corner: float = 0.0    # AU12: 입꼬리 올림 (smile)
     au15_lip_depressor: float = 0.0 # AU15: 입꼬리 내림
+    au17_chin_raiser: float = 0.0   # AU17: 턱 올림
+    au20_lip_stretcher: float = 0.0 # AU20: 입술 양옆 당김
     au25_lips_part: float = 0.0     # AU25: 입술 벌림
     au26_jaw_drop: float = 0.0      # AU26: 턱 벌림
 
-    # Emotion probabilities (from face.expression / HSEmotion)
+    # Emotion probabilities (from face.expression / HSEmotion — 8 classes)
     em_happy: float = 0.0
     em_neutral: float = 0.0
     em_surprise: float = 0.0
     em_angry: float = 0.0
+    em_contempt: float = 0.0
+    em_disgust: float = 0.0
+    em_fear: float = 0.0
+    em_sad: float = 0.0
 
     # Cross-analyzer composites (dynamic, derived in extract.py)
     composites: Dict[str, float] = field(default_factory=dict)

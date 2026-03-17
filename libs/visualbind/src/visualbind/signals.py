@@ -1,12 +1,15 @@
 """Signal field definitions, normalization, and extraction.
 
-23D base signal vector:
-- AU layer (10D): AU1, AU2, AU4, AU5, AU6, AU9, AU12, AU15, AU25, AU26
-- Emotion layer (4D): em_happy, em_neutral, em_surprise, em_angry
-- Pose layer (3D): head_yaw_dev, head_pitch, head_roll
-- Confidence (1D): detect_confidence
-- Face size (1D): face_size_ratio
-- Mood layer (4D, dynamic): CLIP text axes (default: warm_smile, cool_gaze, playful_face, wild_energy)
+Extended 45D signal vector (all fields already computed, zero additional inference cost):
+- AU layer (12D): all LibreFace DISFA outputs
+- Emotion layer (8D): all HSEmotion outputs
+- Pose layer (3D): yaw_dev, pitch, roll
+- Detection (3D): confidence, face_area_ratio, face_center_distance
+- Face quality (5D): blur, exposure, contrast, clipped_ratio, crushed_ratio
+- Frame quality (3D): blur_score, brightness, contrast
+- Segmentation (4D): seg_face, seg_eye, seg_mouth, seg_hair
+- Composites (3D): duchenne_smile, wild_intensity, chill_score
+- CLIP mood (4D, dynamic): warm_smile, cool_gaze, playful_face, wild_energy
 """
 
 from __future__ import annotations
@@ -19,29 +22,48 @@ import numpy as np
 # Field group definitions
 # ---------------------------------------------------------------------------
 
-# AU fields (LibreFace, DISFA 0-5 scale) -- 10
+# AU fields (LibreFace, DISFA 0-5 scale) -- 12 (full output)
 _AU_FIELDS: tuple[str, ...] = (
     "au1_inner_brow", "au2_outer_brow", "au4_brow_lowerer", "au5_upper_lid",
     "au6_cheek_raiser", "au9_nose_wrinkler", "au12_lip_corner", "au15_lip_depressor",
-    "au25_lips_part", "au26_jaw_drop",
+    "au17_chin_raiser", "au20_lip_stretcher", "au25_lips_part", "au26_jaw_drop",
 )
 
-# Emotion fields (HSEmotion, probability 0-1) -- 4
+# Emotion fields (HSEmotion, probability 0-1) -- 8 (full output)
 _EMOTION_FIELDS: tuple[str, ...] = (
     "em_happy", "em_neutral", "em_surprise", "em_angry",
+    "em_contempt", "em_disgust", "em_fear", "em_sad",
 )
 
-# Head pose fields (normalized, Fisher ratio for auto-importance) -- 3
-# head_yaw_dev: |yaw| frontal deviation (L/R symmetric -> abs to prevent cancellation)
+# Head pose fields -- 3
 _POSE_FIELDS: tuple[str, ...] = (
     "head_yaw_dev", "head_pitch", "head_roll",
 )
 
-# Confidence field -- 1
-_CONFIDENCE_FIELD: tuple[str, ...] = ("detect_confidence",)
+# Detection fields -- 3
+_DETECTION_FIELDS: tuple[str, ...] = (
+    "face_confidence", "face_area_ratio", "face_center_distance",
+)
 
-# Face size field -- 1
-_FACE_SIZE_FIELD: tuple[str, ...] = ("face_size_ratio",)
+# Face quality fields -- 5
+_FACE_QUALITY_FIELDS: tuple[str, ...] = (
+    "face_blur", "face_exposure", "face_contrast", "clipped_ratio", "crushed_ratio",
+)
+
+# Frame quality fields -- 3
+_FRAME_QUALITY_FIELDS: tuple[str, ...] = (
+    "blur_score", "brightness", "contrast",
+)
+
+# Segmentation ratio fields -- 4
+_SEGMENTATION_FIELDS: tuple[str, ...] = (
+    "seg_face", "seg_eye", "seg_mouth", "seg_hair",
+)
+
+# Composite fields -- 3
+_COMPOSITE_FIELDS: tuple[str, ...] = (
+    "duchenne_smile", "wild_intensity", "chill_score",
+)
 
 # Default CLIP axis names (match catalog categories)
 _DEFAULT_CLIP_AXIS_NAMES: tuple[str, ...] = (
@@ -49,14 +71,32 @@ _DEFAULT_CLIP_AXIS_NAMES: tuple[str, ...] = (
 )
 
 # ---------------------------------------------------------------------------
-# Composite signal vector: 23D base (AU 10 + Emotion 4 + Pose 3 + Confidence 1 + FaceSize 1 + CLIP 4)
+# Signal field sets
 # ---------------------------------------------------------------------------
 
-SIGNAL_FIELDS: tuple[str, ...] = (
+# Extended: all available fields (45D base + 4D CLIP = 49D)
+SIGNAL_FIELDS_EXTENDED: tuple[str, ...] = (
     _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
-    + _CONFIDENCE_FIELD + _FACE_SIZE_FIELD
-    + _DEFAULT_CLIP_AXIS_NAMES
+    + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
+    + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
+    + _COMPOSITE_FIELDS + _DEFAULT_CLIP_AXIS_NAMES
 )
+
+# Legacy 21D (backward compatibility with existing catalogs)
+_AU_FIELDS_LEGACY: tuple[str, ...] = (
+    "au1_inner_brow", "au2_outer_brow", "au4_brow_lowerer", "au5_upper_lid",
+    "au6_cheek_raiser", "au9_nose_wrinkler", "au12_lip_corner", "au15_lip_depressor",
+    "au25_lips_part", "au26_jaw_drop",
+)
+_EMOTION_FIELDS_LEGACY: tuple[str, ...] = (
+    "em_happy", "em_neutral", "em_surprise", "em_angry",
+)
+SIGNAL_FIELDS_LEGACY: tuple[str, ...] = (
+    _AU_FIELDS_LEGACY + _EMOTION_FIELDS_LEGACY + _POSE_FIELDS + _DEFAULT_CLIP_AXIS_NAMES
+)
+
+# Default: extended
+SIGNAL_FIELDS: tuple[str, ...] = SIGNAL_FIELDS_EXTENDED
 
 # ---------------------------------------------------------------------------
 # Normalization ranges: value -> [0, 1]
@@ -72,20 +112,46 @@ SIGNAL_RANGES: dict[str, tuple[float, float]] = {
     "au9_nose_wrinkler": (0.0, 5.0),
     "au12_lip_corner": (0.0, 5.0),
     "au15_lip_depressor": (0.0, 5.0),
+    "au17_chin_raiser": (0.0, 5.0),
+    "au20_lip_stretcher": (0.0, 5.0),
     "au25_lips_part": (0.0, 5.0),
     "au26_jaw_drop": (0.0, 5.0),
-    # Emotion (probability)
+    # Emotion (probability 0-1)
     "em_happy": (0.0, 1.0),
     "em_neutral": (0.0, 1.0),
     "em_surprise": (0.0, 1.0),
     "em_angry": (0.0, 1.0),
+    "em_contempt": (0.0, 1.0),
+    "em_disgust": (0.0, 1.0),
+    "em_fear": (0.0, 1.0),
+    "em_sad": (0.0, 1.0),
     # Pose
     "head_yaw_dev": (0.0, 60.0),
     "head_pitch": (-30.0, 30.0),
     "head_roll": (-30.0, 30.0),
-    # Confidence + Face size (both 0-1)
-    "detect_confidence": (0.0, 1.0),
-    "face_size_ratio": (0.0, 1.0),
+    # Detection
+    "face_confidence": (0.0, 1.0),
+    "face_area_ratio": (0.0, 1.0),
+    "face_center_distance": (0.0, 1.0),
+    # Face quality
+    "face_blur": (0.0, 500.0),        # Laplacian variance
+    "face_exposure": (0.0, 255.0),     # mean brightness
+    "face_contrast": (0.0, 1.0),       # CV = std/mean
+    "clipped_ratio": (0.0, 1.0),       # overexposed ratio
+    "crushed_ratio": (0.0, 1.0),       # underexposed ratio
+    # Frame quality
+    "blur_score": (0.0, 500.0),        # Laplacian variance
+    "brightness": (0.0, 255.0),
+    "contrast": (0.0, 128.0),          # std of grayscale
+    # Segmentation ratios (0-1)
+    "seg_face": (0.0, 1.0),
+    "seg_eye": (0.0, 1.0),
+    "seg_mouth": (0.0, 1.0),
+    "seg_hair": (0.0, 1.0),
+    # Composites (0-1)
+    "duchenne_smile": (0.0, 1.0),
+    "wild_intensity": (0.0, 1.0),
+    "chill_score": (0.0, 1.0),
 }
 
 # CLIP axes: default range is (0.0, 1.0), added dynamically
@@ -98,17 +164,28 @@ _NDIM = len(SIGNAL_FIELDS)
 # Public helpers
 # ---------------------------------------------------------------------------
 
-def get_signal_fields(clip_axis_names: Optional[list[str]] = None) -> tuple[str, ...]:
-    """Return AU + Emotion + Pose + Confidence + FaceSize fixed fields + dynamic CLIP axis names.
+def get_signal_fields(
+    clip_axis_names: Optional[list[str]] = None,
+    extended: bool = True,
+) -> tuple[str, ...]:
+    """Return signal field tuple.
 
     Args:
-        clip_axis_names: CLIP axis name list.  ``None`` uses the default 4 axes.
+        clip_axis_names: CLIP axis name list. ``None`` uses the default 4 axes.
+        extended: If True, return extended 45D+. If False, return legacy 21D.
 
     Returns:
         Signal field tuple.
     """
     axes = tuple(clip_axis_names) if clip_axis_names else _DEFAULT_CLIP_AXIS_NAMES
-    return _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS + _CONFIDENCE_FIELD + _FACE_SIZE_FIELD + axes
+    if extended:
+        return (
+            _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
+            + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
+            + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
+            + _COMPOSITE_FIELDS + axes
+        )
+    return _AU_FIELDS_LEGACY + _EMOTION_FIELDS_LEGACY + _POSE_FIELDS + axes
 
 
 def normalize_signal(value: float, field: str) -> float:
@@ -127,7 +204,7 @@ def extract_signal_vector_from_dict(
 
     Args:
         signals: signal name -> raw value dict.
-        signal_fields: signal field order.  ``None`` uses default :data:`SIGNAL_FIELDS`.
+        signal_fields: signal field order. ``None`` uses default :data:`SIGNAL_FIELDS`.
 
     Returns:
         ``(D,)`` normalized signal vector.

@@ -184,6 +184,10 @@ def _extract_face_expression(record: FrameRecord, obs: Any) -> None:
         record.em_happy = float(face_signals.get("em_happy", 0.0))
         record.em_surprise = float(face_signals.get("em_surprise", 0.0))
         record.em_angry = float(face_signals.get("em_angry", 0.0))
+        record.em_contempt = float(face_signals.get("em_contempt", 0.0))
+        record.em_disgust = float(face_signals.get("em_disgust", 0.0))
+        record.em_fear = float(face_signals.get("em_fear", 0.0))
+        record.em_sad = float(face_signals.get("em_sad", 0.0))
         return
 
     # Fallback: frame-level signals
@@ -216,6 +220,8 @@ def _extract_face_au(record: FrameRecord, obs: Any) -> None:
     record.au9_nose_wrinkler = float(au.get("AU9", 0.0))
     record.au12_lip_corner = float(au.get("AU12", 0.0))
     record.au15_lip_depressor = float(au.get("AU15", 0.0))
+    record.au17_chin_raiser = float(au.get("AU17", 0.0))
+    record.au20_lip_stretcher = float(au.get("AU20", 0.0))
     record.au25_lips_part = float(au.get("AU25", 0.0))
     record.au26_jaw_drop = float(au.get("AU26", 0.0))
 

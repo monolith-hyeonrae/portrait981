@@ -26,12 +26,31 @@ logger = logging.getLogger("day0")
 
 
 def extract_signals_from_records(frame_records, signal_fields):
-    """FrameRecord 리스트에서 signal vector 행렬을 추출."""
-    from momentscan.algorithm.batch.catalog_scoring import extract_signal_vector
+    """FrameRecord 리스트에서 signal vector 행렬을 추출.
+
+    signal_fields의 각 필드를 FrameRecord attribute / composites / clip_axes에서 검색.
+    """
+    from visualbind.signals import normalize_signal
 
     vectors = []
     for record in frame_records:
-        vec = extract_signal_vector(record, signal_fields=signal_fields)
+        vec = np.zeros(len(signal_fields), dtype=np.float64)
+        for i, f in enumerate(signal_fields):
+            # head_yaw_dev → abs(head_yaw)
+            if f == "head_yaw_dev":
+                raw = abs(float(getattr(record, "head_yaw", 0.0)))
+            # composites dict
+            elif f in ("duchenne_smile", "wild_intensity", "chill_score"):
+                raw = float(record.composites.get(f, 0.0))
+            # CLIP axes dict
+            elif f in record.clip_axes:
+                raw = float(record.clip_axes.get(f, 0.0))
+            # direct FrameRecord attribute
+            elif hasattr(record, f):
+                raw = float(getattr(record, f, 0.0))
+            else:
+                raw = 0.0
+            vec[i] = normalize_signal(raw, f)
         vectors.append(vec)
 
     if not vectors:
@@ -63,8 +82,9 @@ def main():
     parser.add_argument("--output", "-o", type=str, default=None, help="parquet output path")
     args = parser.parse_args()
 
-    # Signal fields (momentscan 21D: AU 10 + Emotion 4 + Pose 3 + CLIP 4)
-    from momentscan.algorithm.batch.catalog_scoring import SIGNAL_FIELDS
+    # Signal fields — extended (45D+) or legacy (21D)
+    from visualbind.signals import SIGNAL_FIELDS_EXTENDED, SIGNAL_FIELDS_LEGACY
+    SIGNAL_FIELDS = SIGNAL_FIELDS_EXTENDED
 
     all_records = []
 
