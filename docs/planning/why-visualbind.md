@@ -719,6 +719,18 @@ VisualBind의 본질:
      github.com/autodistill/autodistill.
 [11] Lu, X. et al. (2025). A Single-Model Multi-Task Method for Face Recognition and
      Face Attribute Recognition. IET Image Processing.
+
+# 논문 단계에서 검증·정리 필요 (방법론 참고용)
+[12] Wang, Y. et al. (2023). FreeMatch: Self-adaptive Thresholding for Semi-supervised
+     Learning. ICLR 2023. — adaptive thresholding, "threshold가 최적이 아니다"와 직접 관련
+[13] Li, J. et al. (2020). DivideMix: Learning with Noisy Labels as Semi-supervised
+     Learning. ICLR 2020. — noisy label에서 semi-supervised 학습
+[14] Jiang, L. et al. (2018). MentorNet: Learning Data-Driven Curriculum for Very Deep
+     Neural Networks on Corrupted Labels. ICML 2018. — curriculum learning from noisy labels
+[15] Ren, M. et al. (2018). Learning to Reweight Examples for Robust Deep Learning.
+     NeurIPS 2018. — meta-learning for noisy labels
+[16] Fu, D. et al. (2020). Fast and Three-rious: Speeding Up Weak Supervision with
+     Triplet Methods (Flyingsquid). ICML 2020. — Snorkel 계열 확장, 빠른 label model
 ```
 
 ---
