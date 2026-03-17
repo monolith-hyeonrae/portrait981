@@ -21,6 +21,7 @@ from visualbind.analyzer import compute_correlation_matrix, compute_neff
 from visualbind.strategies import BindingStrategy
 from visualbind.strategies.catalog import CatalogStrategy
 from visualbind.strategies.tree import TreeStrategy
+from visualbind.selector import select_frames, SelectionResult, SelectedFrame
 
 __all__ = [
     # signals
@@ -40,4 +41,8 @@ __all__ = [
     "BindingStrategy",
     "CatalogStrategy",
     "TreeStrategy",
+    # selector
+    "select_frames",
+    "SelectionResult",
+    "SelectedFrame",
 ]
