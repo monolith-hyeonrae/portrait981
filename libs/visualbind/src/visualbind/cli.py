@@ -44,6 +44,10 @@ def _load_labels_json(path: str) -> np.ndarray:
         return np.array(data, dtype=str)
     if isinstance(data, dict) and "labels" in data:
         return np.array(data["labels"], dtype=str)
+    # label_tool.py format: {"frames": [{"index": 0, "label": "warm_smile", ...}, ...]}
+    if isinstance(data, dict) and "frames" in data:
+        labels = [f.get("label", "") for f in data["frames"]]
+        return np.array(labels, dtype=str)
     raise SystemExit(f"Cannot parse labels from {path}")
 
 
