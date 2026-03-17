@@ -794,9 +794,10 @@ visualbind는 이 발판이 만들어낸 pseudo-label을 소비하여, 궁극적
 Phase 간 모델 파라미터 전이는 없다 — 전이되는 것은 pseudo-label 생성 파이프라인과 검증 인프라이다.
 
 ```
-Phase 1: visualpath → 25D signal → Student → 판단 개선 (Teacher 조합 개선)
-Phase 2: visualpath → pseudo-label (학습 시만) → Student CNN → 직접 판단 (end-to-end)
-Phase 3: Student가 도메인 foundation model → visualpath 퇴역
+학습:  Raw Image → 14 Teachers → 25D → pseudo-label (supervision)
+       Raw Image → Student backbone → 판단 → Loss(판단, pseudo-label)
+추론:  Raw Image → Student만 → 판단 (14 Teachers 불필요!)
+성숙:  Student가 도메인 특화 model → visualpath 퇴역
 ```
 
 **visualpath 없이는 visualbind가 시작할 수 없고,
