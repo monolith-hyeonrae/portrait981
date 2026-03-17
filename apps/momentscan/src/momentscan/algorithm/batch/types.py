@@ -76,6 +76,11 @@ class FrameRecord:
     catalog_primary: str = ""           # best category name
     catalog_scores: Dict[str, float] = field(default_factory=dict)  # per-category similarities
 
+    # Bind scores (from visualbind TreeStrategy — trained XGBoost/LR model)
+    bind_best: float = 0.0             # best category probability (0–1)
+    bind_primary: str = ""             # best category name
+    bind_scores: Dict[str, float] = field(default_factory=dict)  # per-category probabilities
+
     # AU features (from face.au) — 10 Action Units
     au1_inner_brow: float = 0.0     # AU1: 이마 안쪽 올림
     au2_outer_brow: float = 0.0     # AU2: 이마 바깥 올림
@@ -259,6 +264,17 @@ class HighlightResult:
             # Dynamic CLIP axis columns
             for name in clip_axis_names:
                 header.append(f"clip_{name}")
+            # Dynamic bind category columns
+            bind_cat_names: List[str] = []
+            if records:
+                all_bind: set = set()
+                for r in records:
+                    all_bind.update(r.bind_scores.keys())
+                bind_cat_names = sorted(all_bind)
+            for name in bind_cat_names:
+                header.append(f"bind_{name}")
+            if bind_cat_names:
+                header += ["bind_best", "bind_primary"]
             header += [
                 # Catalog
                 "catalog_best", "catalog_primary",
@@ -317,6 +333,11 @@ class HighlightResult:
                 # Dynamic CLIP axes
                 for name in clip_axis_names:
                     row.append(f"{r.clip_axes.get(name, 0.0):.4f}")
+                # Dynamic bind categories
+                for name in bind_cat_names:
+                    row.append(f"{r.bind_scores.get(name, 0.0):.4f}")
+                if bind_cat_names:
+                    row += [f"{r.bind_best:.4f}", r.bind_primary]
                 row += [
                     # Catalog
                     f"{r.catalog_best:.4f}",

@@ -70,6 +70,7 @@ def run_process(args):
     batch_size = getattr(args, 'batch_size', 1)
     collection_path = getattr(args, 'collection', None)
     member_id = getattr(args, 'member_id', None)
+    bind_model = getattr(args, 'bind_model', None)
 
     # Print header
     mode = "distributed" if distributed else "library"
@@ -82,6 +83,8 @@ def run_process(args):
     print(f"{_}{DIM}backend: {backend}{batch_label} · output: {output_dir}{RESET}")
     if collection_path:
         print(f"{_}{DIM}collection: {collection_path}{RESET}")
+    if bind_model:
+        print(f"{_}{DIM}bind-model: {bind_model}{RESET}")
     print()
 
     start_time = time.time()
@@ -100,6 +103,7 @@ def run_process(args):
             isolation=isolation_config,
             collection_path=collection_path,
             member_id=member_id,
+            bind_model=bind_model,
         )
     except Exception as e:
         print(f"\nError during processing: {e}")

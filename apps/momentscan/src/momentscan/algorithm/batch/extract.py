@@ -29,6 +29,9 @@ _ANCHOR_DECAY: float = 0.998  # per-frame decay → half-life ~346 frames
 # Module-level state for signal-profile catalog scoring
 _catalog_profiles: list = []
 
+# Module-level state for visualbind TreeStrategy (trained model)
+_bind_strategy: object = None  # TreeStrategy instance or None
+
 
 def set_catalog_profiles(profiles: list) -> None:
     """Signal-profile catalog 프로파일 설정.
@@ -43,12 +46,26 @@ def set_catalog_profiles(profiles: list) -> None:
     _catalog_profiles = list(profiles)
 
 
+def set_bind_strategy(strategy: object) -> None:
+    """Trained visualbind TreeStrategy 설정.
+
+    MomentscanApp.setup()에서 호출. 설정 후 extract_frame_record()가
+    compute_bind_scores()를 호출하여 bind_best/bind_primary/bind_scores를 채운다.
+
+    Args:
+        strategy: TreeStrategy instance (fitted).
+    """
+    global _bind_strategy
+    _bind_strategy = strategy
+
+
 def reset_extract_state() -> None:
     """비디오 간 상태 격리를 위한 모듈 레벨 상태 리셋."""
-    global _anchor_embedding, _anchor_confidence, _catalog_profiles
+    global _anchor_embedding, _anchor_confidence, _catalog_profiles, _bind_strategy
     _anchor_embedding = None
     _anchor_confidence = 0.0
     _catalog_profiles = []
+    _bind_strategy = None
 
 
 def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord]:
@@ -95,6 +112,10 @@ def extract_frame_record(frame: Any, results: List[Any]) -> Optional[FrameRecord
     if _catalog_profiles:
         from momentscan.algorithm.batch.catalog_scoring import compute_catalog_scores
         compute_catalog_scores(record, _catalog_profiles)
+
+    # Visualbind TreeStrategy scoring (trained model)
+    if _bind_strategy is not None:
+        _compute_bind_scores(record, _bind_strategy)
 
     return record
 
@@ -331,6 +352,29 @@ def _extract_portrait_score(record: FrameRecord, obs: Any) -> None:
     if clip_axes:
         for ax in clip_axes:
             record.clip_axes[ax.name] = float(ax.score)
+
+
+def _compute_bind_scores(record: FrameRecord, strategy: Any) -> None:
+    """Trained visualbind TreeStrategy로 카테고리 확률 계산.
+
+    extract_frame_record()에서 호출. strategy.predict()로 21D 시그널 벡터를
+    카테고리 확률로 변환하여 bind_best/bind_primary/bind_scores에 저장.
+
+    Args:
+        record: 시그널이 채워진 FrameRecord (in-place 수정).
+        strategy: Fitted TreeStrategy instance.
+    """
+    from momentscan.algorithm.batch.catalog_scoring import extract_signal_vector
+
+    frame_vec = extract_signal_vector(record)
+    scores = strategy.predict(frame_vec)
+    if not scores:
+        return
+
+    record.bind_scores = scores
+    best_name = max(scores, key=scores.get)
+    record.bind_best = scores[best_name]
+    record.bind_primary = best_name
 
 
 def _compute_composites(record: FrameRecord) -> None:

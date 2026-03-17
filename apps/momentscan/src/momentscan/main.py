@@ -55,10 +55,11 @@ class MomentscanApp(vp.App):
     fps = DEFAULT_FPS
     backend = DEFAULT_BACKEND
 
-    def __init__(self, *, analyzers=None, output_dir=None, collection_path=None, member_id=None):
+    def __init__(self, *, analyzers=None, output_dir=None, collection_path=None, member_id=None, bind_model=None):
         self._output_dir = output_dir
         self._collection_path = collection_path
         self._member_id = member_id
+        self._bind_model = bind_model
         self._frame_records: list = []
         self._collection_records: list = []
         self._interrupted = False
@@ -130,6 +131,16 @@ class MomentscanApp(vp.App):
 
             # Store CLIP axes for injection in configure_modules()
             self._clip_axes = load_clip_axes(catalog_path)
+
+        # Visualbind TreeStrategy (trained model) loading
+        if self._bind_model:
+            from visualbind.strategies.tree import TreeStrategy
+            from momentscan.algorithm.batch.extract import set_bind_strategy
+            bind_path = Path(self._bind_model)
+            strategy = TreeStrategy.load(bind_path)
+            set_bind_strategy(strategy)
+            logger.info("Loaded visualbind TreeStrategy from %s (%d classes)",
+                        bind_path, len(strategy.classes))
 
         # SIGINT를 잡아서 graceful shutdown → after_run() 보장
         self._prev_sigint_handler = signal.getsignal(signal.SIGINT)
@@ -330,6 +341,7 @@ def run(
     on_frame: Optional[Callable] = None,
     collection_path: Optional[Union[str, Path]] = None,
     member_id: Optional[str] = None,
+    bind_model: Optional[Union[str, Path]] = None,
 ) -> Result:
     """Process a video and return highlight results.
 
@@ -351,6 +363,9 @@ def run(
             None = use built-in poses × AU-rule classification.
         member_id: Unique member identifier for cumulative bank storage.
             None = use video file stem as fallback.
+        bind_model: Path to trained visualbind TreeStrategy model directory.
+            When provided, uses the model for additional frame scoring
+            alongside catalog scoring.  None = catalog scoring only.
 
     Returns:
         Result with highlights, collection, frame_count, duration_sec.
@@ -359,11 +374,13 @@ def run(
         >>> result = ms.run("video.mp4")
         >>> result = ms.run("video.mp4", output_dir="./output")
         >>> result = ms.run("video.mp4", collection_path="data/catalogs/portrait-v1")
+        >>> result = ms.run("video.mp4", bind_model="models/bind-v1")
     """
     app = MomentscanApp(
         analyzers=analyzers, output_dir=output_dir,
         collection_path=str(collection_path) if collection_path else None,
         member_id=member_id,
+        bind_model=str(bind_model) if bind_model else None,
     )
     return app.run(
         video,

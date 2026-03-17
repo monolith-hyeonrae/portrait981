@@ -20,6 +20,7 @@ from visualbind.profile import CategoryProfile, load_profiles, save_profiles
 from visualbind.analyzer import compute_correlation_matrix, compute_neff
 from visualbind.strategies import BindingStrategy
 from visualbind.strategies.catalog import CatalogStrategy
+from visualbind.strategies.tree import TreeStrategy
 
 __all__ = [
     # signals
@@ -38,4 +39,5 @@ __all__ = [
     # strategies
     "BindingStrategy",
     "CatalogStrategy",
+    "TreeStrategy",
 ]

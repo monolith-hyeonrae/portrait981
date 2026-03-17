@@ -183,6 +183,21 @@ class BatchHighlightEngine:
                 [r.catalog_scores.get(name, 0.0) for r in records]
             )
 
+        # bind_scores → per-category arrays "bind_cat_{name}"
+        all_bind_names: set[str] = set()
+        for r in records:
+            all_bind_names.update(r.bind_scores.keys())
+        for name in sorted(all_bind_names):
+            arrays[f"bind_cat_{name}"] = np.array(
+                [r.bind_scores.get(name, 0.0) for r in records]
+            )
+
+        # bind_best (scalar)
+        if all_bind_names:
+            arrays["bind_best"] = np.array(
+                [r.bind_best for r in records]
+            )
+
         return arrays
 
     # ── Step 2: Temporal delta ──
@@ -306,10 +321,23 @@ class BatchHighlightEngine:
     ) -> np.ndarray:
         """감정/동작 변화 점수.
 
-        카탈로그 모드: 카테고리별 유사도 채널 → per-video min-max → top-K weighted mean.
-        폴백: 기존 3채널 (smile, yaw_delta, portrait_best).
+        우선순위:
+        1. bind 모드 (TreeStrategy): bind_cat_* 확률 채널 사용
+        2. 카탈로그 모드: catalog_cat_* 유사도 채널 사용
+        3. 폴백: 기존 3채널 (smile, yaw_delta, portrait_best)
+
+        bind + catalog 동시 사용 시: bind 50% + catalog 50% 블렌드.
         """
+        bind_cat_keys = [k for k in sorted(arrays) if k.startswith("bind_cat_")]
         catalog_cat_keys = [k for k in sorted(arrays) if k.startswith("catalog_cat_")]
+
+        if bind_cat_keys and catalog_cat_keys:
+            # Both available: blend 50/50
+            bind_impact = self._compute_catalog_impact(arrays, bind_cat_keys)
+            catalog_impact = self._compute_catalog_impact(arrays, catalog_cat_keys)
+            return 0.5 * bind_impact + 0.5 * catalog_impact
+        if bind_cat_keys:
+            return self._compute_catalog_impact(arrays, bind_cat_keys)
         if catalog_cat_keys:
             return self._compute_catalog_impact(arrays, catalog_cat_keys)
         return self._compute_legacy_impact(arrays, normed)

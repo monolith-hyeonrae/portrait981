@@ -206,6 +206,17 @@ def run_debug(args):
         set_collection_catalog_profiles(profiles)
         print(f"{DIM}Loaded {len(profiles)} catalog profiles from {_collection_path}{RESET}")
 
+    # Visualbind TreeStrategy (trained model) loading
+    _bind_model = getattr(args, 'bind_model', None)
+    if _bind_model:
+        from visualbind.strategies.tree import TreeStrategy
+        from momentscan.algorithm.batch.extract import set_bind_strategy
+        from pathlib import Path as _Path
+
+        strategy = TreeStrategy.load(_Path(_bind_model))
+        set_bind_strategy(strategy)
+        print(f"{DIM}Loaded visualbind TreeStrategy from {_bind_model} ({len(strategy.classes)} classes){RESET}")
+
     frame_count = 0
     frame_records = []
     collection_records = []

@@ -142,6 +142,12 @@ Examples:
         help="Member ID for cumulative bank storage. "
              "Default: video file stem."
     )
+    debug_parser.add_argument(
+        "--bind-model", type=str, metavar="PATH",
+        help="Path to trained visualbind TreeStrategy model directory. "
+             "When provided, uses the model for additional frame scoring "
+             "alongside catalog scoring."
+    )
 
     # process command
     proc_parser = subparsers.add_parser("process", help="Process video and extract highlight clips")
@@ -178,6 +184,12 @@ Examples:
         "--member-id", type=str, metavar="ID",
         help="Member ID for cumulative bank storage. "
              "Default: video file stem."
+    )
+    proc_parser.add_argument(
+        "--bind-model", type=str, metavar="PATH",
+        help="Path to trained visualbind TreeStrategy model directory. "
+             "When provided, uses the model for additional frame scoring "
+             "alongside catalog scoring."
     )
     proc_parser.add_argument(
         "-v", "--verbose", action="store_true",
@@ -223,6 +235,12 @@ Examples:
         "--member-id", type=str, metavar="ID",
         help="Member ID for cumulative bank storage. "
              "Default: video file stem."
+    )
+    collect_parser.add_argument(
+        "--bind-model", type=str, metavar="PATH",
+        help="Path to trained visualbind TreeStrategy model directory. "
+             "When provided, uses the model for additional frame scoring "
+             "alongside catalog scoring."
     )
     collect_parser.add_argument(
         "-v", "--verbose", action="store_true",

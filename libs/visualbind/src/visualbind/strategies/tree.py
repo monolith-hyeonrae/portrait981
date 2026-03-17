@@ -2,12 +2,17 @@
 
 Requires labeled training data (signal vectors + category labels).
 Falls back to logistic regression if ``xgboost`` is not installed.
+
+Persistence: :meth:`TreeStrategy.save` / :meth:`TreeStrategy.load` serialize
+the trained model + class list via :mod:`joblib` (or :mod:`pickle` fallback).
 """
 
 from __future__ import annotations
 
+import json
 import logging
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 
@@ -111,3 +116,94 @@ class TreeStrategy:
 
         proba = self._model.predict_proba(frame_vec.reshape(1, -1))[0]
         return {name: float(p) for name, p in zip(self._classes, proba)}
+
+    # ── Persistence ──
+
+    def save(self, path: Union[str, Path]) -> None:
+        """Save trained model to disk.
+
+        Creates a directory containing ``model.joblib`` (or ``model.pkl``)
+        and ``meta.json`` (class list + backend info).
+
+        Args:
+            path: Directory to save model artifacts into.
+
+        Raises:
+            RuntimeError: If model has not been fitted yet.
+        """
+        if self._model is None:
+            raise RuntimeError("TreeStrategy has not been fitted — nothing to save")
+
+        save_dir = Path(path)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine backend name for metadata
+        backend_name = type(self._model).__name__
+
+        # Save model via joblib (preferred) or pickle fallback
+        try:
+            import joblib
+            model_path = save_dir / "model.joblib"
+            joblib.dump(self._model, model_path)
+        except ImportError:
+            import pickle
+            model_path = save_dir / "model.pkl"
+            with open(model_path, "wb") as f:
+                pickle.dump(self._model, f)
+
+        # Save metadata
+        meta = {
+            "classes": self._classes,
+            "backend": backend_name,
+            "model_file": model_path.name,
+        }
+        with open(save_dir / "meta.json", "w") as f:
+            json.dump(meta, f, indent=2)
+
+        logger.info("TreeStrategy saved to %s (%s, %d classes)", save_dir, backend_name, len(self._classes))
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> "TreeStrategy":
+        """Load a trained model from disk.
+
+        Args:
+            path: Directory containing ``meta.json`` and model file.
+
+        Returns:
+            TreeStrategy instance with loaded model.
+
+        Raises:
+            FileNotFoundError: If meta.json or model file is missing.
+        """
+        load_dir = Path(path)
+        meta_path = load_dir / "meta.json"
+        if not meta_path.exists():
+            raise FileNotFoundError(f"No meta.json in {load_dir}")
+
+        with open(meta_path) as f:
+            meta = json.load(f)
+
+        model_file = meta["model_file"]
+        model_path = load_dir / model_file
+
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+
+        # Load model via joblib or pickle
+        if model_file.endswith(".joblib"):
+            try:
+                import joblib
+                model = joblib.load(model_path)
+            except ImportError:
+                raise ImportError("joblib is required to load .joblib model files")
+        else:
+            import pickle
+            with open(model_path, "rb") as f:
+                model = pickle.load(f)
+
+        instance = cls()
+        instance._model = model
+        instance._classes = meta["classes"]
+
+        logger.info("TreeStrategy loaded from %s (%d classes)", load_dir, len(instance._classes))
+        return instance
