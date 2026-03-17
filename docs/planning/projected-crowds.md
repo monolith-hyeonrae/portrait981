@@ -521,13 +521,13 @@ Observer 공간은 고정이고, 사영이 바뀔 때 개념이 바뀐다.
 
 ```
 시즌 1 (겨울):
-  Π₁ = {warm_smile, cool_gaze, lateral}
+  Π₁ = {warm_smile, cool_expression, lateral}
   → Student가 이 3개 사영에 대해 학습
 
 디자인팀: "봄 시즌은 눈감은 장면이 필요해"
 
 시즌 2 (봄):
-  Π₂ = {warm_smile, cool_gaze, lateral, eyes_closed}
+  Π₂ = {warm_smile, cool_expression, lateral, eyes_closed}
   → 새 사영 τ_eyes_closed 추가
   → 기존 데이터에 즉시 적용 가능 (observer 출력은 이미 있음)
   → 50건 pseudo-label → 새 Bucket Head만 학습
