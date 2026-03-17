@@ -592,15 +592,16 @@ face.detect 성공 → 나머지 모듈 간 조건부 N_eff 계산
 | 2 ≤ N_eff < 3 | 합의 기준 상향 + 진행 |
 | < 2 | 모델 다양화 또는 근본적 재고 |
 
-### Exp 0 — DNN 없이 Crowds 검증 (30분)
+### Exp 0 — DNN 없이 Crowds 검증
 
 ```
-Dawid-Skene EM → weighted majority vote
+MajorityVote → Dawid-Skene → GLAD → Snorkel label model
 vs Baseline: 수동 threshold AND 조합 (현행)
+평가: 5-fold CV (fit과 eval 분리 — train-on-test 오염 방지)
 ```
 
-crowdkit을 활용하여 MajorityVote → Dawid-Skene → GLAD 순으로 비교.
-Dawid-Skene만으로도 현행 대비 개선되면, crowds 프레이밍이 이 데이터에서 유효한 것.
+crowdkit + snorkel을 활용하여 4종 비교.
+Snorkel baseline 포함 이유: Snorkel 동치/차이를 실증으로 확인.
 **실패 시 전체 방향 재검토. 성공 시 DNN으로 진행.**
 
 ---
@@ -644,13 +645,40 @@ Loss:  Kendall uncertainty weighting (soft + hard 자동 균형) + λ × VICReg
 Exp 1-3 각각에 대해:
 - **Cold start**: Teacher 출력 + binary vote만으로 학습 (catalog_scoring 무관)
 - **Warm start**: catalog_scoring의 Fisher weights → Teacher reliability prior로 활용
+- **Random prior**: uniform 분포에서 랜덤 prior (초기화 효과 분리용 control)
 
-어느 쪽이 나은지 실증. Cold start로 이기면 가장 강력한 contribution.
+3종 비교로 개선 원인을 분리:
+- Warm > Random → Fisher prior 자체가 유용
+- Random ≈ Cold → prior 구조가 아닌 정보가 핵심
+- Cold start로 이기면 가장 강력한 contribution.
+
+### 단계별 추가 실험 (필요 시점에 실행)
+
+모든 실험을 한번에 진행하지 않고, **이전 단계 결과를 확인한 후** 다음 실험을 결정한다.
+
+| 시점 | 추가 실험 | 목적 |
+|------|----------|------|
+| **Exp 3 후** | z 차원 ablation (8/16/32/64) | 16D bottleneck 충분한지 검증 |
+| **Exp 3 후** | per-teacher-head reconstruction R² | z가 각 teacher 정보를 담고 있는지 |
+| **Exp 3 후** | Encoder width/depth ablation (32/64/128, 2/3/4 layers) | 13K params 적정한지 |
+| **Exp 4** | few-shot: N당 10회 random draw | 분산 추정, per-bucket 분리 보고 |
+| **Temporal** | data volume control (Week 2에서 N건 샘플링) | 양 vs 다양성 분리 |
 
 ## 성공/실패 판단 기준
 
-**Bootstrap CI + Effect Size 병행:**
-- Bootstrap (1000회 리샘플링) → 95% 신뢰구간 → CI가 겹치지 않으면 통계적 유의
+### Primary Endpoint (사전등록)
+
+> **Exp 3 (hybrid) vs catalog_scoring, macro-averaged AUC-ROC, α=0.01**
+
+이것이 유일한 통계적 유의성 주장. 나머지 실험은 전부 exploratory (ablation/탐색).
+9개 실험 × 다수 메트릭에 대한 다중비교 보정 불필요.
+
+### 통계 방법
+
+**Block Bootstrap CI + Effect Size 병행:**
+- Block bootstrap (session/day 단위 클러스터링, 1000회 리샘플링)
+  — 같은 세션의 프레임은 독립이 아니므로 naive i.i.d. bootstrap 부적절
+- 95% 신뢰구간 → CI가 겹치지 않으면 통계적 유의
 - Effect size → AUC 2%p 이상 차이면 실무적으로 유의미
 - 둘 다 만족해야 "개선"으로 판단
 

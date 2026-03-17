@@ -323,6 +323,23 @@ Crowds는 annotator가 이미 같은 공간에 있다고 가정한다.
 또한 annotator 간 독립성을 가정하지만, VisualBind에서는
 **추상 개념 자체가 observer 간 환원 불가능한 상관을 만든다** — 이것은 모델을 다양화해도 제거할 수 없다.
 
+### Rodrigues & Pereira (2018) "Deep Learning from Crowds"와의 차별화
+
+구조적으로 가장 유사한 선행연구. DNN + per-annotator heads로 annotator reliability와 true label을 동시 학습.
+VisualBind의 shared encoder + teacher heads + bucket heads 구조와 닮아있다.
+
+| | Rodrigues & Pereira | VisualBind |
+|---|---|---|
+| Annotator | 사람 (같은 task, 같은 출력 형식) | **frozen 모델 (다른 task, 이종 출력)** |
+| Annotator 출력 | 이산 label만 | **연속 다차원 + 이산 vote (dual-mode)** |
+| 상관 원인 | annotator 간 독립 가정 | **추상 개념이 만드는 환원 불가능한 상관** |
+| Downstream | 단일 task | **multi-bucket + few-shot transfer** |
+| 핵심 차이 | annotator가 이미 같은 공간 | **이종 공간의 역사상 + 역사상 시 소실된 cross-modal 상관 복원** |
+
+Rodrigues & Pereira가 다루지 않는 것:
+역사상 과정에서 발생하는 정보 손실, 축 간 독립 가정에 의한 cross-modal 상관 소실,
+그리고 dual-mode loss를 통한 복원. 이것이 VisualBind의 핵심 확장이다.
+
 상세한 이론적 전개는 `projected-crowds.md` 참조.
 
 ---
