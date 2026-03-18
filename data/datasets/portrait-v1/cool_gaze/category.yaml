@@ -1,0 +1,17 @@
+name: cool_gaze
+description: >
+  시크한 시선. 웃지 않지만 멋짐이 느껴지는 순간.
+  자신감 있는 표정, 카리스마, 도도한 분위기.
+threshold: 0.79
+clip_axis:
+  prompts:
+    - "a person with a cool confident smirk not smiling"
+    - "a person with a chic aloof expression and sharp gaze"
+    - "a person posing with bold confidence and no smile"
+    - "a person with a fierce unbothered look"
+    - "a brooding mysterious portrait with intense eyes"
+  neg_prompts:
+    - "a person smiling warmly and friendly"
+    - "a person laughing with a big open smile"
+    - "a cheerful happy person with bright expression"
+  action: select

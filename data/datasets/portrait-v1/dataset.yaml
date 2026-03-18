@@ -1,0 +1,26 @@
+name: portrait-v1
+description: 981파크 portrait 데이터셋 — 참조 이미지 + 운용 프레임 통합
+version: "1.0"
+created: "2026-03-18"
+
+categories:
+  - warm_smile      # 따뜻한 미소
+  - cool_gaze       # 시크/무표정 (cool_expression)
+  - lateral         # 측면 포즈
+  - playful_face    # 장난스러운 표정
+  - wild_energy     # 강렬한 에너지
+  - reject          # portrait 부적합 (라벨링에서 추가)
+
+sources:
+  - type: reference
+    description: 인터넷 포트레이트 참조 이미지 (스톡 사진)
+    format: jpg, avif
+  - type: operational
+    description: 981파크 운용 비디오에서 라벨링된 프레임
+    format: jpg
+
+notes: |
+  이 데이터셋은 visualbind의 학습/평가에 사용.
+  이미지 추가: label_tool → Export ZIP → visualbind merge
+  리뷰/클리닝: 파일 탐색기에서 이미지 이동/삭제
+  폴더명 = 라벨 (ImageFolder 패턴)

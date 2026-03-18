@@ -406,7 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
     # merge
     p = sub.add_parser("merge", help="Merge anchor ZIP files into folder structure")
     p.add_argument("zips", nargs="+", help="Anchor ZIP files from label_tool")
-    p.add_argument("--output", "-o", default="data/anchors", help="Output directory (default: data/anchors)")
+    p.add_argument("--output", "-o", default="data/datasets/portrait-v1", help="Output directory (default: data/datasets/portrait-v1)")
 
     return parser
 
