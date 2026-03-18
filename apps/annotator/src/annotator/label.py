@@ -104,11 +104,12 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .thumb.labeled {{ border-left-color: #4CAF50; }}
 .thumb img {{ width: 100%; border-radius: 3px; display: block; }}
 .shortcut-hint {{ font-size: 11px; color: #555; text-align: center; margin-top: 8px; }}
-.bucket-bar {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 20px;
-    background: #0a0a1a; border-bottom: 1px solid #333; flex-shrink: 0; }}
-.bucket-item {{ display: flex; align-items: center; gap: 4px; font-size: 12px; }}
-.bucket-count {{ font-weight: bold; font-size: 14px; }}
-.bucket-bar-fill {{ height: 6px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }}
+.bucket-bar {{ padding: 6px 20px; background: #0a0a1a; border-bottom: 1px solid #333; flex-shrink: 0; }}
+.bucket-matrix {{ border-collapse: collapse; font-size: 11px; }}
+.bucket-matrix th {{ padding: 3px 8px; color: #888; font-weight: normal; }}
+.bucket-matrix td {{ padding: 3px 8px; text-align: center; font-weight: bold; min-width: 40px; }}
+.bucket-matrix .row-total {{ border-left: 1px solid #333; color: #aaa; }}
+.bucket-matrix .col-total {{ border-top: 1px solid #333; color: #aaa; }}
 </style>
 </head><body>
 
@@ -169,9 +170,15 @@ function renderSidebar() {{
     sb.innerHTML = '';
     filteredList.forEach((f, pos) => {{
         const div = document.createElement('div');
-        const isLabeled = labels[f.index] !== undefined;
-        div.className = 'thumb' + (pos === currentPos ? ' active' : '') + (isLabeled ? ' labeled' : '');
-        div.innerHTML = `<img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">`;
+        const lbl = labels[f.index];
+        const isLabeled = lbl !== undefined;
+        const borderColor = isLabeled ? (getColor(lbl) || '#4CAF50') : 'transparent';
+        div.className = 'thumb' + (pos === currentPos ? ' active' : '');
+        div.style.borderLeftColor = borderColor;
+        div.style.borderLeftWidth = isLabeled ? '4px' : '3px';
+        div.style.opacity = isLabeled ? '0.7' : (pos === currentPos ? '1' : '0.5');
+        const tag = isLabeled ? `<div style="font-size:9px;color:${{borderColor}};text-align:center;margin-top:1px">${{lbl}}</div>` : '';
+        div.innerHTML = `<img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">${{tag}}`;
         div.onclick = () => {{ currentPos = pos; renderFocus(); renderSidebar(); }};
         sb.appendChild(div);
         if (pos === currentPos) div.scrollIntoView({{ block: 'nearest' }});
@@ -273,32 +280,53 @@ function updateCount() {{
     const total = Object.keys(labels).length;
     document.getElementById('count').textContent = total;
 
-    // Bucket bar
-    const exprCounts = {{}};
-    const poseCounts = {{}};
+    // 2D matrix: expression × pose
+    const EXPRS = ['cheese','chill','edge','hype','pass'];
+    const POSES = ['front','angle','side',''];
+    const matrix = {{}};
+    const exprTotals = {{}};
+    const poseTotals = {{}};
+    EXPRS.forEach(e => {{ exprTotals[e] = 0; POSES.forEach(p => matrix[e+'|'+p] = 0); }});
+    POSES.forEach(p => poseTotals[p] = 0);
+
     for (const [idx, lbl] of Object.entries(labels)) {{
-        if (lbl && lbl !== 'skip') exprCounts[lbl] = (exprCounts[lbl] || 0) + 1;
-        const p = poses[idx];
-        if (p) poseCounts[p] = (poseCounts[p] || 0) + 1;
+        if (!lbl || lbl === 'skip') continue;
+        const p = poses[idx] || '';
+        const key = lbl + '|' + p;
+        if (matrix[key] !== undefined) matrix[key]++;
+        if (exprTotals[lbl] !== undefined) exprTotals[lbl]++;
+        poseTotals[p] = (poseTotals[p] || 0) + 1;
     }}
 
     const bar = document.getElementById('bucketBar');
-    const allBuckets = [
-        ...['cheese','chill','edge','hype','pass'].map(b => ({{ name: b, count: exprCounts[b] || 0, color: getColor(b) }})),
-        {{ name: '|', count: -1 }},
-        ...['front','angle','side'].map(b => ({{ name: b, count: poseCounts[b] || 0, color: getColor(b) }})),
-    ];
-    const maxCount = Math.max(1, ...allBuckets.filter(b => b.count >= 0).map(b => b.count));
+    let html = '<table class="bucket-matrix"><tr><th></th>';
+    ['front','angle','side','(none)'].forEach((p, i) => {{
+        const pk = i < 3 ? POSES[i] : '';
+        const c = i < 3 ? getColor(POSES[i]) : '#666';
+        html += `<th style="color:${{c}}">${{p}}</th>`;
+    }});
+    html += '<th class="row-total">total</th></tr>';
 
-    bar.innerHTML = allBuckets.map(b => {{
-        if (b.count < 0) return '<span style="color:#333">|</span>';
-        const w = Math.max(4, (b.count / maxCount) * 80);
-        return `<div class="bucket-item">
-            <span style="color:${{b.color}}">${{b.name}}</span>
-            <span class="bucket-count" style="color:${{b.color}}">${{b.count}}</span>
-            <div class="bucket-bar-fill" style="width:${{w}}px;background:${{b.color}}"></div>
-        </div>`;
-    }}).join('');
+    EXPRS.forEach(e => {{
+        const ec = getColor(e);
+        html += `<tr><th style="color:${{ec}}">${{e}}</th>`;
+        POSES.forEach(p => {{
+            const v = matrix[e+'|'+p];
+            const style = v > 0 ? `color:${{ec}};font-size:13px` : 'color:#333';
+            html += `<td style="${{style}}">${{v}}</td>`;
+        }});
+        const t = exprTotals[e];
+        html += `<td class="row-total" style="${{t > 0 ? 'color:'+ec : 'color:#333'}}">${{t}}</td></tr>`;
+    }});
+
+    html += '<tr><th class="col-total">total</th>';
+    POSES.forEach(p => {{
+        const t = poseTotals[p] || 0;
+        html += `<td class="col-total">${{t}}</td>`;
+    }});
+    const grand = Object.values(exprTotals).reduce((a,b) => a+b, 0);
+    html += `<td class="col-total" style="color:#4CAF50;font-weight:bold">${{grand}}</td></tr></table>`;
+    bar.innerHTML = html;
 }}
 
 async function exportLabels() {{
