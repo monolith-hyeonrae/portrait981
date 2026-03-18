@@ -1,26 +1,35 @@
 name: portrait-v1
-description: 981파크 portrait 데이터셋 — 참조 이미지 + 운용 프레임 통합
-version: "1.0"
+description: 981파크 portrait 데이터셋
+version: "2.0"
 created: "2026-03-18"
 
-categories:
-  - warm_smile      # 따뜻한 미소
-  - cool_gaze       # 시크/무표정 (cool_expression)
-  - lateral         # 측면 포즈
-  - playful_face    # 장난스러운 표정
-  - wild_energy     # 강렬한 에너지
-  - reject          # portrait 부적합 (라벨링에서 추가)
+# 표정 (expression) — 셔터를 누를지 결정
+expression:
+  cheese: "밝은 미소/웃음 🧀 — '치즈!' 하는 순간"
+  chill:  "쿨하고 여유로운 🧊 — 편안, 힘 빠진 느낌"
+  edge:   "날카롭고 강렬한 🗡️ — 인상 찡그리는데 간지, 제임스딘"
+  hype:   "흥분/환호 🔥 — 놀이기구, 비명, 익사이팅"
 
-sources:
-  - type: reference
-    description: 인터넷 포트레이트 참조 이미지 (스톡 사진)
-    format: jpg, avif
-  - type: operational
-    description: 981파크 운용 비디오에서 라벨링된 프레임
-    format: jpg
+# 포즈 (pose) — 표정 OK일 때만
+pose:
+  front:  "정면 — 카메라 직시"
+  angle:  "3/4 앵글 — 약간 돌린"
+  side:   "측면/프로필"
+
+# 기각
+reject:
+  pass: "촬영 가치 없음 ⏭️"
+
+# 라벨링 키
+keybindings:
+  expression: {1: cheese, 2: chill, 3: edge, 4: hype, 5: pass}
+  pose: {q: front, w: angle, e: side}
 
 notes: |
-  이 데이터셋은 visualbind의 학습/평가에 사용.
-  이미지 추가: label_tool → Export ZIP → visualbind merge
-  리뷰/클리닝: 파일 탐색기에서 이미지 이동/삭제
-  폴더명 = 라벨 (ImageFolder 패턴)
+  라벨링 흐름:
+    1단계: 표정 선택 (1-4) 또는 기각 (5=pass)
+    2단계: 포즈 선택 (q/w/e) — pass 제외
+
+  이미지 소스:
+    - 인터넷 포트레이트 참조 이미지 (jpg, avif)
+    - 981파크 운용 비디오 프레임 (label_tool → merge)

@@ -71,9 +71,15 @@ def generate_html(frames_info, categories, video_name):
     ])
 
     cat_colors = {
-        "warm_smile": "#4CAF50", "cool_gaze": "#2196F3",
-        "cool_expression": "#2196F3", "lateral": "#FF9800",
-        "playful_face": "#E91E63", "wild_energy": "#9C27B0",
+        # expression
+        "cheese": "#4CAF50",   # 🧀 밝은 미소/웃음
+        "chill": "#2196F3",    # 🧊 쿨/여유
+        "edge": "#FF5722",     # 🗡️ 날카롭고 강렬
+        "hype": "#9C27B0",     # 🔥 흥분/환호
+        # pose
+        "front": "#00BCD4",    # 정면
+        "angle": "#FF9800",    # 3/4
+        "side": "#795548",     # 측면
     }
     cat_list_json = json.dumps(categories)
     cat_colors_json = json.dumps(cat_colors)
@@ -213,22 +219,36 @@ function renderFocus() {{
 
     const f = filteredList[currentPos];
     const label = labels[f.index];
-    const labelHtml = label
-        ? `<div class="focus-label">Label: ${{label}}</div>`
+    const pose = poses[f.index];
+    const exprText = label ? label : '';
+    const poseText = pose ? pose : '';
+    const labelHtml = (label || pose)
+        ? `<div class="focus-label">${{exprText}}${{exprText && poseText ? ' + ' : ''}}${{poseText}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
 
+    // Expression buttons
     let btnsHtml = '<div class="buttons">';
-    for (const cat of CATEGORIES) {{
+    const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
+    for (const cat of EXPRESSIONS) {{
         const sel = label === cat;
         const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
         btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}}</button>`;
     }}
-    for (const sp of ['reject', 'skip', 'none']) {{
-        const sel = label === sp;
-        const bg = sel ? (sp === 'reject' ? 'background:#d32f2f;color:#fff;' : 'background:#888;color:#fff;') : '';
-        btnsHtml += `<button class="cat-btn ${{sp}}${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{sp}}')">${{sp}}</button>`;
-    }}
+    btnsHtml += `<button class="cat-btn${{label === 'pass' ? ' selected' : ''}}" style="${{label === 'pass' ? 'background:#d32f2f;color:#fff;' : ''}}" onclick="setLabel(${{f.index}},'pass')">pass</button>`;
+    btnsHtml += `<button class="cat-btn${{label === 'skip' ? ' selected' : ''}}" style="${{label === 'skip' ? 'background:#888;color:#fff;' : ''}}" onclick="setLabel(${{f.index}},'skip')">skip</button>`;
     btnsHtml += '</div>';
+
+    // Pose buttons (only if expression is set and not pass/skip)
+    if (label && label !== 'pass' && label !== 'skip') {{
+        btnsHtml += '<div class="buttons" style="margin-top:6px">';
+        const POSES = ['front', 'angle', 'side'];
+        for (const p of POSES) {{
+            const sel = pose === p;
+            const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
+            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}}</button>`;
+        }}
+        btnsHtml += '</div>';
+    }}
 
     panel.innerHTML = `
         <img class="focus-img" src="data:image/jpeg;base64,${{IMAGES[f.index]}}">
@@ -246,7 +266,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next &rarr;</button>
         </div>
-        <div class="shortcut-hint">Keyboard: &larr; &rarr; navigate &nbsp;|&nbsp; 1-${{CATEGORIES.length}} category &nbsp;|&nbsp; r reject &nbsp;|&nbsp; s skip</div>
+        <div class="shortcut-hint">Keyboard: &larr;&rarr; navigate &nbsp;|&nbsp; 1=cheese 2=chill 3=edge 4=hype 5=pass s=skip &nbsp;|&nbsp; q=front w=angle e=side</div>
     `;
     updateCount();
 }}
@@ -257,6 +277,9 @@ function go(delta) {{
     renderSidebar();
 }}
 
+// labels stores expression, poses stores pose (separate axes)
+let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
+
 function setLabel(index, label) {{
     if (labels[index] === label) {{
         delete labels[index];
@@ -266,6 +289,16 @@ function setLabel(index, label) {{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(labels));
     renderFocus();
     renderSidebar();
+}}
+
+function setPose(index, pose) {{
+    if (poses[index] === pose) {{
+        delete poses[index];
+    }} else {{
+        poses[index] = pose;
+    }}
+    localStorage.setItem(STORAGE_KEY + '_pose', JSON.stringify(poses));
+    renderFocus();
 }}
 
 function updateCount() {{
@@ -287,14 +320,20 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\.[^.]+$/, '');
 
-        // Add images to category folders
+        // Add images to expression category folders
         for (const f of labeled) {{
-            const cat = labels[f.index];
+            const expr = labels[f.index];
+            const pose = poses[f.index] || '';
             const b64 = IMAGES[f.index];
             const binary = atob(b64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            zip.file(`${{cat}}/${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`, bytes);
+            // expression 폴더에 저장
+            zip.file(`${{expr}}/${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`, bytes);
+            // pose 폴더에도 저장 (있으면)
+            if (pose) {{
+                zip.file(`${{pose}}/${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`, bytes);
+            }}
         }}
 
         // Add metadata JSON
@@ -302,10 +341,11 @@ async function exportLabels() {{
             video: "{video_name}",
             total_frames: FRAMES.length,
             labeled_count: labeled.length,
-            categories: [...new Set(labeled.map(f => labels[f.index]))].sort(),
+            expressions: [...new Set(labeled.map(f => labels[f.index]))].sort(),
             frames: labeled.map(f => ({{
                 index: f.index,
-                label: labels[f.index],
+                expression: labels[f.index],
+                pose: poses[f.index] || null,
                 catalog: f.catalog,
                 lr: f.lr,
                 xgb: f.xgb,
@@ -329,24 +369,28 @@ async function exportLabels() {{
 function resetLabels() {{
     if (!confirm('Reset all labels?')) return;
     labels = {{}};
+    poses = {{}};
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY + '_pose');
     buildFilteredList();
     currentPos = 0;
     renderFocus();
     renderSidebar();
 }}
 
-// Keyboard shortcuts
+// Expression + Pose keyboard shortcuts
+const EXPR_KEYS = {{'1':'cheese', '2':'chill', '3':'edge', '4':'hype', '5':'pass'}};
+const POSE_KEYS = {{'q':'front', 'w':'angle', 'e':'side'}};
+
 document.addEventListener('keydown', e => {{
     if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === 'ArrowRight') go(1);
-    else if (e.key === 'r') {{ if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, 'reject'); }}
     else if (e.key === 's') {{ if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, 'skip'); }}
-    else {{
-        const n = parseInt(e.key);
-        if (n >= 1 && n <= CATEGORIES.length && filteredList[currentPos]) {{
-            setLabel(filteredList[currentPos].index, CATEGORIES[n - 1]);
-        }}
+    else if (EXPR_KEYS[e.key]) {{
+        if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, EXPR_KEYS[e.key]);
+    }}
+    else if (POSE_KEYS[e.key]) {{
+        if (filteredList[currentPos]) setPose(filteredList[currentPos].index, POSE_KEYS[e.key]);
     }}
 }});
 
