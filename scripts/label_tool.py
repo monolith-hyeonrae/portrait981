@@ -83,6 +83,7 @@ def generate_html(frames_info, categories, video_name):
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <title>Anchor Set Label Tool</title>
 <style>
 * {{ box-sizing: border-box; }}
@@ -146,7 +147,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
         <button class="filter-btn" data-filter="labeled">Labeled</button>
         <button class="filter-btn" data-filter="disagree">Disagree</button>
     </div>
-    <button class="btn-export" onclick="exportLabels()">Export JSON</button>
+    <button class="btn-export" onclick="exportLabels()">Export ZIP</button>
     <button class="btn-reset" onclick="resetLabels()">Reset All</button>
 </div>
 
@@ -271,28 +272,58 @@ function updateCount() {{
     document.getElementById('count').textContent = Object.keys(labels).length;
 }}
 
-function exportLabels() {{
-    const frames = FRAMES.map(f => ({{
-        index: f.index,
-        label: labels[f.index] || null,
-        catalog: f.catalog,
-        lr: f.lr,
-        xgb: f.xgb,
-        is_disagree: f.is_disagree,
-    }})).filter(f => f.label !== null);
+async function exportLabels() {{
+    const labeled = FRAMES.filter(f => labels[f.index] && labels[f.index] !== 'skip');
+    if (labeled.length === 0) {{
+        alert('No labeled frames to export.');
+        return;
+    }}
 
-    const data = {{
-        video: "{video_name}",
-        total_frames: FRAMES.length,
-        labeled_count: frames.length,
-        frames: frames,
-    }};
+    const btn = document.querySelector('.btn-export');
+    btn.textContent = 'Exporting...';
+    btn.disabled = true;
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {{type: 'application/json'}});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'anchor_labels.json';
-    a.click();
+    try {{
+        const zip = new JSZip();
+        const videoBase = "{video_name}".replace(/\.[^.]+$/, '');
+
+        // Add images to category folders
+        for (const f of labeled) {{
+            const cat = labels[f.index];
+            const b64 = IMAGES[f.index];
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            zip.file(`${{cat}}/${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`, bytes);
+        }}
+
+        // Add metadata JSON
+        const meta = {{
+            video: "{video_name}",
+            total_frames: FRAMES.length,
+            labeled_count: labeled.length,
+            categories: [...new Set(labeled.map(f => labels[f.index]))].sort(),
+            frames: labeled.map(f => ({{
+                index: f.index,
+                label: labels[f.index],
+                catalog: f.catalog,
+                lr: f.lr,
+                xgb: f.xgb,
+            }})),
+        }};
+        zip.file('metadata.json', JSON.stringify(meta, null, 2));
+
+        const blob = await zip.generateAsync({{ type: 'blob' }});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `anchors_${{videoBase}}.zip`;
+        a.click();
+    }} catch (e) {{
+        alert('Export failed: ' + e.message);
+    }} finally {{
+        btn.textContent = 'Export ZIP';
+        btn.disabled = false;
+    }}
 }}
 
 function resetLabels() {{
