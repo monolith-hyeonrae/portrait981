@@ -130,6 +130,114 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         print(f"\nReport saved to {out}")
 
 
+def _load_anchor_folder(anchor_dir: Path) -> tuple[np.ndarray, np.ndarray, tuple[str, ...]]:
+    """Load anchor image folder → run frozen models → 45D signals + labels.
+
+    Folder structure: anchor_dir/{category}/*.jpg
+    Returns: (vectors, labels, field_names)
+    """
+    from .signals import SIGNAL_FIELDS_EXTENDED, normalize_signal
+
+    categories = sorted(
+        d.name for d in anchor_dir.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    )
+    if not categories:
+        raise SystemExit(f"No category folders in {anchor_dir}")
+
+    vectors_list = []
+    labels_list = []
+    fields = SIGNAL_FIELDS_EXTENDED
+
+    for cat in categories:
+        cat_dir = anchor_dir / cat
+        images = sorted(cat_dir.glob("*.jpg")) + sorted(cat_dir.glob("*.png"))
+        if not images:
+            continue
+
+        logger.info("  %s: %d images → extracting signals...", cat, len(images))
+
+        for img_path in images:
+            # Run frozen models on each image
+            try:
+                signals = _extract_signals_from_image(img_path)
+                vec = np.array([
+                    normalize_signal(float(signals.get(f, 0.0)), f)
+                    for f in fields
+                ], dtype=np.float64)
+                vectors_list.append(vec)
+                labels_list.append(cat)
+            except Exception as e:
+                logger.warning("    Skip %s: %s", img_path.name, e)
+
+    if not vectors_list:
+        raise SystemExit("No signals extracted from anchor images")
+
+    return np.array(vectors_list), np.array(labels_list), fields
+
+
+def _extract_signals_from_image(img_path: Path) -> dict[str, float]:
+    """Extract signal dict from a single image by running momentscan analyzers."""
+    try:
+        from momentscan.algorithm.batch.extract import extract_frame_record
+        from momentscan.algorithm.batch.catalog_scoring import SIGNAL_FIELDS as MS_FIELDS
+    except ImportError:
+        raise SystemExit("momentscan is required for --anchors (image → signal extraction)")
+
+    import cv2
+
+    img = cv2.imread(str(img_path))
+    if img is None:
+        raise ValueError(f"Cannot read image: {img_path}")
+
+    # Simple signal extraction: run a minimal momentscan pass
+    # For now, use a simpler approach: extract what we can from the image filename
+    # TODO: integrate with momentscan single-image analysis
+    raise NotImplementedError(
+        "Direct image → signal extraction not yet implemented. "
+        "Use 'visualbind train --data signals.parquet --labels labels.json' instead, "
+        "or run 'python scripts/day0_analysis.py' first to generate the parquet."
+    )
+
+
+def cmd_merge(args: argparse.Namespace) -> None:
+    """Merge anchor ZIP files into a folder structure."""
+    import zipfile
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    total_files = 0
+    for zip_path in args.zips:
+        zip_path = Path(zip_path)
+        if not zip_path.exists():
+            logger.warning("Not found: %s", zip_path)
+            continue
+
+        logger.info("Extracting: %s", zip_path.name)
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                parts = Path(info.filename).parts
+                if len(parts) == 2:
+                    category, filename = parts
+                    dest = output_dir / category / filename
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(zf.read(info.filename))
+                    total_files += 1
+
+    # Summary
+    categories = sorted(
+        d.name for d in output_dir.iterdir()
+        if d.is_dir() and not d.name.startswith(".")
+    )
+    print(f"Merged {total_files} files into {output_dir}")
+    for cat in categories:
+        count = len(list((output_dir / cat).glob("*.jpg")))
+        print(f"  {cat}: {count} images")
+
+
 def cmd_train(args: argparse.Namespace) -> None:
     """Train a binding strategy and save the model."""
     vectors, fields = _load_parquet(args.data)
@@ -295,6 +403,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", help="Trained model file (.json or .pkl)")
     p.add_argument("--output", help="Output report file (JSON or .html)")
 
+    # merge
+    p = sub.add_parser("merge", help="Merge anchor ZIP files into folder structure")
+    p.add_argument("zips", nargs="+", help="Anchor ZIP files from label_tool")
+    p.add_argument("--output", "-o", default="data/anchors", help="Output directory (default: data/anchors)")
+
     return parser
 
 
@@ -306,4 +419,10 @@ def main() -> None:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    {"analyze": cmd_analyze, "train": cmd_train, "eval": cmd_eval}[args.command](args)
+    cmds = {
+        "analyze": cmd_analyze,
+        "train": cmd_train,
+        "eval": cmd_eval,
+        "merge": cmd_merge,
+    }
+    cmds[args.command](args)
