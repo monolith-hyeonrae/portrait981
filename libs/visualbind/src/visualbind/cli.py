@@ -201,15 +201,30 @@ def _extract_signals_from_image(img_path: Path) -> dict[str, float]:
 
 
 def cmd_merge(args: argparse.Namespace) -> None:
-    """Merge anchor ZIP files into a folder structure."""
+    """Merge anchor ZIP files into dataset (images/ + labels.csv)."""
+    import csv
+    import io
     import zipfile
 
     output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    images_dir = output_dir / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    labels_path = output_dir / "labels.csv"
 
-    total_files = 0
-    for zip_path in args.zips:
-        zip_path = Path(zip_path)
+    # Load existing labels
+    existing_rows = []
+    existing_files = set()
+    if labels_path.exists():
+        with open(labels_path, newline="") as f:
+            for row in csv.DictReader(f):
+                existing_rows.append(row)
+                existing_files.add(row["filename"])
+
+    new_images = 0
+    new_rows = []
+
+    for zip_path_str in args.zips:
+        zip_path = Path(zip_path_str)
         if not zip_path.exists():
             logger.warning("Not found: %s", zip_path)
             continue
@@ -220,22 +235,34 @@ def cmd_merge(args: argparse.Namespace) -> None:
                 if info.is_dir():
                     continue
                 parts = Path(info.filename).parts
-                if len(parts) == 2:
-                    category, filename = parts
-                    dest = output_dir / category / filename
-                    dest.parent.mkdir(parents=True, exist_ok=True)
-                    dest.write_bytes(zf.read(info.filename))
-                    total_files += 1
+                if len(parts) == 2 and parts[0] == "images":
+                    filename = parts[1]
+                    if filename not in existing_files:
+                        (images_dir / filename).write_bytes(zf.read(info.filename))
+                        existing_files.add(filename)
+                        new_images += 1
 
-    # Summary
-    categories = sorted(
-        d.name for d in output_dir.iterdir()
-        if d.is_dir() and not d.name.startswith(".")
-    )
-    print(f"Merged {total_files} files into {output_dir}")
-    for cat in categories:
-        count = len(list((output_dir / cat).glob("*.jpg")))
-        print(f"  {cat}: {count} images")
+            if "labels.csv" in zf.namelist():
+                csv_text = zf.read("labels.csv").decode("utf-8")
+                for row in csv.DictReader(io.StringIO(csv_text)):
+                    if row["filename"] not in {r["filename"] for r in existing_rows}:
+                        new_rows.append(row)
+
+    # Save merged labels
+    all_rows = existing_rows + new_rows
+    fieldnames = ["filename", "member_id", "expression", "pose", "source"]
+    with open(labels_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_rows)
+
+    from collections import Counter
+    expr_c = Counter(r["expression"] for r in all_rows if r.get("expression"))
+    pose_c = Counter(r["pose"] for r in all_rows if r.get("pose"))
+    print(f"Merged: +{new_images} images, +{len(new_rows)} labels")
+    print(f"Total: {len(all_rows)} labels")
+    print(f"Expression: {dict(expr_c.most_common())}")
+    print(f"Pose: {dict(pose_c.most_common())}")
 
 
 def cmd_train(args: argparse.Namespace) -> None:

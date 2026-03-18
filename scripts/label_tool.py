@@ -320,38 +320,20 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\.[^.]+$/, '');
 
-        // Add images to expression category folders
+        // All images go to images/ folder
+        const csvRows = ['filename,member_id,expression,pose,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
             const pose = poses[f.index] || '';
+            const fname = `${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`;
             const b64 = IMAGES[f.index];
             const binary = atob(b64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-            // expression 폴더에 저장
-            zip.file(`${{expr}}/${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`, bytes);
-            // pose 폴더에도 저장 (있으면)
-            if (pose) {{
-                zip.file(`${{pose}}/${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`, bytes);
-            }}
+            zip.file(`images/${{fname}}`, bytes);
+            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},operational`);
         }}
-
-        // Add metadata JSON
-        const meta = {{
-            video: "{video_name}",
-            total_frames: FRAMES.length,
-            labeled_count: labeled.length,
-            expressions: [...new Set(labeled.map(f => labels[f.index]))].sort(),
-            frames: labeled.map(f => ({{
-                index: f.index,
-                expression: labels[f.index],
-                pose: poses[f.index] || null,
-                catalog: f.catalog,
-                lr: f.lr,
-                xgb: f.xgb,
-            }})),
-        }};
-        zip.file('metadata.json', JSON.stringify(meta, null, 2));
+        zip.file('labels.csv', csvRows.join('\n') + '\n');
 
         const blob = await zip.generateAsync({{ type: 'blob' }});
         const a = document.createElement('a');
