@@ -333,7 +333,7 @@ async function exportLabels() {{
             zip.file(`images/${{fname}}`, bytes);
             csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},operational`);
         }}
-        zip.file('labels.csv', csvRows.join('\n') + '\n');
+        zip.file('labels.csv', csvRows.join('\\n') + '\\n');
 
         const blob = await zip.generateAsync({{ type: 'blob' }});
         const a = document.createElement('a');
