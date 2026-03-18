@@ -406,11 +406,10 @@ def main():
     args = parser.parse_args()
 
     from momentscan.algorithm.batch.extract import extract_frame_record
-    from momentscan.algorithm.batch.catalog_scoring import SIGNAL_FIELDS, extract_signal_vector
 
     # 1. Run momentscan
     logger.info("Processing: %s (fps=%d)", args.video, args.fps)
-    frames_data = []
+    frames_data = []  # [(frame_bgr, record)]
 
     def on_frame(frame, results):
         record = extract_frame_record(frame, results)
@@ -419,8 +418,7 @@ def main():
             if frame_bgr is None and hasattr(frame, "data"):
                 frame_bgr = frame.data
             if frame_bgr is not None:
-                vec = extract_signal_vector(record, signal_fields=SIGNAL_FIELDS)
-                frames_data.append((frame_bgr.copy(), record, vec))
+                frames_data.append((frame_bgr.copy(), record))
         return True
 
     import momentscan as ms
@@ -431,75 +429,23 @@ def main():
         logger.error("No frames collected")
         return
 
-    # 2. Score with all 3 strategies
-    vectors = np.array([fd[2] for fd in frames_data])
-
-    from visualbind.profile import load_profiles
-    from visualbind.strategies.catalog import CatalogStrategy
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.linear_model import LogisticRegression
-
-    profiles = load_profiles(Path(args.catalog))
-    cat_strat = CatalogStrategy(profiles=profiles)
-    cat_names = [p.name for p in profiles]
-
-    catalog_results = []
-    for vec in vectors:
-        scores = cat_strat.predict(vec)
-        best = max(scores, key=scores.get)
-        catalog_results.append((best, scores[best]))
-
-    y_catalog = [r[0] for r in catalog_results]
-    confidences = [r[1] for r in catalog_results]
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y_catalog)
-
-    # XGBoost
-    try:
-        from xgboost import XGBClassifier
-        xgb = XGBClassifier(n_estimators=100, max_depth=4, verbosity=0,
-                            use_label_encoder=False, eval_metric="mlogloss")
-        xgb.fit(vectors, y_encoded)
-        xgb_preds = le.inverse_transform(xgb.predict(vectors))
-        logger.info("XGBoost trained")
-    except ImportError:
-        xgb_preds = y_catalog
-        logger.warning("XGBoost not available")
-
-    # LR
-    lr = LogisticRegression(max_iter=1000)
-    lr.fit(vectors, y_encoded)
-    lr_preds = le.inverse_transform(lr.predict(vectors))
-    logger.info("LogisticRegression trained")
-
-    # 3. Find disagreements
-    disagree_indices = [
-        i for i in range(len(vectors))
-        if y_catalog[i] != lr_preds[i] or y_catalog[i] != xgb_preds[i]
-    ]
-    logger.info("Disagreements: %d / %d (%.1f%%)",
-                len(disagree_indices), len(vectors),
-                100 * len(disagree_indices) / len(vectors))
-
-    # 4. Stratified sampling
-    selected = sample_frames(len(vectors), disagree_indices, confidences, args.max_frames)
-    logger.info("Sampled %d frames (from %d total)", len(selected), len(vectors))
-
-    # 5. Build frame info
-    disagree_set = set(disagree_indices)
+    # 2. Build frame info (no strategy scoring — just show frames for labeling)
     frames_info = []
-    for idx in selected:
+    for idx, (frame_bgr, record) in enumerate(frames_data):
+        if idx >= args.max_frames:
+            break
         frames_info.append({
             "index": idx,
-            "b64": frame_to_base64(frames_data[idx][0]),
-            "catalog": str(y_catalog[idx]),
-            "lr": str(lr_preds[idx]),
-            "xgb": str(xgb_preds[idx]),
-            "is_disagree": idx in disagree_set,
+            "b64": frame_to_base64(frame_bgr),
+            "catalog": "",
+            "lr": "",
+            "xgb": "",
+            "is_disagree": False,
         })
 
-    # 6. Generate HTML
+    # 3. Generate HTML
     video_name = Path(args.video).name
+    cat_names = ["cheese", "chill", "edge", "hype"]
     html = generate_html(frames_info, cat_names, video_name)
 
     output_path = Path(args.output)
