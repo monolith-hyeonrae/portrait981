@@ -414,9 +414,7 @@ def main():
     def on_frame(frame, results):
         record = extract_frame_record(frame, results)
         if record is not None:
-            frame_bgr = frame.image if hasattr(frame, "image") else None
-            if frame_bgr is None and hasattr(frame, "data"):
-                frame_bgr = frame.data
+            frame_bgr = getattr(frame, "data", None)
             if frame_bgr is not None:
                 frames_data.append((frame_bgr.copy(), record))
         return True
