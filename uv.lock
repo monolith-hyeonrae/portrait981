@@ -16,6 +16,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "annotator",
     "momentbank",
     "momentscan",
     "momentscan-face-baseline",
@@ -297,6 +298,33 @@ sdist = { url = "https://files.pythonhosted.org/packages/ee/67/531ea369ba64dcff5
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/b6/6307fbef88d9b5ee7421e68d78a9f162e0da4900bc5f5793f6d3d0e34fb8/annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53", size = 13643, upload-time = "2024-05-20T21:33:24.1Z" },
 ]
+
+[[package]]
+name = "annotator"
+version = "0.1.0"
+source = { editable = "apps/annotator" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "opencv-python" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+video = [
+    { name = "momentscan" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "momentscan", marker = "extra == 'video'", editable = "apps/momentscan" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "opencv-python", specifier = ">=4.8.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
+]
+provides-extras = ["video", "dev"]
 
 [[package]]
 name = "anyio"

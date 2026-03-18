@@ -29,6 +29,7 @@ members = [
     "apps/momentscan-plugins/face-baseline",
     "apps/momentscan-plugins/frame-scoring",
     "apps/momentscan-plugins/portrait-score",
+    "apps/annotator",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.

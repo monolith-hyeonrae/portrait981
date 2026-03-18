@@ -1,29 +1,29 @@
-"""Anchor Set labeling tool — interactive HTML interface for ground-truth annotation.
+"""Anchor Set labeling tool -- interactive HTML interface for ground-truth annotation.
 
-Extends visual_compare.py into a browser-based labeling tool where users assign
-correct categories to frames, with stratified sampling that prioritizes disagreement.
+2-stage labeling: expression (1=cheese, 2=chill, 3=edge, 4=hype, 5=pass) + pose (q=front, w=angle, e=side).
+JSZip export with images/ + labels.csv structure.
 
-Usage:
-    uv run python scripts/label_tool.py ~/Videos/reaction_test/test_0.mp4
-    uv run python scripts/label_tool.py ~/Videos/reaction_test/test_0.mp4 --fps 2 --output labels.html --max-frames 500
+Usage (CLI):
+    annotator label video.mp4 --fps 2 --output labels.html --max-frames 500
+
+Usage (API):
+    from annotator.label import generate_label_html
+    generate_label_html("video.mp4", fps=2, max_frames=500, output_path="labels.html")
 """
 
 from __future__ import annotations
 
-import argparse
 import base64
 import json
 import logging
 from pathlib import Path
 
 import cv2
-import numpy as np
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("label_tool")
+logger = logging.getLogger("annotator.label")
 
 
-def frame_to_base64(frame_bgr, max_width=640):
+def frame_to_base64(frame_bgr, max_width: int = 640) -> str:
     """OpenCV frame -> base64 JPEG."""
     h, w = frame_bgr.shape[:2]
     if w > max_width:
@@ -33,58 +33,24 @@ def frame_to_base64(frame_bgr, max_width=640):
     return base64.b64encode(buf).decode("ascii")
 
 
-def sample_frames(n_total, disagree_indices, catalog_confidences, max_frames):
-    """Stratified sampling: 50% disagreement, 25% high-conf, 25% low-conf."""
-    disagree_set = set(disagree_indices)
-    agree_indices = [i for i in range(n_total) if i not in disagree_set]
-
-    # Sort by confidence
-    agree_by_conf = sorted(agree_indices, key=lambda i: catalog_confidences[i])
-    mid = len(agree_by_conf) // 2
-    low_conf = agree_by_conf[:mid]
-    high_conf = agree_by_conf[mid:]
-
-    budget_disagree = max_frames // 2
-    budget_high = max_frames // 4
-    budget_low = max_frames - budget_disagree - budget_high
-
-    rng = np.random.default_rng(42)
-    selected = set()
-
-    def pick(pool, n):
-        pool = list(pool)
-        if len(pool) <= n:
-            return pool
-        return list(rng.choice(pool, size=n, replace=False))
-
-    selected.update(pick(disagree_indices, budget_disagree))
-    selected.update(pick(low_conf, budget_low))
-    selected.update(pick(high_conf, budget_high))
-    return sorted(selected)
-
-
-def generate_html(frames_info, categories, video_name):
+def _generate_html(frames_info: list[dict], categories: list[str], video_name: str) -> str:
     """Build self-contained interactive HTML labeling tool."""
-    # frames_info: list of dicts with keys: index, b64, catalog, lr, xgb, is_disagree
     frames_json = json.dumps([
         {k: v for k, v in f.items() if k != "b64"} for f in frames_info
     ])
 
     cat_colors = {
-        # expression
-        "cheese": "#4CAF50",   # 🧀 밝은 미소/웃음
-        "chill": "#2196F3",    # 🧊 쿨/여유
-        "edge": "#FF5722",     # 🗡️ 날카롭고 강렬
-        "hype": "#9C27B0",     # 🔥 흥분/환호
-        # pose
-        "front": "#00BCD4",    # 정면
-        "angle": "#FF9800",    # 3/4
-        "side": "#795548",     # 측면
+        "cheese": "#4CAF50",
+        "chill": "#2196F3",
+        "edge": "#FF5722",
+        "hype": "#9C27B0",
+        "front": "#00BCD4",
+        "angle": "#FF9800",
+        "side": "#795548",
     }
     cat_list_json = json.dumps(categories)
     cat_colors_json = json.dumps(cat_colors)
 
-    # Build image data separately (large)
     img_entries = ",".join(f'"{f["index"]}":"{f["b64"]}"' for f in frames_info)
 
     return f"""<!DOCTYPE html>
@@ -169,7 +135,7 @@ const CATEGORIES = {cat_list_json};
 const CAT_COLORS = {cat_colors_json};
 const STORAGE_KEY = "label_tool_{video_name.replace('.', '_')}";
 
-let labels = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{}}');
+let labels = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{}}'  );
 let currentFilter = 'all';
 let filteredList = [];
 let currentPos = 0;
@@ -183,7 +149,6 @@ function buildFilteredList() {{
         if (currentFilter === 'disagree') return f.is_disagree;
         return true;
     }});
-    // unlabeled + disagree first
     filteredList.sort((a, b) => {{
         const la = labels[a.index] !== undefined ? 1 : 0;
         const lb = labels[b.index] !== undefined ? 1 : 0;
@@ -226,7 +191,6 @@ function renderFocus() {{
         ? `<div class="focus-label">${{exprText}}${{exprText && poseText ? ' + ' : ''}}${{poseText}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
 
-    // Expression buttons
     let btnsHtml = '<div class="buttons">';
     const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
     for (const cat of EXPRESSIONS) {{
@@ -238,7 +202,6 @@ function renderFocus() {{
     btnsHtml += `<button class="cat-btn${{label === 'skip' ? ' selected' : ''}}" style="${{label === 'skip' ? 'background:#888;color:#fff;' : ''}}" onclick="setLabel(${{f.index}},'skip')">skip</button>`;
     btnsHtml += '</div>';
 
-    // Pose buttons (only if expression is set and not pass/skip)
     if (label && label !== 'pass' && label !== 'skip') {{
         btnsHtml += '<div class="buttons" style="margin-top:6px">';
         const POSES = ['front', 'angle', 'side'];
@@ -277,7 +240,6 @@ function go(delta) {{
     renderSidebar();
 }}
 
-// labels stores expression, poses stores pose (separate axes)
 let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
 
 function setLabel(index, label) {{
@@ -318,9 +280,8 @@ async function exportLabels() {{
 
     try {{
         const zip = new JSZip();
-        const videoBase = "{video_name}".replace(/\.[^.]+$/, '');
+        const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
 
-        // All images go to images/ folder
         const csvRows = ['filename,member_id,expression,pose,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
@@ -360,7 +321,6 @@ function resetLabels() {{
     renderSidebar();
 }}
 
-// Expression + Pose keyboard shortcuts
 const EXPR_KEYS = {{'1':'cheese', '2':'chill', '3':'edge', '4':'hype', '5':'pass'}};
 const POSE_KEYS = {{'q':'front', 'w':'angle', 'e':'side'}};
 
@@ -376,7 +336,6 @@ document.addEventListener('keydown', e => {{
     }}
 }});
 
-// Filter buttons
 document.querySelectorAll('.filter-btn').forEach(btn => {{
     btn.addEventListener('click', () => {{
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -396,20 +355,32 @@ renderSidebar();
 </body></html>"""
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Anchor Set Label Tool")
-    parser.add_argument("video", help="mp4 video path")
-    parser.add_argument("--fps", type=int, default=2)
-    parser.add_argument("--catalog", default="data/catalogs/portrait-v1")
-    parser.add_argument("--output", "-o", default="labels.html")
-    parser.add_argument("--max-frames", type=int, default=500)
-    args = parser.parse_args()
+def generate_label_html(
+    video_path: str | Path,
+    fps: int = 2,
+    max_frames: int = 500,
+    output_path: str | Path = "labels.html",
+) -> Path:
+    """Generate interactive HTML labeling tool from a video file.
 
-    from momentscan.algorithm.batch.extract import extract_frame_record
+    Requires the ``video`` extra (momentscan) for frame extraction.
+    Returns the path to the generated HTML file.
+    """
+    video_path = Path(video_path)
+    output_path = Path(output_path)
 
-    # 1. Run momentscan
-    logger.info("Processing: %s (fps=%d)", args.video, args.fps)
-    frames_data = []  # [(frame_bgr, record)]
+    try:
+        from momentscan.algorithm.batch.extract import extract_frame_record
+    except ImportError:
+        raise ImportError(
+            "momentscan is required for video frame extraction. "
+            "Install with: pip install annotator[video]"
+        )
+
+    import momentscan as ms
+
+    logger.info("Processing: %s (fps=%d)", video_path, fps)
+    frames_data: list[tuple] = []
 
     def on_frame(frame, results):
         record = extract_frame_record(frame, results)
@@ -419,18 +390,16 @@ def main():
                 frames_data.append((frame_bgr.copy(), record))
         return True
 
-    import momentscan as ms
-    ms.run(args.video, fps=args.fps, backend="simple", on_frame=on_frame)
+    ms.run(str(video_path), fps=fps, backend="simple", on_frame=on_frame)
     logger.info("Collected %d frames", len(frames_data))
 
     if not frames_data:
         logger.error("No frames collected")
-        return
+        raise RuntimeError("No frames collected from video")
 
-    # 2. Build frame info (no strategy scoring — just show frames for labeling)
     frames_info = []
-    for idx, (frame_bgr, record) in enumerate(frames_data):
-        if idx >= args.max_frames:
+    for idx, (frame_bgr, _record) in enumerate(frames_data):
+        if idx >= max_frames:
             break
         frames_info.append({
             "index": idx,
@@ -441,16 +410,11 @@ def main():
             "is_disagree": False,
         })
 
-    # 3. Generate HTML
-    video_name = Path(args.video).name
+    video_name = video_path.name
     cat_names = ["cheese", "chill", "edge", "hype"]
-    html = generate_html(frames_info, cat_names, video_name)
+    html = _generate_html(frames_info, cat_names, video_name)
 
-    output_path = Path(args.output)
     output_path.write_text(html, encoding="utf-8")
     logger.info("Label tool saved: %s (%.1f MB)", output_path, output_path.stat().st_size / 1e6)
     logger.info("Open in browser to start labeling. Labels persist in localStorage.")
-
-
-if __name__ == "__main__":
-    main()
+    return output_path

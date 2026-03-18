@@ -1,40 +1,45 @@
-"""Anchor ZIP 파일들을 data/datasets/portrait-v1/에 병합.
+"""Merge anchor ZIP files into a dataset directory.
 
-label_tool에서 Export한 ZIP(images/ + labels.csv)을 기존 데이터셋에 병합.
+Combines label_tool export ZIPs (images/ + labels.csv) into a unified dataset,
+deduplicating by filename.
 
-Usage:
-    python scripts/merge_anchors.py anchors_test2.zip anchors_test3.zip
-    python scripts/merge_anchors.py ~/Downloads/anchors_*.zip -o data/datasets/portrait-v1
+Usage (CLI):
+    annotator merge anchors_test2.zip anchors_test3.zip -o data/datasets/portrait-v1
+
+Usage (API):
+    from annotator.merge import merge_zips
+    merge_zips(["anchors_test2.zip", "anchors_test3.zip"], output_dir="data/datasets/portrait-v1")
 """
 
 from __future__ import annotations
 
-import argparse
 import csv
 import io
 import logging
 import zipfile
+from collections import Counter
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("merge_anchors")
+logger = logging.getLogger("annotator.merge")
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Merge anchor ZIPs into dataset")
-    parser.add_argument("zips", nargs="+", help="anchor ZIP files from label_tool")
-    parser.add_argument("--output", "-o", default="data/datasets/portrait-v1",
-                        help="dataset directory (default: data/datasets/portrait-v1)")
-    args = parser.parse_args()
+def merge_zips(
+    zip_paths: list[str | Path],
+    output_dir: str | Path = "data/datasets/portrait-v1",
+) -> Path:
+    """Merge anchor ZIP files into a dataset directory.
 
-    output_dir = Path(args.output)
+    Each ZIP should contain ``images/*.jpg`` and ``labels.csv``.
+    Deduplicates by filename. Returns the output directory path.
+    """
+    output_dir = Path(output_dir)
     images_dir = output_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
     # Load existing labels.csv
     labels_path = output_dir / "labels.csv"
-    existing_rows = []
-    existing_files = set()
+    existing_rows: list[dict] = []
+    existing_files: set[str] = set()
     if labels_path.exists():
         with open(labels_path, newline="") as f:
             reader = csv.DictReader(f)
@@ -45,15 +50,15 @@ def main():
 
     # Merge ZIPs
     new_images = 0
-    new_rows = []
-    for zip_path in args.zips:
-        zip_path = Path(zip_path)
-        if not zip_path.exists():
-            logger.warning("Not found: %s", zip_path)
+    new_rows: list[dict] = []
+    for zp in zip_paths:
+        zp = Path(zp)
+        if not zp.exists():
+            logger.warning("Not found: %s", zp)
             continue
 
-        logger.info("Extracting: %s", zip_path.name)
-        with zipfile.ZipFile(zip_path, "r") as zf:
+        logger.info("Extracting: %s", zp.name)
+        with zipfile.ZipFile(zp, "r") as zf:
             # Extract images
             for info in zf.infolist():
                 if info.is_dir():
@@ -86,7 +91,6 @@ def main():
         writer.writerows(all_rows)
 
     # Summary
-    from collections import Counter
     expr_c = Counter(r["expression"] for r in all_rows if r.get("expression"))
     pose_c = Counter(r["pose"] for r in all_rows if r.get("pose"))
     logger.info("Merged: +%d images, +%d labels", new_images, len(new_rows))
@@ -94,6 +98,4 @@ def main():
     logger.info("Expression: %s", dict(expr_c.most_common()))
     logger.info("Pose: %s", dict(pose_c.most_common()))
 
-
-if __name__ == "__main__":
-    main()
+    return output_dir
