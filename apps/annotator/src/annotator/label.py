@@ -104,6 +104,11 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .thumb.labeled {{ border-left-color: #4CAF50; }}
 .thumb img {{ width: 100%; border-radius: 3px; display: block; }}
 .shortcut-hint {{ font-size: 11px; color: #555; text-align: center; margin-top: 8px; }}
+.bucket-bar {{ display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 20px;
+    background: #0a0a1a; border-bottom: 1px solid #333; flex-shrink: 0; }}
+.bucket-item {{ display: flex; align-items: center; gap: 4px; font-size: 12px; }}
+.bucket-count {{ font-weight: bold; font-size: 14px; }}
+.bucket-bar-fill {{ height: 6px; border-radius: 3px; min-width: 2px; transition: width 0.3s; }}
 </style>
 </head><body>
 
@@ -123,6 +128,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
     <button class="btn-reset" onclick="resetLabels()">Reset All</button>
 </div>
 
+<div class="bucket-bar" id="bucketBar"></div>
 <div class="main">
     <div class="focus-panel" id="focus"></div>
     <div class="sidebar" id="sidebar"></div>
@@ -264,7 +270,35 @@ function setPose(index, pose) {{
 }}
 
 function updateCount() {{
-    document.getElementById('count').textContent = Object.keys(labels).length;
+    const total = Object.keys(labels).length;
+    document.getElementById('count').textContent = total;
+
+    // Bucket bar
+    const exprCounts = {{}};
+    const poseCounts = {{}};
+    for (const [idx, lbl] of Object.entries(labels)) {{
+        if (lbl && lbl !== 'skip') exprCounts[lbl] = (exprCounts[lbl] || 0) + 1;
+        const p = poses[idx];
+        if (p) poseCounts[p] = (poseCounts[p] || 0) + 1;
+    }}
+
+    const bar = document.getElementById('bucketBar');
+    const allBuckets = [
+        ...['cheese','chill','edge','hype','pass'].map(b => ({{ name: b, count: exprCounts[b] || 0, color: getColor(b) }})),
+        {{ name: '|', count: -1 }},
+        ...['front','angle','side'].map(b => ({{ name: b, count: poseCounts[b] || 0, color: getColor(b) }})),
+    ];
+    const maxCount = Math.max(1, ...allBuckets.filter(b => b.count >= 0).map(b => b.count));
+
+    bar.innerHTML = allBuckets.map(b => {{
+        if (b.count < 0) return '<span style="color:#333">|</span>';
+        const w = Math.max(4, (b.count / maxCount) * 80);
+        return `<div class="bucket-item">
+            <span style="color:${{b.color}}">${{b.name}}</span>
+            <span class="bucket-count" style="color:${{b.color}}">${{b.count}}</span>
+            <div class="bucket-bar-fill" style="width:${{w}}px;background:${{b.color}}"></div>
+        </div>`;
+    }}).join('');
 }}
 
 async function exportLabels() {{
