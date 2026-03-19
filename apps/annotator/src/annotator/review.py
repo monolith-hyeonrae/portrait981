@@ -139,6 +139,7 @@ h2:hover {{ opacity: 0.8; }}
     <b>Videos:</b> {len(videos)}
 </div>
 
+<div id="videoMeta" style="margin:10px 0"></div>
 <div id="content"></div>
 
 <script>
@@ -184,6 +185,7 @@ function updateSaveBtn() {{
 }}
 
 function downloadCSV() {{
+    // labels.csv
     const header = 'filename,video_id,expression,pose,chemistry,source';
     const lines = [header];
     for (const r of ROWS) {{
@@ -194,6 +196,72 @@ function downloadCSV() {{
     a.href = URL.createObjectURL(blob);
     a.download = 'labels.csv';
     a.click();
+
+    // videos.csv
+    const vids = Object.values(VIDEOS);
+    if (vids.length > 0) {{
+        const vHeader = 'video_id,scene,main_gender,main_ethnicity,passenger_gender,passenger_ethnicity,member_id,notes';
+        const vLines = [vHeader];
+        for (const v of vids) {{
+            vLines.push([v.video_id||'', v.scene||'', v.main_gender||'', v.main_ethnicity||'',
+                v.passenger_gender||'', v.passenger_ethnicity||'', v.member_id||'', v.notes||''].join(','));
+        }}
+        const vBlob = new Blob([vLines.join('\\n') + '\\n'], {{ type: 'text/csv' }});
+        const va = document.createElement('a');
+        va.href = URL.createObjectURL(vBlob);
+        va.download = 'videos.csv';
+        va.click();
+    }}
+}}
+
+function editVideoField(videoId, field, value) {{
+    if (VIDEOS[videoId]) {{
+        VIDEOS[videoId][field] = value;
+        if (!changes['__videos__']) changes['__videos__'] = {{}};
+        changes['__videos__'][videoId] = true;
+        updateSaveBtn();
+        renderVideoMeta();
+    }}
+}}
+
+function renderVideoMeta() {{
+    const el = document.getElementById('videoMeta');
+    const vids = Object.values(VIDEOS);
+    if (vids.length === 0) {{ el.innerHTML = ''; return; }}
+
+    const fields = ['scene','main_gender','main_ethnicity','passenger_gender','passenger_ethnicity','member_id'];
+    const opts = {{
+        scene: ['solo','duo'], main_gender: ['male','female'], main_ethnicity: ['asian','western','other'],
+        passenger_gender: ['male','female'], passenger_ethnicity: ['asian','western','other'],
+    }};
+
+    let html = '<div class="summary"><b>Videos</b><table style="margin-top:8px;border-collapse:collapse;font-size:12px;width:100%">';
+    html += '<tr><th style="padding:4px 8px;text-align:left;color:#888">video_id</th>';
+    for (const f of fields) html += `<th style="padding:4px 8px;text-align:left;color:#888">${{f}}</th>`;
+    html += '<th style="padding:4px 8px;color:#888">notes</th></tr>';
+
+    for (const v of vids) {{
+        const modified = changes['__videos__'] && changes['__videos__'][v.video_id] ? 'color:#FF9800;' : '';
+        html += `<tr style="${{modified}}"><td style="padding:4px 8px;color:#e94560">${{v.video_id}}</td>`;
+        for (const f of fields) {{
+            if (opts[f]) {{
+                html += '<td style="padding:4px 8px">';
+                for (const o of opts[f]) {{
+                    const sel = v[f] === o;
+                    const bg = sel ? `background:${{getColor(o) || '#444'}};color:#fff;` : '';
+                    html += `<button class="edit-btn${{sel?' active':''}}" style="${{bg}}font-size:10px" onclick="editVideoField('${{v.video_id}}','${{f}}','${{o}}')">${{o}}</button> `;
+                }}
+                html += '</td>';
+            }} else {{
+                // member_id: text input
+                html += `<td style="padding:4px 8px"><input type="text" value="${{v[f]||''}}" style="background:#222;border:1px solid #444;color:#eee;padding:2px 6px;border-radius:3px;width:80px;font-size:11px" onchange="editVideoField('${{v.video_id}}','${{f}}',this.value)"></td>`;
+            }}
+        }}
+        html += `<td style="padding:4px 8px"><input type="text" value="${{v.notes||''}}" style="background:#222;border:1px solid #444;color:#eee;padding:2px 6px;border-radius:3px;width:150px;font-size:11px" onchange="editVideoField('${{v.video_id}}','notes',this.value)"></td>`;
+        html += '</tr>';
+    }}
+    html += '</table></div>';
+    el.innerHTML = html;
 }}
 
 function setView(view) {{
@@ -308,6 +376,7 @@ function renderAll() {{
 }}
 
 renderAll();
+renderVideoMeta();
 </script>
 </body></html>"""
 
