@@ -1,4 +1,1 @@
 video_id,scene,main_gender,main_ethnicity,passenger_gender,passenger_ethnicity,member_id,notes
-test_2,solo,female,asian,,,member_A,여성 탑승자 밝은 표정 많음
-test_3,solo,male,asian,,,member_B,남성 탑승자 심각한 표정 마지막에 미소
-dual_1,duo,male,asian,female,asian,,2인 탑승
