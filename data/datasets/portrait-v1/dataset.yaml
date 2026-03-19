@@ -23,10 +23,22 @@ pose:
 # 기각 (labels.csv에 포함되지 않음)
 reject: "pass"
 
+# 장면 (scene) — 탑승 구성
+scene:
+  solo: "1인 탑승"
+  duo:  "2인 탑승"
+
+# 케미스트리 (chemistry) — scene=duo일 때만
+chemistry:
+  sync: "함께 웃기, 동시 반응"
+  interact: "서로 쳐다보기, 하이파이브"
+
 # labels.csv 컬럼
 columns:
   filename: "이미지 파일명"
   member_id: "인물 ID (비디오명 또는 고유 ID, 빈 값 허용)"
   expression: "표정 라벨 (cheese/chill/edge/hype, 빈 값 = 미지정)"
   pose: "포즈 라벨 (front/angle/side, 빈 값 = 미지정)"
+  scene: "장면 라벨 (solo/duo, 빈 값 = 미지정)"
+  chemistry: "케미 라벨 (sync/interact, scene=duo일 때만)"
   source: "reference = 참조 이미지, operational = 운용 프레임"

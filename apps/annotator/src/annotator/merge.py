@@ -84,7 +84,7 @@ def merge_zips(
 
     # Append new rows and save
     all_rows = existing_rows + new_rows
-    fieldnames = ["filename", "member_id", "expression", "pose", "source"]
+    fieldnames = ["filename", "member_id", "expression", "pose", "scene", "chemistry", "source"]
     with open(labels_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

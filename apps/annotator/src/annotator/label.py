@@ -40,13 +40,10 @@ def _generate_html(frames_info: list[dict], categories: list[str], video_name: s
     ])
 
     cat_colors = {
-        "cheese": "#4CAF50",
-        "chill": "#2196F3",
-        "edge": "#FF5722",
-        "hype": "#9C27B0",
-        "front": "#00BCD4",
-        "angle": "#FF9800",
-        "side": "#795548",
+        "cheese": "#4CAF50", "chill": "#2196F3", "edge": "#FF5722", "hype": "#9C27B0",
+        "front": "#00BCD4", "angle": "#FF9800", "side": "#795548",
+        "solo": "#607D8B", "duo": "#E91E63",
+        "sync": "#FFD700", "interact": "#00E676",
     }
     cat_list_json = json.dumps(categories)
     cat_colors_json = json.dumps(cat_colors)
@@ -198,12 +195,14 @@ function renderFocus() {{
     const f = filteredList[currentPos];
     const label = labels[f.index];
     const pose = poses[f.index];
-    const exprText = label ? label : '';
-    const poseText = pose ? pose : '';
-    const labelHtml = (label || pose)
-        ? `<div class="focus-label">${{exprText}}${{exprText && poseText ? ' + ' : ''}}${{poseText}}</div>`
+    const scene = scenes[f.index];
+    const chem = chemistries[f.index];
+    const parts = [label, pose, scene, chem].filter(Boolean);
+    const labelHtml = parts.length > 0
+        ? `<div class="focus-label">${{parts.join(' + ')}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
 
+    // Expression buttons
     let btnsHtml = '<div class="buttons">';
     const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
     for (const cat of EXPRESSIONS) {{
@@ -215,15 +214,34 @@ function renderFocus() {{
     btnsHtml += `<button class="cat-btn${{label === 'skip' ? ' selected' : ''}}" style="${{label === 'skip' ? 'background:#888;color:#fff;' : ''}}" onclick="setLabel(${{f.index}},'skip')">skip</button>`;
     btnsHtml += '</div>';
 
+    // Pose + Scene + Chemistry (only if expression is set and not pass/skip)
     if (label && label !== 'pass' && label !== 'skip') {{
+        // Pose
         btnsHtml += '<div class="buttons" style="margin-top:6px">';
-        const POSES = ['front', 'angle', 'side'];
-        for (const p of POSES) {{
+        for (const p of ['front', 'angle', 'side']) {{
             const sel = pose === p;
             const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
             btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}}</button>`;
         }}
+        btnsHtml += '&nbsp;&nbsp;';
+        // Scene
+        for (const s of ['solo', 'duo']) {{
+            const sel = scene === s;
+            const bg = sel ? `background:${{getColor(s)}};color:#fff;` : '';
+            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}}</button>`;
+        }}
         btnsHtml += '</div>';
+
+        // Chemistry (only if scene=duo)
+        if (scene === 'duo') {{
+            btnsHtml += '<div class="buttons" style="margin-top:6px">';
+            for (const c of ['sync', 'interact']) {{
+                const sel = chem === c;
+                const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
+                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}}</button>`;
+            }}
+            btnsHtml += '</div>';
+        }}
     }}
 
     panel.innerHTML = `
@@ -242,7 +260,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next &rarr;</button>
         </div>
-        <div class="shortcut-hint">Keyboard: &larr;&rarr; navigate &nbsp;|&nbsp; 1=cheese 2=chill 3=edge 4=hype 5=pass s=skip &nbsp;|&nbsp; q=front w=angle e=side</div>
+        <div class="shortcut-hint">1=cheese 2=chill 3=edge 4=hype 5=pass s=skip | q=front w=angle e=side | z=solo x=duo | v=sync b=interact</div>
     `;
     updateCount();
 }}
@@ -254,6 +272,8 @@ function go(delta) {{
 }}
 
 let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
+let scenes = JSON.parse(localStorage.getItem(STORAGE_KEY + '_scene') || '{{}}');
+let chemistries = JSON.parse(localStorage.getItem(STORAGE_KEY + '_chem') || '{{}}');
 
 function setLabel(index, label) {{
     if (labels[index] === label) {{
@@ -276,56 +296,121 @@ function setPose(index, pose) {{
     renderFocus();
 }}
 
+function setScene(index, scene) {{
+    if (scenes[index] === scene) {{
+        delete scenes[index];
+    }} else {{
+        scenes[index] = scene;
+    }}
+    localStorage.setItem(STORAGE_KEY + '_scene', JSON.stringify(scenes));
+    renderFocus();
+}}
+
+function setChemistry(index, chem) {{
+    if (chemistries[index] === chem) {{
+        delete chemistries[index];
+    }} else {{
+        chemistries[index] = chem;
+    }}
+    localStorage.setItem(STORAGE_KEY + '_chem', JSON.stringify(chemistries));
+    renderFocus();
+}}
+
+function focusBucket(axis, value) {{
+    // Find first unlabeled frame for this axis
+    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : axis === 'scene' ? scenes : chemistries;
+    const target = filteredList.find((f, pos) => {{
+        if (value === '(none)' || value === '') {{
+            return axisData[f.index] === undefined;
+        }}
+        return axisData[f.index] === value;
+    }});
+    if (target) {{
+        const pos = filteredList.indexOf(target);
+        if (pos >= 0) {{ currentPos = pos; renderFocus(); renderSidebar(); }}
+    }}
+}}
+
 function updateCount() {{
     const total = Object.keys(labels).length;
     document.getElementById('count').textContent = total;
 
-    // 2D matrix: expression × pose
+    // Count all axes
     const EXPRS = ['cheese','chill','edge','hype','pass'];
     const POSES = ['front','angle','side',''];
-    const matrix = {{}};
-    const exprTotals = {{}};
-    const poseTotals = {{}};
-    EXPRS.forEach(e => {{ exprTotals[e] = 0; POSES.forEach(p => matrix[e+'|'+p] = 0); }});
-    POSES.forEach(p => poseTotals[p] = 0);
+    const SCENES = ['solo','duo',''];
+    const CHEMS = ['sync','interact',''];
+
+    const exprCounts = {{}};
+    const poseCounts = {{}};
+    const sceneCounts = {{}};
+    const chemCounts = {{}};
+    EXPRS.forEach(e => exprCounts[e] = 0);
+    POSES.forEach(p => poseCounts[p] = 0);
+    SCENES.forEach(s => sceneCounts[s] = 0);
+    CHEMS.forEach(c => chemCounts[c] = 0);
+
+    const exprPose = {{}};
+    EXPRS.forEach(e => POSES.forEach(p => exprPose[e+'|'+p] = 0));
 
     for (const [idx, lbl] of Object.entries(labels)) {{
         if (!lbl || lbl === 'skip') continue;
         const p = poses[idx] || '';
+        const s = scenes[idx] || '';
+        const c = chemistries[idx] || '';
+        if (exprCounts[lbl] !== undefined) exprCounts[lbl]++;
+        poseCounts[p] = (poseCounts[p] || 0) + 1;
+        sceneCounts[s] = (sceneCounts[s] || 0) + 1;
+        chemCounts[c] = (chemCounts[c] || 0) + 1;
         const key = lbl + '|' + p;
-        if (matrix[key] !== undefined) matrix[key]++;
-        if (exprTotals[lbl] !== undefined) exprTotals[lbl]++;
-        poseTotals[p] = (poseTotals[p] || 0) + 1;
+        if (exprPose[key] !== undefined) exprPose[key]++;
     }}
 
+    const unlabeled = FRAMES.length - Object.keys(labels).length;
     const bar = document.getElementById('bucketBar');
+
+    // Expression × Pose matrix
     let html = '<table class="bucket-matrix"><tr><th></th>';
     ['front','angle','side','(none)'].forEach((p, i) => {{
-        const pk = i < 3 ? POSES[i] : '';
-        const c = i < 3 ? getColor(POSES[i]) : '#666';
-        html += `<th style="color:${{c}}">${{p}}</th>`;
+        const pk = POSES[i];
+        const c = pk ? getColor(pk) : '#666';
+        html += `<th style="color:${{c}};cursor:pointer" onclick="focusBucket('pose','${{pk}}')">${{p}}</th>`;
     }});
     html += '<th class="row-total">total</th></tr>';
 
     EXPRS.forEach(e => {{
         const ec = getColor(e);
-        html += `<tr><th style="color:${{ec}}">${{e}}</th>`;
+        html += `<tr><th style="color:${{ec}};cursor:pointer" onclick="focusBucket('expression','${{e}}')">${{e}}</th>`;
         POSES.forEach(p => {{
-            const v = matrix[e+'|'+p];
+            const v = exprPose[e+'|'+p];
             const style = v > 0 ? `color:${{ec}};font-size:13px` : 'color:#333';
             html += `<td style="${{style}}">${{v}}</td>`;
         }});
-        const t = exprTotals[e];
+        const t = exprCounts[e];
         html += `<td class="row-total" style="${{t > 0 ? 'color:'+ec : 'color:#333'}}">${{t}}</td></tr>`;
     }});
 
+    // Totals row
+    const grand = Object.values(exprCounts).reduce((a,b) => a+b, 0);
     html += '<tr><th class="col-total">total</th>';
-    POSES.forEach(p => {{
-        const t = poseTotals[p] || 0;
-        html += `<td class="col-total">${{t}}</td>`;
-    }});
-    const grand = Object.values(exprTotals).reduce((a,b) => a+b, 0);
-    html += `<td class="col-total" style="color:#4CAF50;font-weight:bold">${{grand}}</td></tr></table>`;
+    POSES.forEach(p => html += `<td class="col-total">${{poseCounts[p] || 0}}</td>`);
+    html += `<td class="col-total" style="color:#4CAF50;font-weight:bold">${{grand}}</td></tr>`;
+
+    // Unlabeled row (clickable)
+    html += `<tr><th style="color:#888;cursor:pointer" onclick="focusBucket('expression','')">(unlabeled)</th>`;
+    html += `<td colspan="4" style="color:#e94560;cursor:pointer;text-align:left;padding-left:12px" onclick="focusBucket('expression','')">${{unlabeled}} frames</td></tr>`;
+
+    html += '</table>';
+
+    // Scene + Chemistry summary (inline, right side)
+    html += '&nbsp;&nbsp;<span style="font-size:11px;color:#888">';
+    html += `scene: <span style="color:${{getColor('solo')}};cursor:pointer" onclick="focusBucket('scene','solo')">solo ${{sceneCounts['solo'] || 0}}</span>`;
+    html += ` <span style="color:${{getColor('duo')}};cursor:pointer" onclick="focusBucket('scene','duo')">duo ${{sceneCounts['duo'] || 0}}</span>`;
+    html += ` <span style="color:#555;cursor:pointer" onclick="focusBucket('scene','')">(none) ${{sceneCounts[''] || 0}}</span>`;
+    html += ` &nbsp;chem: <span style="color:${{getColor('sync')}};cursor:pointer" onclick="focusBucket('chemistry','sync')">sync ${{chemCounts['sync'] || 0}}</span>`;
+    html += ` <span style="color:${{getColor('interact')}};cursor:pointer" onclick="focusBucket('chemistry','interact')">interact ${{chemCounts['interact'] || 0}}</span>`;
+    html += '</span>';
+
     bar.innerHTML = html;
 }}
 
@@ -344,17 +429,19 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
 
-        const csvRows = ['filename,member_id,expression,pose,source'];
+        const csvRows = ['filename,member_id,expression,pose,scene,chemistry,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
             const pose = poses[f.index] || '';
+            const scene = scenes[f.index] || '';
+            const chem = chemistries[f.index] || '';
             const fname = `${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`;
             const b64 = IMAGES[f.index];
             const binary = atob(b64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             zip.file(`images/${{fname}}`, bytes);
-            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},operational`);
+            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{scene}},${{chem}},operational`);
         }}
         zip.file('labels.csv', csvRows.join('\\n') + '\\n');
 
@@ -375,8 +462,12 @@ function resetLabels() {{
     if (!confirm('Reset all labels?')) return;
     labels = {{}};
     poses = {{}};
+    scenes = {{}};
+    chemistries = {{}};
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY + '_pose');
+    localStorage.removeItem(STORAGE_KEY + '_scene');
+    localStorage.removeItem(STORAGE_KEY + '_chem');
     buildFilteredList();
     currentPos = 0;
     renderFocus();
@@ -385,6 +476,8 @@ function resetLabels() {{
 
 const EXPR_KEYS = {{'1':'cheese', '2':'chill', '3':'edge', '4':'hype', '5':'pass'}};
 const POSE_KEYS = {{'q':'front', 'w':'angle', 'e':'side'}};
+const SCENE_KEYS = {{'z':'solo', 'x':'duo'}};
+const CHEM_KEYS = {{'v':'sync', 'b':'interact'}};
 
 document.addEventListener('keydown', e => {{
     if (e.key === 'ArrowLeft') go(-1);
@@ -395,6 +488,12 @@ document.addEventListener('keydown', e => {{
     }}
     else if (POSE_KEYS[e.key]) {{
         if (filteredList[currentPos]) setPose(filteredList[currentPos].index, POSE_KEYS[e.key]);
+    }}
+    else if (SCENE_KEYS[e.key]) {{
+        if (filteredList[currentPos]) setScene(filteredList[currentPos].index, SCENE_KEYS[e.key]);
+    }}
+    else if (CHEM_KEYS[e.key]) {{
+        if (filteredList[currentPos]) setChemistry(filteredList[currentPos].index, CHEM_KEYS[e.key]);
     }}
 }});
 
