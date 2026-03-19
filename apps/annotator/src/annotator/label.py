@@ -206,6 +206,22 @@ function renderFocus() {{
 
     const K = '<span style="font-size:10px;opacity:0.5;margin-left:4px">';
     const FOCUS = 'border:3px solid #e94560;';
+    const DESC = {{
+        '__shoot__': '이 프레임을 촬영합니다',
+        'cut': '이 장면은 찍으면 안 됩니다',
+        'solo': '1인 탑승',
+        'duo': '2인 탑승',
+        'sync': '함께 웃기, 동시 반응 — 둘의 타이밍이 맞는 순간',
+        'interact': '서로 쳐다보기, 하이파이브 — 둘이 교감하는 순간',
+        'cheese': '얼굴이 주인공 — 프로필 사진, 인물 초상화용 이쁜 미소',
+        'chill': '쿨하고 여유로운 — 편안하고 힘 빠진 자연스러운 표정',
+        'edge': '날카롭고 강렬한 — 인상 찡그리는데 간지나는 제임스딘',
+        'hype': '순간이 주인공 — 역동적 액션, 에너지 폭발 카타르시스',
+        'front': '정면 — 카메라를 바라보는 앵글',
+        'angle': '3/4 앵글 — 약간 돌린 자연스러운 각도',
+        'side': '측면 — 프로필 샷',
+    }};
+    const descHtml = (val) => val && DESC[val] ? `<div style="font-size:11px;color:#888;margin-top:2px;text-align:center">${{DESC[val]}}</div>` : '';
     let btnsHtml = '';
 
     // Determine current step: shoot → scene → chemistry(duo) → expression → pose
@@ -231,61 +247,61 @@ function renderFocus() {{
         btnsHtml += '</div>';
 
         if (step >= 1) {{
-            // Step 1: SCENE (solo/duo)
+            // Step 1: SCENE
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            const SCENE_MAP = [['solo','1'],['duo','2']];
-            for (const [s, key] of SCENE_MAP) {{
+            for (const [s, key] of [['solo','1'],['duo','2']]) {{
                 const sel = scene === s;
                 const bg = sel ? `background:${{getColor(s)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '</div>';
+            btnsHtml += descHtml(scene);
         }}
 
         if (step === 2) {{
-            // Step 2: CHEMISTRY (duo only)
+            // Step 2: CHEMISTRY (duo, focused)
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{FOCUS}}padding:4px;border-radius:8px;">`;
-            const CHEM_MAP = [['sync','1'],['interact','2']];
-            for (const [c, key] of CHEM_MAP) {{
+            for (const [c, key] of [['sync','1'],['interact','2']]) {{
                 const sel = chem === c;
                 const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '</div>';
+            btnsHtml += descHtml(chem);
         }} else if (step > 2 && scene === 'duo' && chem) {{
-            // Show chemistry as selected (not focused)
+            // Chemistry selected (not focused)
             btnsHtml += `<div class="buttons" style="margin-top:6px">`;
-            const CHEM_MAP = [['sync','1'],['interact','2']];
-            for (const [c, key] of CHEM_MAP) {{
+            for (const [c, key] of [['sync','1'],['interact','2']]) {{
                 const sel = chem === c;
                 const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '</div>';
+            btnsHtml += descHtml(chem);
         }}
 
         if (step >= 3) {{
             // Step 3: EXPRESSION
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            const EXPR_MAP = [['cheese', '1'],['chill', '2'],['edge', '3'],['hype', '4']];
-            for (const [cat, key] of EXPR_MAP) {{
+            for (const [cat, key] of [['cheese','1'],['chill','2'],['edge','3'],['hype','4']]) {{
                 const sel = label === cat;
                 const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '</div>';
+            btnsHtml += descHtml(label);
         }}
 
         if (step >= 4) {{
             // Step 4: POSE
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 4 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            const POSE_MAP = [['front','1'],['angle','2'],['side','3']];
-            for (const [p, key] of POSE_MAP) {{
+            for (const [p, key] of [['front','1'],['angle','2'],['side','3']]) {{
                 const sel = pose === p;
                 const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '</div>';
+            btnsHtml += descHtml(pose);
         }}
 
         if (step === 5) {{
