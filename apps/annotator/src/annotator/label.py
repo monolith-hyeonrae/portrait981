@@ -349,7 +349,7 @@ function saveMetaAndStart() {{
     if (isDuo && (!metaDraft.passenger_gender || !metaDraft.passenger_ethnicity)) return;
     const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
     videoMeta = {{
-        video_id: videoBase,
+        workflow_id: videoBase,
         scene: metaDraft.scene,
         main_gender: metaDraft.main_gender,
         main_ethnicity: metaDraft.main_ethnicity,
@@ -692,7 +692,7 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
 
-        const csvRows = ['filename,video_id,expression,pose,chemistry,source'];
+        const csvRows = ['filename,workflow_id,expression,pose,chemistry,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
             const pose = poses[f.index] || '';

@@ -1,4 +1,4 @@
-filename,video_id,expression,pose,chemistry,source
+filename,workflow_id,expression,pose,chemistry,source
 istockphoto-1008429706-612x612.jpg,,chill,,,reference
 istockphoto-1041195200-612x612.jpg,,goofy,angle,,reference
 istockphoto-1043730660-612x612.jpg,,cheese,front,,reference
@@ -287,3 +287,16 @@ test_3_0211.jpg,test_3,pass,,,operational
 test_3_0212.jpg,test_3,pass,,,operational
 test_3_0213.jpg,test_3,pass,,,operational
 test_3_0214.jpg,test_3,pass,,,operational
+test_2_0033.jpg,test_2,cut,,,operational
+test_2_0032.jpg,test_2,cut,,,operational
+test_2_0110.jpg,test_2,goofy,angle,,operational
+test_2_0133.jpg,test_2,cheese,angle,,operational
+test_2_0143.jpg,test_2,cut,,,operational
+test_2_0000.jpg,test_2,cut,,,operational
+test_2_0001.jpg,test_2,cut,,,operational
+test_2_0027.jpg,test_2,cheese,front,,operational
+test_2_0028.jpg,test_2,cut,,,operational
+test_2_0029.jpg,test_2,cut,,,operational
+test_2_0030.jpg,test_2,cut,,,operational
+test_2_0060.jpg,test_2,cheese,front,,operational
+test_2_0043.jpg,test_2,cheese,front,,operational

@@ -91,10 +91,10 @@ def merge_zips(
                 if videos_path.exists():
                     with open(videos_path) as vf:
                         for vrow in csv.DictReader(vf):
-                            existing_videos.add(vrow.get("video_id", ""))
-                vid = meta.get("video_id", "")
+                            existing_videos.add(vrow.get("workflow_id", ""))
+                vid = meta.get("workflow_id", "")
                 if vid and vid not in existing_videos:
-                    v_fields = ["video_id", "scene", "gender", "ethnicity", "n_persons", "notes"]
+                    v_fields = ["workflow_id", "scene", "gender", "ethnicity", "n_persons", "notes"]
                     write_header = not videos_path.exists()
                     with open(videos_path, "a", newline="") as vf:
                         writer = csv.DictWriter(vf, fieldnames=v_fields)
@@ -102,7 +102,7 @@ def merge_zips(
                             writer.writeheader()
                         n_p = "2" if meta.get("scene") == "duo" else "1"
                         writer.writerow({
-                            "video_id": vid, "scene": meta.get("scene", ""),
+                            "workflow_id": vid, "scene": meta.get("scene", ""),
                             "gender": meta.get("gender", ""), "ethnicity": meta.get("ethnicity", ""),
                             "n_persons": n_p, "notes": "",
                         })
@@ -110,7 +110,7 @@ def merge_zips(
 
     # Append new rows and save
     all_rows = existing_rows + new_rows
-    fieldnames = ["filename", "video_id", "expression", "pose", "chemistry", "source"]
+    fieldnames = ["filename", "workflow_id", "expression", "pose", "chemistry", "source"]
     with open(labels_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

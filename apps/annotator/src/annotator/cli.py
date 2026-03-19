@@ -23,10 +23,13 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     # --- label ---
-    p_label = sub.add_parser("label", help="Generate interactive HTML labeling tool from a video")
+    p_label = sub.add_parser("label", help="Label video frames — server mode (--dataset) or static HTML")
     p_label.add_argument("video", help="mp4 video path")
     p_label.add_argument("--fps", type=int, default=2, help="frames per second to extract")
-    p_label.add_argument("--output", "-o", default="labels.html", help="output HTML path")
+    p_label.add_argument("--dataset", "-d", default=None,
+                         help="dataset directory for server mode (e.g. data/datasets/portrait-v1)")
+    p_label.add_argument("--port", type=int, default=8766, help="server port (default: 8766)")
+    p_label.add_argument("--output", "-o", default="labels.html", help="output HTML path (static mode)")
     p_label.add_argument("--max-frames", type=int, default=500, help="max frames to include")
 
     # --- review ---
@@ -45,13 +48,23 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "label":
-        from annotator.label import generate_label_html
-        generate_label_html(
-            video_path=args.video,
-            fps=args.fps,
-            max_frames=args.max_frames,
-            output_path=args.output,
-        )
+        if args.dataset:
+            from annotator.label_server import start_label_server
+            start_label_server(
+                video_path=args.video,
+                dataset_dir=args.dataset,
+                fps=args.fps,
+                max_frames=args.max_frames,
+                port=args.port,
+            )
+        else:
+            from annotator.label import generate_label_html
+            generate_label_html(
+                video_path=args.video,
+                fps=args.fps,
+                max_frames=args.max_frames,
+                output_path=args.output,
+            )
 
     elif args.command == "review":
         if args.serve:
