@@ -103,13 +103,22 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .thumb img {{ width: 100%; border-radius: 3px; display: block; }}
 .shortcut-hint {{ font-size: 11px; color: #555; text-align: center; margin-top: 8px; }}
 .bucket-bar {{ padding: 6px 20px; background: #0a0a1a; border-bottom: 1px solid #333; flex-shrink: 0; }}
+.timeline-bar {{
+    display: flex; height: 16px; background: #111;
+    border-bottom: 1px solid #333; flex-shrink: 0;
+    cursor: pointer;
+}}
+.timeline-bar .tl-frame {{
+    flex: 1; min-width: 1px;
+    transition: opacity 0.1s;
+}}
 .bucket-matrix {{ border-collapse: collapse; font-size: 11px; }}
 .bucket-matrix th {{ padding: 3px 8px; color: #888; font-weight: normal; }}
 .bucket-matrix td {{ padding: 3px 8px; text-align: center; font-weight: bold; min-width: 40px; }}
 .bucket-matrix .row-total {{ border-left: 1px solid #333; color: #aaa; }}
 .bucket-matrix .col-total {{ border-top: 1px solid #333; color: #aaa; }}
 .modal-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center;
+    background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center;
     justify-content: center; }}
 .modal-box {{ background: #1a1a2e; border: 2px solid #e94560; border-radius: 12px;
     padding: 32px 40px; min-width: 360px; max-width: 480px; }}
@@ -150,6 +159,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 </div>
 
 <div class="bucket-bar" id="bucketBar"></div>
+<div class="timeline-bar" id="timelineBar"></div>
 <div class="main">
     <div class="focus-panel" id="focus"></div>
     <div class="sidebar" id="sidebar"></div>
@@ -168,24 +178,42 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
             </div>
         </div>
         <div class="modal-row">
-            <label>Gender</label>
-            <div class="modal-opts" id="metaGender">
-                <div class="modal-opt" data-value="male" onclick="selectMetaOpt('gender','male')">
+            <label>Main Gender</label>
+            <div class="modal-opts" id="metaMain_gender">
+                <div class="modal-opt" data-value="male" onclick="selectMetaOpt('main_gender','male')">
                     <span style="opacity:0.5;font-size:11px">1 </span>male</div>
-                <div class="modal-opt" data-value="female" onclick="selectMetaOpt('gender','female')">
+                <div class="modal-opt" data-value="female" onclick="selectMetaOpt('main_gender','female')">
                     <span style="opacity:0.5;font-size:11px">2 </span>female</div>
-                <div class="modal-opt" data-value="mixed" onclick="selectMetaOpt('gender','mixed')">
-                    <span style="opacity:0.5;font-size:11px">3 </span>mixed</div>
             </div>
         </div>
         <div class="modal-row">
-            <label>Ethnicity</label>
-            <div class="modal-opts" id="metaEthnicity">
-                <div class="modal-opt" data-value="asian" onclick="selectMetaOpt('ethnicity','asian')">
+            <label>Main Ethnicity</label>
+            <div class="modal-opts" id="metaMain_ethnicity">
+                <div class="modal-opt" data-value="asian" onclick="selectMetaOpt('main_ethnicity','asian')">
                     <span style="opacity:0.5;font-size:11px">1 </span>asian</div>
-                <div class="modal-opt" data-value="western" onclick="selectMetaOpt('ethnicity','western')">
+                <div class="modal-opt" data-value="western" onclick="selectMetaOpt('main_ethnicity','western')">
                     <span style="opacity:0.5;font-size:11px">2 </span>western</div>
-                <div class="modal-opt" data-value="other" onclick="selectMetaOpt('ethnicity','other')">
+                <div class="modal-opt" data-value="other" onclick="selectMetaOpt('main_ethnicity','other')">
+                    <span style="opacity:0.5;font-size:11px">3 </span>other</div>
+            </div>
+        </div>
+        <div class="modal-row" id="passengerGenderRow" style="display:none">
+            <label>Passenger Gender</label>
+            <div class="modal-opts" id="metaPassenger_gender">
+                <div class="modal-opt" data-value="male" onclick="selectMetaOpt('passenger_gender','male')">
+                    <span style="opacity:0.5;font-size:11px">1 </span>male</div>
+                <div class="modal-opt" data-value="female" onclick="selectMetaOpt('passenger_gender','female')">
+                    <span style="opacity:0.5;font-size:11px">2 </span>female</div>
+            </div>
+        </div>
+        <div class="modal-row" id="passengerEthnicityRow" style="display:none">
+            <label>Passenger Ethnicity</label>
+            <div class="modal-opts" id="metaPassenger_ethnicity">
+                <div class="modal-opt" data-value="asian" onclick="selectMetaOpt('passenger_ethnicity','asian')">
+                    <span style="opacity:0.5;font-size:11px">1 </span>asian</div>
+                <div class="modal-opt" data-value="western" onclick="selectMetaOpt('passenger_ethnicity','western')">
+                    <span style="opacity:0.5;font-size:11px">2 </span>western</div>
+                <div class="modal-opt" data-value="other" onclick="selectMetaOpt('passenger_ethnicity','other')">
                     <span style="opacity:0.5;font-size:11px">3 </span>other</div>
             </div>
         </div>
@@ -208,14 +236,18 @@ let currentPos = 0;
 let manualStep = null;  // null = auto, number = manual override
 
 let videoMeta = JSON.parse(localStorage.getItem(META_KEY) || 'null');
-let metaDraft = {{ scene: null, gender: null, ethnicity: null }};
+let metaDraft = {{ scene: null, main_gender: null, main_ethnicity: null, passenger_gender: null, passenger_ethnicity: null }};
 let modalMode = 'field';  // 'field' or 'value'
-let modalField = 0;       // 0=scene, 1=gender, 2=ethnicity
-const MODAL_FIELDS = ['scene', 'gender', 'ethnicity'];
+let modalField = 0;       // 0=scene, 1=main_gender, 2=main_ethnicity, 3=passenger_gender, 4=passenger_ethnicity
+const MODAL_FIELDS_SOLO = ['scene', 'main_gender', 'main_ethnicity'];
+const MODAL_FIELDS_DUO = ['scene', 'main_gender', 'main_ethnicity', 'passenger_gender', 'passenger_ethnicity'];
+function getModalFields() {{ return metaDraft.scene === 'duo' ? MODAL_FIELDS_DUO : MODAL_FIELDS_SOLO; }}
 const MODAL_VALUES = {{
     scene: ['solo', 'duo'],
-    gender: ['male', 'female', 'mixed'],
-    ethnicity: ['asian', 'western', 'other'],
+    main_gender: ['male', 'female'],
+    main_ethnicity: ['asian', 'western', 'other'],
+    passenger_gender: ['male', 'female'],
+    passenger_ethnicity: ['asian', 'western', 'other'],
 }};
 
 function getColor(cat) {{ return CAT_COLORS[cat] || '#666'; }}
@@ -223,7 +255,12 @@ function getColor(cat) {{ return CAT_COLORS[cat] || '#666'; }}
 function updateMetaIndicator() {{
     const el = document.getElementById('metaIndicator');
     if (videoMeta) {{
-        el.textContent = videoMeta.scene + ' | ' + videoMeta.gender + ' | ' + videoMeta.ethnicity;
+        if (videoMeta.scene === 'duo') {{
+            el.textContent = 'duo | M:' + videoMeta.main_gender + '/' + videoMeta.main_ethnicity
+                + ' P:' + videoMeta.passenger_gender + '/' + videoMeta.passenger_ethnicity;
+        }} else {{
+            el.textContent = 'solo | ' + videoMeta.main_gender + ' | ' + videoMeta.main_ethnicity;
+        }}
     }} else {{
         el.textContent = '(no video meta)';
         el.style.color = '#e94560';
@@ -232,33 +269,64 @@ function updateMetaIndicator() {{
 
 function selectMetaOpt(field, value) {{
     metaDraft[field] = value;
+    if (field === 'scene') {{
+        const pGR = document.getElementById('passengerGenderRow');
+        const pER = document.getElementById('passengerEthnicityRow');
+        if (value === 'duo') {{
+            pGR.style.display = '';
+            pER.style.display = '';
+        }} else {{
+            pGR.style.display = 'none';
+            pER.style.display = 'none';
+            metaDraft.passenger_gender = null;
+            metaDraft.passenger_ethnicity = null;
+        }}
+    }}
     renderMetaSelections();
 }}
 
+function getMetaContainerId(field) {{
+    // main_gender -> Main_gender, passenger_ethnicity -> Passenger_ethnicity
+    return 'meta' + field.charAt(0).toUpperCase() + field.slice(1);
+}}
+
 function renderMetaSelections() {{
-    for (const field of MODAL_FIELDS) {{
-        const container = document.getElementById('meta' + field.charAt(0).toUpperCase() + field.slice(1));
+    const allFields = MODAL_FIELDS_DUO;
+    for (const field of allFields) {{
+        const container = document.getElementById(getMetaContainerId(field));
+        if (!container) continue;
         container.querySelectorAll('.modal-opt').forEach(el => {{
             el.classList.toggle('selected', el.dataset.value === metaDraft[field]);
         }});
     }}
     // Highlight focused field
-    MODAL_FIELDS.forEach((field, i) => {{
-        const container = document.getElementById('meta' + field.charAt(0).toUpperCase() + field.slice(1));
-        container.parentElement.style.background = (modalMode === 'field' || modalField === i)
-            ? (modalField === i ? 'rgba(233,69,96,0.1)' : '') : '';
+    const fields = getModalFields();
+    allFields.forEach((field) => {{
+        const container = document.getElementById(getMetaContainerId(field));
+        if (!container) return;
+        const idx = fields.indexOf(field);
+        container.parentElement.style.background = (idx >= 0 && modalField === idx)
+            ? 'rgba(233,69,96,0.1)' : '';
         container.parentElement.style.borderRadius = '6px';
     }});
     const btn = document.getElementById('metaStartBtn');
-    btn.disabled = !(metaDraft.scene && metaDraft.gender && metaDraft.ethnicity);
+    const isDuo = metaDraft.scene === 'duo';
+    const baseOk = metaDraft.scene && metaDraft.main_gender && metaDraft.main_ethnicity;
+    const passengerOk = !isDuo || (metaDraft.passenger_gender && metaDraft.passenger_ethnicity);
+    btn.disabled = !(baseOk && passengerOk);
 }}
 
 function showMetaModal() {{
     metaDraft = videoMeta
-        ? {{ scene: videoMeta.scene, gender: videoMeta.gender, ethnicity: videoMeta.ethnicity }}
-        : {{ scene: null, gender: null, ethnicity: null }};
+        ? {{ scene: videoMeta.scene, main_gender: videoMeta.main_gender, main_ethnicity: videoMeta.main_ethnicity,
+             passenger_gender: videoMeta.passenger_gender || null, passenger_ethnicity: videoMeta.passenger_ethnicity || null }}
+        : {{ scene: null, main_gender: null, main_ethnicity: null, passenger_gender: null, passenger_ethnicity: null }};
     modalMode = 'field';
     modalField = 0;
+    // Show/hide passenger rows
+    const isDuo = metaDraft.scene === 'duo';
+    document.getElementById('passengerGenderRow').style.display = isDuo ? '' : 'none';
+    document.getElementById('passengerEthnicityRow').style.display = isDuo ? '' : 'none';
     document.getElementById('metaModal').style.display = 'flex';
     renderMetaSelections();
 }}
@@ -268,14 +336,20 @@ function hideMetaModal() {{
 }}
 
 function saveMetaAndStart() {{
-    if (!metaDraft.scene || !metaDraft.gender || !metaDraft.ethnicity) return;
+    const isDuo = metaDraft.scene === 'duo';
+    if (!metaDraft.scene || !metaDraft.main_gender || !metaDraft.main_ethnicity) return;
+    if (isDuo && (!metaDraft.passenger_gender || !metaDraft.passenger_ethnicity)) return;
     const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
     videoMeta = {{
         video_id: videoBase,
         scene: metaDraft.scene,
-        gender: metaDraft.gender,
-        ethnicity: metaDraft.ethnicity,
+        main_gender: metaDraft.main_gender,
+        main_ethnicity: metaDraft.main_ethnicity,
     }};
+    if (isDuo) {{
+        videoMeta.passenger_gender = metaDraft.passenger_gender;
+        videoMeta.passenger_ethnicity = metaDraft.passenger_ethnicity;
+    }}
     localStorage.setItem(META_KEY, JSON.stringify(videoMeta));
     hideMetaModal();
     updateMetaIndicator();
@@ -450,6 +524,7 @@ function renderFocus() {{
         <div class="shortcut-hint">H prev L next | J step↓ K step↑ | Q W E R = 선택 | ${{stepHint}}</div>
     `;
     updateCount();
+    renderTimeline();
 }}
 
 function go(delta) {{
@@ -705,8 +780,12 @@ document.addEventListener('keydown', e => {{
     // Handle modal keyboard input
     if (isModalOpen()) {{
         const n = parseInt(e.key);
+        const fields = getModalFields();
         if (e.key === 'Enter') {{
-            if (metaDraft.scene && metaDraft.gender && metaDraft.ethnicity) {{
+            const isDuo = metaDraft.scene === 'duo';
+            const baseOk = metaDraft.scene && metaDraft.main_gender && metaDraft.main_ethnicity;
+            const passengerOk = !isDuo || (metaDraft.passenger_gender && metaDraft.passenger_ethnicity);
+            if (baseOk && passengerOk) {{
                 saveMetaAndStart();
             }}
             return;
@@ -717,19 +796,21 @@ document.addEventListener('keydown', e => {{
         }}
         if (e.key === 'Tab') {{
             e.preventDefault();
-            modalField = (modalField + 1) % MODAL_FIELDS.length;
+            modalField = (modalField + 1) % fields.length;
             renderMetaSelections();
             return;
         }}
         if (n >= 1) {{
-            const field = MODAL_FIELDS[modalField];
+            const field = fields[modalField];
             const values = MODAL_VALUES[field];
             if (n <= values.length) {{
                 selectMetaOpt(field, values[n - 1]);
+                // Re-get fields (scene change may add passenger fields)
+                const updatedFields = getModalFields();
                 // Auto-advance to next unfilled field
-                for (let i = 0; i < MODAL_FIELDS.length; i++) {{
-                    const nextField = (modalField + 1 + i) % MODAL_FIELDS.length;
-                    if (!metaDraft[MODAL_FIELDS[nextField]]) {{
+                for (let i = 0; i < updatedFields.length; i++) {{
+                    const nextField = (modalField + 1 + i) % updatedFields.length;
+                    if (!metaDraft[updatedFields[nextField]]) {{
                         modalField = nextField;
                         renderMetaSelections();
                         return;
@@ -791,6 +872,45 @@ document.addEventListener('keydown', e => {{
     }}
 }});
 
+const TL_COLORS = {{
+    '': '#333',
+    '__shoot__': '#666',
+    'cut': '#d32f2f',
+    'cheese': '#4CAF50',
+    'chill': '#2196F3',
+    'edge': '#FF5722',
+    'hype': '#9C27B0',
+}};
+
+function renderTimeline() {{
+    const bar = document.getElementById('timelineBar');
+    bar.innerHTML = '';
+    const currentFrame = filteredList[currentPos];
+    const currentIdx = currentFrame ? currentFrame.index : -1;
+    for (const f of FRAMES) {{
+        const el = document.createElement('div');
+        el.className = 'tl-frame';
+        const lbl = labels[f.index] || '';
+        el.style.background = TL_COLORS[lbl] || TL_COLORS[''];
+        if (f.index === currentIdx) {{
+            el.style.outline = '1px solid #fff';
+            el.style.zIndex = '1';
+            el.style.opacity = '1';
+        }}
+        el.onclick = () => {{
+            // Find this frame in filteredList
+            const pos = filteredList.findIndex(ff => ff.index === f.index);
+            if (pos >= 0) {{
+                currentPos = pos;
+                manualStep = null;
+                renderFocus();
+                renderSidebar();
+            }}
+        }};
+        bar.appendChild(el);
+    }}
+}}
+
 document.querySelectorAll('.filter-btn').forEach(btn => {{
     btn.addEventListener('click', () => {{
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -803,14 +923,13 @@ document.querySelectorAll('.filter-btn').forEach(btn => {{
     }});
 }});
 
-// Init: show modal if no video meta, otherwise start labeling
+// Init: always render frames first, then show modal overlay if needed
+buildFilteredList();
+renderFocus();
+renderSidebar();
 updateMetaIndicator();
 if (!videoMeta) {{
     showMetaModal();
-}} else {{
-    buildFilteredList();
-    renderFocus();
-    renderSidebar();
 }}
 </script>
 </body></html>"""
