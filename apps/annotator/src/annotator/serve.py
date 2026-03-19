@@ -415,7 +415,7 @@ function renderCard(idx) {
     if (vid.main_gender) tags += `<span class="tag" style="background:#444">${vid.main_gender}</span>`;
     if (vid.main_ethnicity) tags += `<span class="tag" style="background:#444">${vid.main_ethnicity}</span>`;
     if (vid.member_id) tags += `<span class="tag" style="background:#333;color:#FF9800">${vid.member_id}</span>`;
-    const srcColor = r.source === 'operational' ? '#FF9800' : '#00BCD4';
+    const srcColor = r.source === 'operational' ? '#8D6E63' : '#78909C';
     const srcLabel = r.source === 'operational' ? 'OP' : 'REF';
     tags += `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
 
