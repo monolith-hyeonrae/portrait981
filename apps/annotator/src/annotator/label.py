@@ -923,38 +923,38 @@ def generate_label_html(
     video_path = Path(video_path)
     output_path = Path(output_path)
 
-    try:
-        from momentscan.algorithm.batch.extract import extract_frame_record
-    except ImportError:
-        raise ImportError(
-            "momentscan is required for video frame extraction. "
-            "Install with: pip install annotator[video]"
-        )
+    import numpy as np
 
-    import momentscan as ms
+    logger.info("Extracting frames: %s (fps=%d)", video_path, fps)
 
-    logger.info("Processing: %s (fps=%d)", video_path, fps)
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+
+    video_fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_interval = max(1, int(video_fps / fps))
+
     frames_data: list[tuple] = []
+    frame_idx = 0
+    while True:
+        ret, frame_bgr = cap.read()
+        if not ret:
+            break
+        if frame_idx % frame_interval == 0 and len(frames_data) < max_frames:
+            frames_data.append(frame_bgr.copy())
+        frame_idx += 1
+    cap.release()
 
-    def on_frame(frame, results):
-        record = extract_frame_record(frame, results)
-        if record is not None:
-            frame_bgr = getattr(frame, "data", None)
-            if frame_bgr is not None:
-                frames_data.append((frame_bgr.copy(), record))
-        return True
-
-    ms.run(str(video_path), fps=fps, backend="simple", on_frame=on_frame)
-    logger.info("Collected %d frames", len(frames_data))
+    logger.info("Extracted %d frames (from %d total, interval=%d)",
+                len(frames_data), total_frames, frame_interval)
 
     if not frames_data:
         logger.error("No frames collected")
         raise RuntimeError("No frames collected from video")
 
     frames_info = []
-    for idx, (frame_bgr, _record) in enumerate(frames_data):
-        if idx >= max_frames:
-            break
+    for idx, frame_bgr in enumerate(frames_data):
         frames_info.append({
             "index": idx,
             "b64": frame_to_base64(frame_bgr),
