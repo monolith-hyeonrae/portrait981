@@ -29,10 +29,15 @@ expression:
   chill:  "쿨하고 여유로운 — 편안하고 힘 빠진 자연스러운 표정"
   edge:   "날카롭고 강렬한 — 인상 찡그리는데 간지나는 제임스딘"
   hype:   "순간이 주인공 — 역동적 액션, 에너지 폭발 카타르시스"
+  occluded: "얼굴 가려짐 — 마스크/선글라스/목도리, 표정 판단 불가하지만 촬영 가치 있음"
 
 # cheese vs hype 구분:
 #   cheese = 얼굴만 프로필로 쓰고 싶은 장면 → reportrait: 인물 초상화
 #   hype   = 장면 포함 다이나믹을 표현하고 싶은 장면 → reportrait: 액션/배경 합성
+
+# occluded:
+#   표정 signal(AU/emotion) 무의미 → pose/quality/segmentation 기반으로 촬영 판단
+#   XGBoost가 parsing_coverage 등으로 자동 gating
 
 # 포즈 (pose)
 pose:

@@ -42,6 +42,7 @@ def _generate_html(frames_info: list[dict], categories: list[str], video_name: s
     cat_colors = {
         "cheese": "#4CAF50", "chill": "#2196F3", "edge": "#FF5722", "hype": "#9C27B0",
         "cut": "#d32f2f",
+        "occluded": "#795548",
         "front": "#00BCD4", "angle": "#FF9800", "side": "#795548",
         "solo": "#607D8B", "duo": "#E91E63",
         "sync": "#FFD700", "interact": "#00E676",
@@ -425,7 +426,7 @@ function renderFocus() {{
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
     const displayLabel = label === '__shoot__' ? 'SHOOT ⏳' : label;
     const parts = [displayLabel, pose, chem].filter(x => x && x !== '__shoot__');
-    const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : '#4CAF50';
+    const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : label === 'occluded' ? '#795548' : '#4CAF50';
     const labelHtml = parts.length > 0
         ? `<div class="focus-label" style="color:${{labelColor}}">${{parts.join(' + ')}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
@@ -441,6 +442,7 @@ function renderFocus() {{
         'chill': '쿨하고 여유로운 — 편안하고 힘 빠진 자연스러운 표정',
         'edge': '날카롭고 강렬한 — 인상 찡그리는데 간지나는 제임스딘',
         'hype': '순간이 주인공 — 역동적 액션, 에너지 폭발 카타르시스',
+        'occluded': '얼굴 가려짐 — 마스크/선글라스/목도리, pose/quality 기반 판단',
         'front': '정면 — 카메라를 바라보는 앵글',
         'angle': '3/4 앵글 — 약간 돌린 자연스러운 각도',
         'side': '측면 — 프로필 샷',
@@ -474,7 +476,7 @@ function renderFocus() {{
 
     // Step 2: EXPRESSION (항상 표시)
     btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-    for (const [cat, key] of [['cheese','Q'],['chill','W'],['edge','E'],['hype','R']]) {{
+    for (const [cat, key] of [['cheese','Q'],['chill','W'],['edge','E'],['hype','R'],['occluded','T']]) {{
         const sel = label === cat;
         const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
         btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}} ${{K}}${{key}}</span></button>`;
@@ -602,7 +604,7 @@ function updateCount() {{
     const isDuo = videoMeta && videoMeta.scene === 'duo';
 
     // Count all axes
-    const EXPRS = ['cheese','chill','edge','hype','cut'];
+    const EXPRS = ['cheese','chill','edge','hype','occluded','cut'];
     const POSES = ['front','angle','side',''];
     const CHEMS = ['sync','interact',''];
 
@@ -740,14 +742,14 @@ function resetLabels() {{
 const STEP_OPTIONS_SOLO = {{
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
+    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 const STEP_OPTIONS_DUO = {{
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
     '1': [['sync','setChemistry'], ['interact','setChemistry']],
-    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
+    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 
@@ -846,7 +848,7 @@ document.addEventListener('keydown', e => {{
     }}
 
     // q/w/e/r = 현재 포커스 step에서 1/2/3/4번 선택
-    const QWER = {{'q': 1, 'w': 2, 'e': 3, 'r': 4}};
+    const QWER = {{'q': 1, 'w': 2, 'e': 3, 'r': 4, 't': 5}};
     const n = QWER[e.key];
     const activeStep = String(step);  // STEP_OPTIONS keys are strings
     if (n && STEP_OPTIONS[activeStep]) {{
@@ -865,6 +867,7 @@ const TL_COLORS = {{
     '': '#333',
     '__shoot__': '#666',
     'cut': '#d32f2f',
+    'occluded': '#795548',
     'cheese': '#4CAF50',
     'chill': '#2196F3',
     'edge': '#FF5722',
