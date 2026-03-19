@@ -116,11 +116,11 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .bucket-matrix td {{ padding: 3px 8px; text-align: center; font-weight: bold; min-width: 40px; }}
 .bucket-matrix .row-total {{ border-left: 1px solid #333; color: #aaa; }}
 .bucket-matrix .col-total {{ border-top: 1px solid #333; color: #aaa; }}
-.modal-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0,0,0,0.6); z-index: 9999; display: flex; align-items: center;
-    justify-content: center; }}
-.modal-box {{ background: #1a1a2e; border: 2px solid #e94560; border-radius: 12px;
-    padding: 32px 40px; min-width: 360px; max-width: 480px; }}
+.modal-overlay {{ position: fixed; bottom: 0; left: 0; width: 100%;
+    background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center;
+    padding: 12px 0; }}
+.modal-box {{ background: #1a1a2e; border: 2px solid #e94560; border-radius: 12px 12px 0 0;
+    padding: 20px 32px; min-width: 360px; max-width: 560px; }}
 .modal-box h2 {{ margin: 0 0 20px; color: #e94560; font-size: 20px; }}
 .modal-row {{ margin: 12px 0; }}
 .modal-row label {{ display: block; font-size: 13px; color: #aaa; margin-bottom: 6px; }}
