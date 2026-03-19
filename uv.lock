@@ -313,18 +313,14 @@ dependencies = [
 dev = [
     { name = "pytest" },
 ]
-video = [
-    { name = "momentscan" },
-]
 
 [package.metadata]
 requires-dist = [
-    { name = "momentscan", marker = "extra == 'video'", editable = "apps/momentscan" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "opencv-python", specifier = ">=4.8.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
 ]
-provides-extras = ["video", "dev"]
+provides-extras = ["dev"]
 
 [[package]]
 name = "anyio"

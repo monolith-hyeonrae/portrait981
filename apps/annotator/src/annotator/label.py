@@ -805,7 +805,8 @@ document.addEventListener('keydown', e => {{
     const f = filteredList[currentPos];
     if (!f) return;
     const idx = f.index;
-    const step = getStep(idx);
+    const autoStep = getStep(idx);
+    const step = (manualStep !== null) ? manualStep : autoStep;
     const isDuo = videoMeta && videoMeta.scene === 'duo';
     const STEP_OPTIONS = isDuo ? STEP_OPTIONS_DUO : STEP_OPTIONS_SOLO;
 
