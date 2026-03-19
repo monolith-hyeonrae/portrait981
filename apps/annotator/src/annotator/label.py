@@ -216,6 +216,12 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
                     <span style="opacity:0.5;font-size:11px">3 </span>other</div>
             </div>
         </div>
+        <div class="modal-row">
+            <label>Member ID (재탑승 식별, optional)</label>
+            <input type="text" id="metaMemberId" placeholder="예: park_042"
+                style="background:#222;border:1px solid #444;color:#eee;padding:6px 12px;border-radius:4px;width:100%;font-size:14px"
+                oninput="metaDraft.member_id=this.value">
+        </div>
         <button class="modal-start" id="metaStartBtn" onclick="saveMetaAndStart()" disabled>Start Labeling</button>
     </div>
 </div>
@@ -318,8 +324,10 @@ function renderMetaSelections() {{
 function showMetaModal() {{
     metaDraft = videoMeta
         ? {{ scene: videoMeta.scene, main_gender: videoMeta.main_gender, main_ethnicity: videoMeta.main_ethnicity,
-             passenger_gender: videoMeta.passenger_gender || null, passenger_ethnicity: videoMeta.passenger_ethnicity || null }}
-        : {{ scene: null, main_gender: null, main_ethnicity: null, passenger_gender: null, passenger_ethnicity: null }};
+             passenger_gender: videoMeta.passenger_gender || null, passenger_ethnicity: videoMeta.passenger_ethnicity || null,
+             member_id: videoMeta.member_id || '' }}
+        : {{ scene: null, main_gender: null, main_ethnicity: null, passenger_gender: null, passenger_ethnicity: null, member_id: '' }};
+    document.getElementById('metaMemberId').value = metaDraft.member_id || '';
     modalMode = 'field';
     modalField = 0;
     // Show/hide passenger rows
@@ -349,6 +357,7 @@ function saveMetaAndStart() {{
         videoMeta.passenger_gender = metaDraft.passenger_gender;
         videoMeta.passenger_ethnicity = metaDraft.passenger_ethnicity;
     }}
+    if (metaDraft.member_id) videoMeta.member_id = metaDraft.member_id;
     localStorage.setItem(META_KEY, JSON.stringify(videoMeta));
     hideMetaModal();
     updateMetaIndicator();

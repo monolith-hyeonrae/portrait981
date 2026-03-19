@@ -104,21 +104,49 @@ Conditional Embedding (제안):
   → z_state는 같고 z_id가 다름 → identity 무관하게 상태 검색 가능
 ```
 
-### 비디오 상수의 활용
+### 비디오 상수의 활용 — ArcFace보다 강인한 identity supervision
 
-탑승 비디오의 특성이 identity 학습에 큰 이점:
+탑승 비디오의 물리적 제약이 identity 학습의 핵심 이점:
 
 ```
-비디오 내 상수:
-  - 같은 사람이 2분간 다양한 표정/포즈
-  - face_id가 변하면 검출 오류 (비디오 상수이므로)
-  - 같은 identity의 다양한 state를 자연스럽게 수집
+ArcFace (프레임 단위, 불안정):
+  Frame 100: face_id=A (confidence 0.95)
+  Frame 101: face_id=B (confidence 0.72) ← 흔들림으로 ID switch
+  Frame 102: face_id=A (confidence 0.88)
+  Frame 103: face 미검출              ← 고개 돌림
+  → 야외 환경에서 face_id가 계속 변함
 
-학습:
-  같은 비디오의 프레임 → z_id 가까워야 함 (contrastive)
-  같은 비디오의 다른 표정 → z_state 달라야 함 (diverse)
-  다른 비디오의 비슷한 표정 → z_state 가까워야 함 (invariant)
+비디오 상수 (100% 정확):
+  "이 비디오의 이 좌석은 처음부터 끝까지 같은 사람"
+  → 물리적 제약에서 오는 자연적 ground truth
+  → ArcFace 불필요, 수동 라벨 불필요
 ```
+
+**ArcFace가 실패하는 프레임이 곧 학습 데이터:**
+```
+ArcFace: "Frame 101은 다른 사람" (ID switch 오류)
+비디오 상수: "같은 사람임을 보장"
+→ Student가 "흔들려도, 고개 돌려도, 표정 바뀌어도 같은 사람"을 학습
+→ ArcFace보다 야외 환경에 강인한 identity embedding 생산 가능
+```
+
+비디오 내 / 비디오 간 학습:
+```
+비디오 내 (물리적 보장, 자동):
+  같은 비디오의 프레임 → z_id 가까워야 함 (contrastive positive)
+  같은 비디오의 다른 표정 → z_state 달라야 함 (state diversity)
+
+비디오 간 (member_id로 연결):
+  같은 member_id의 다른 비디오 → z_id 가까워야 함 (cross-session positive)
+  → 다른 날, 다른 조명, 다른 컨디션에서도 같은 identity
+  → 조명/날짜/환경에 강인한 z_id 학습
+
+  다른 member_id의 비디오 → z_id 달라야 함 (negative)
+  같은 표정의 다른 사람 → z_state 가까워야 함 (identity-invariant state)
+```
+
+member_id는 videos.csv에 비디오당 한번만 기록. 모르면 비워두면 됨.
+비디오 내 identity는 물리적 보장으로 자동, 비디오 간 identity만 member_id 필요.
 
 ---
 
