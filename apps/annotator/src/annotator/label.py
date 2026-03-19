@@ -365,14 +365,14 @@ function renderFocus() {{
     if (step === -1) {{
         // cut — 변경 가능
         btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}1</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}H</span></button>`;
         btnsHtml += `<button class="cat-btn selected" style="background:#d32f2f;color:#fff">cut ✂️</button>`;
         btnsHtml += '</div>';
     }} else {{
         // Step 0: SHOOT / CUT
         btnsHtml += `<div class="buttons" style="${{step === 0 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-        btnsHtml += `<button class="cat-btn" style="${{label && label !== 'cut' ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}1</span></button>`;
-        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}2</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="${{label && label !== 'cut' ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}H</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}L</span></button>`;
         btnsHtml += '</div>';
 
         if (isDuo && step === 1) {{
@@ -445,7 +445,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next ${{K}}J</span></button>
         </div>
-        <div class="shortcut-hint">1-4 = 현재 포커스 step 선택 | J next K prev | ${{stepHint}}</div>
+        <div class="shortcut-hint">H shoot L cut | J next K prev | 1-4 step 선택 | ${{stepHint}}</div>
     `;
     updateCount();
 }}
@@ -748,6 +748,8 @@ document.addEventListener('keydown', e => {{
 
     if (e.key === 'j') go(1);
     else if (e.key === 'k') go(-1);
+    else if (e.key === 'h') {{ setLabel(idx, '__shoot__'); }}
+    else if (e.key === 'l') {{ setLabel(idx, 'cut'); }}
     else {{
         const n = parseInt(e.key);
         if (n >= 1 && step >= 0 && STEP_OPTIONS[step]) {{
