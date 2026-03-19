@@ -387,7 +387,13 @@ function renderStrip() {{
         div.innerHTML = `<img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">`;
         div.onclick = () => {{ currentPos = pos; renderFocus(); renderStrip(); }};
         sb.appendChild(div);
-        if (pos === currentPos) div.scrollIntoView({{ inline: 'center', block: 'nearest' }});
+        if (pos === currentPos) {{
+            requestAnimationFrame(() => {{
+                const strip = document.getElementById('strip');
+                const left = div.offsetLeft - strip.clientWidth / 2 + div.offsetWidth / 2;
+                strip.scrollLeft = left;
+            }});
+        }}
     }});
 }}
 
