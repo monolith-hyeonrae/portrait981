@@ -414,9 +414,11 @@ function renderFocus() {{
     const chem = chemistries[f.index];
     const isDuo = scene === 'duo';
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
-    const parts = [label, pose, chem].filter(x => x && x !== '__shoot__');
+    const displayLabel = label === '__shoot__' ? 'SHOOT ⏳' : label;
+    const parts = [displayLabel, pose, chem].filter(x => x && x !== '__shoot__');
+    const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : '#4CAF50';
     const labelHtml = parts.length > 0
-        ? `<div class="focus-label">${{parts.join(' + ')}}</div>`
+        ? `<div class="focus-label" style="color:${{labelColor}}">${{parts.join(' + ')}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
 
     const K = '<span style="font-size:10px;opacity:0.5;margin-left:4px">';
