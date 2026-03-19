@@ -197,51 +197,65 @@ function renderFocus() {{
     const pose = poses[f.index];
     const scene = scenes[f.index];
     const chem = chemistries[f.index];
+    const isAccepted = label && label !== 'pass' && label !== 'skip';
     const parts = [label, pose, scene, chem].filter(Boolean);
     const labelHtml = parts.length > 0
         ? `<div class="focus-label">${{parts.join(' + ')}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
 
-    // Expression buttons
-    let btnsHtml = '<div class="buttons">';
-    const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
-    for (const cat of EXPRESSIONS) {{
-        const sel = label === cat;
-        const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
-        btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}}</button>`;
-    }}
-    btnsHtml += `<button class="cat-btn${{label === 'pass' ? ' selected' : ''}}" style="${{label === 'pass' ? 'background:#d32f2f;color:#fff;' : ''}}" onclick="setLabel(${{f.index}},'pass')">pass</button>`;
-    btnsHtml += `<button class="cat-btn${{label === 'skip' ? ' selected' : ''}}" style="${{label === 'skip' ? 'background:#888;color:#fff;' : ''}}" onclick="setLabel(${{f.index}},'skip')">skip</button>`;
-    btnsHtml += '</div>';
+    let btnsHtml = '';
 
-    // Pose + Scene + Chemistry (only if expression is set and not pass/skip)
-    if (label && label !== 'pass' && label !== 'skip') {{
-        // Pose
-        btnsHtml += '<div class="buttons" style="margin-top:6px">';
-        for (const p of ['front', 'angle', 'side']) {{
-            const sel = pose === p;
-            const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
-            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}}</button>`;
+    if (!label) {{
+        // Step 1: shoot or pass (첫 결정)
+        btnsHtml += '<div class="buttons">';
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸</button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#d32f2f;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'pass')">PASS ⏭️</button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#555;color:#fff;padding:12px 24px" onclick="setLabel(${{f.index}},'skip')">skip</button>`;
+        btnsHtml += '</div>';
+    }} else if (label === '__shoot__' || isAccepted) {{
+        // Step 2: expression 선택 (shoot 후)
+        btnsHtml += '<div class="buttons">';
+        const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
+        for (const cat of EXPRESSIONS) {{
+            const sel = label === cat;
+            const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
+            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}}</button>`;
         }}
-        btnsHtml += '&nbsp;&nbsp;';
-        // Scene
-        for (const s of ['solo', 'duo']) {{
-            const sel = scene === s;
-            const bg = sel ? `background:${{getColor(s)}};color:#fff;` : '';
-            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}}</button>`;
-        }}
+        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa" onclick="setLabel(${{f.index}},'pass')">→ pass</button>`;
         btnsHtml += '</div>';
 
-        // Chemistry (only if scene=duo)
-        if (scene === 'duo') {{
+        // Pose + Scene (expression 선택 후)
+        if (isAccepted) {{
             btnsHtml += '<div class="buttons" style="margin-top:6px">';
-            for (const c of ['sync', 'interact']) {{
-                const sel = chem === c;
-                const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}}</button>`;
+            for (const p of ['front', 'angle', 'side']) {{
+                const sel = pose === p;
+                const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
+                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}}</button>`;
+            }}
+            btnsHtml += '&nbsp;&nbsp;';
+            for (const s of ['solo', 'duo']) {{
+                const sel = scene === s;
+                const bg = sel ? `background:${{getColor(s)}};color:#fff;` : '';
+                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}}</button>`;
             }}
             btnsHtml += '</div>';
+
+            if (scene === 'duo') {{
+                btnsHtml += '<div class="buttons" style="margin-top:6px">';
+                for (const c of ['sync', 'interact']) {{
+                    const sel = chem === c;
+                    const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
+                    btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}}</button>`;
+                }}
+                btnsHtml += '</div>';
+            }}
         }}
+    }} else {{
+        // pass/skip — 변경 가능
+        btnsHtml += '<div class="buttons">';
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT</button>`;
+        btnsHtml += `<button class="cat-btn selected" style="background:${{label === 'pass' ? '#d32f2f' : '#888'}};color:#fff">${{label}}</button>`;
+        btnsHtml += '</div>';
     }}
 
     panel.innerHTML = `
@@ -260,7 +274,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next &rarr;</button>
         </div>
-        <div class="shortcut-hint">1=cheese 2=chill 3=edge 4=hype 5=pass s=skip | q=front w=angle e=side | z=solo x=duo | v=sync b=interact</div>
+        <div class="shortcut-hint">y/space=shoot n=pass s=skip | 1=cheese 2=chill 3=edge 4=hype | q=front w=angle e=side | z=solo x=duo | v=sync b=interact</div>
     `;
     updateCount();
 }}
@@ -354,7 +368,7 @@ function updateCount() {{
     EXPRS.forEach(e => POSES.forEach(p => exprPose[e+'|'+p] = 0));
 
     for (const [idx, lbl] of Object.entries(labels)) {{
-        if (!lbl || lbl === 'skip') continue;
+        if (!lbl || lbl === 'skip' || lbl === '__shoot__') continue;
         const p = poses[idx] || '';
         const s = scenes[idx] || '';
         const c = chemistries[idx] || '';
@@ -415,7 +429,7 @@ function updateCount() {{
 }}
 
 async function exportLabels() {{
-    const labeled = FRAMES.filter(f => labels[f.index] && labels[f.index] !== 'skip');
+    const labeled = FRAMES.filter(f => labels[f.index] && labels[f.index] !== 'skip' && labels[f.index] !== '__shoot__');
     if (labeled.length === 0) {{
         alert('No labeled frames to export.');
         return;
@@ -480,21 +494,20 @@ const SCENE_KEYS = {{'z':'solo', 'x':'duo'}};
 const CHEM_KEYS = {{'v':'sync', 'b':'interact'}};
 
 document.addEventListener('keydown', e => {{
+    const f = filteredList[currentPos];
+    if (!f) return;
+    const idx = f.index;
+    const lbl = labels[idx];
+
     if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === 'ArrowRight') go(1);
-    else if (e.key === 's') {{ if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, 'skip'); }}
-    else if (EXPR_KEYS[e.key]) {{
-        if (filteredList[currentPos]) setLabel(filteredList[currentPos].index, EXPR_KEYS[e.key]);
-    }}
-    else if (POSE_KEYS[e.key]) {{
-        if (filteredList[currentPos]) setPose(filteredList[currentPos].index, POSE_KEYS[e.key]);
-    }}
-    else if (SCENE_KEYS[e.key]) {{
-        if (filteredList[currentPos]) setScene(filteredList[currentPos].index, SCENE_KEYS[e.key]);
-    }}
-    else if (CHEM_KEYS[e.key]) {{
-        if (filteredList[currentPos]) setChemistry(filteredList[currentPos].index, CHEM_KEYS[e.key]);
-    }}
+    else if (e.key === 'y' || e.key === ' ') {{ setLabel(idx, lbl ? '__shoot__' : '__shoot__'); }}
+    else if (e.key === 'n') {{ setLabel(idx, 'pass'); }}
+    else if (e.key === 's') {{ setLabel(idx, 'skip'); }}
+    else if (EXPR_KEYS[e.key]) {{ setLabel(idx, EXPR_KEYS[e.key]); }}
+    else if (POSE_KEYS[e.key]) {{ setPose(idx, POSE_KEYS[e.key]); }}
+    else if (SCENE_KEYS[e.key]) {{ setScene(idx, SCENE_KEYS[e.key]); }}
+    else if (CHEM_KEYS[e.key]) {{ setChemistry(idx, CHEM_KEYS[e.key]); }}
 }});
 
 document.querySelectorAll('.filter-btn').forEach(btn => {{
