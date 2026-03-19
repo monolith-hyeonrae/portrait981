@@ -63,6 +63,24 @@ def generate_review_html(
             for row in csv.DictReader(f):
                 videos[row["video_id"]] = row
 
+    # Scan for new images not in labels.csv
+    labeled_files = {row["filename"] for row in rows}
+    new_count = 0
+    if images_dir.exists():
+        for img_path in sorted(images_dir.iterdir()):
+            if img_path.suffix.lower() in (".jpg", ".jpeg", ".png", ".avif") and img_path.name not in labeled_files:
+                rows.append({
+                    "filename": img_path.name,
+                    "video_id": "",
+                    "expression": "",
+                    "pose": "",
+                    "chemistry": "",
+                    "source": "reference",
+                })
+                new_count += 1
+    if new_count > 0:
+        logger.info("Found %d new images not in labels.csv", new_count)
+
     # Pre-encode images
     image_data: dict[str, str] = {}
     for row in rows:
@@ -137,6 +155,7 @@ h2:hover {{ opacity: 0.8; }}
     <b>Pose:</b> {', '.join(f'{k}={v}' for k, v in pose_c.most_common())} |
     <b>Chemistry:</b> {', '.join(f'{k}={v}' for k, v in chem_c.most_common()) or 'none'} |
     <b>Videos:</b> {len(videos)}
+    {f'| <b style="color:#FF9800">New:</b> {new_count}' if new_count > 0 else ''}
 </div>
 
 <div id="videoMeta" style="margin:10px 0"></div>
