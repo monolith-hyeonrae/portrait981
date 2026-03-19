@@ -1,7 +1,7 @@
-# Face State Embedding — 인물 상태 통합 임베딩 모델
+# Face State Embedding — 인물의 모든 것을 하나의 모델에
 
-> 기존 얼굴 임베딩(identity)과 다른 새로운 공간:
-> "이 사람이 **누구**인가"가 아니라 "이 사람이 **지금 어떤 상태**인가"를 표현.
+> identity, state, pose를 conditional하게 분리/결합할 수 있는 통합 임베딩.
+> "누구인가" + "어떤 표정인가" + "어떤 포즈인가"를 하나의 모델이 담는다.
 
 ---
 
@@ -36,9 +36,88 @@
               │           │ (둔감)    │
               └───────────┴───────────┘
 
-Face State Embedding = 얼굴 특화 × 상태 표현
-  expression + AU + pose + quality + gaze → 단일 벡터
-  "이 사람이 지금 어떤 상태인가"
+Face State Embedding = 얼굴 특화 × 통합 표현
+  identity + expression + AU + pose + quality → 단일 벡터
+  conditional하게 모드별 접근 가능
+```
+
+### 완전한 형태: Conditional Multi-Mode Embedding
+
+기존 접근은 identity와 state를 별개 모델로 다룬다.
+**하나의 모델이 conditional하게 모든 모드를 담을 수 있다.**
+
+```
+Raw Image → Shared Backbone → z (rich feature)
+                                ↓
+                z = [z_id | z_state | z_pose | z_quality]
+                      ↓        ↓         ↓         ↓
+               ID head  State head  Pose head  Quality head
+               "누구"    "어떤 표정"  "어떤 각도"  "얼마나 선명"
+```
+
+쿼리 모드에 따라 다른 subspace를 활용:
+
+```
+"이 사람과 같은 사람 찾기"         → z_id로 검색
+"이 표정과 비슷한 프레임 찾기"     → z_state로 검색
+"이 포즈와 비슷한 프레임 찾기"     → z_pose로 검색
+"이 사람의 이 표정과 비슷한"       → z_id + z_state 조합 검색
+"이 사람의 정면 미소"             → z_id + z_state + z_pose 조합
+```
+
+### 수동 라벨 없이 학습 가능한 이유
+
+14개 frozen 모델이 각 모드의 supervision을 이미 제공한다:
+
+```
+ID supervision:      face.detect ArcFace embedding → z_id pseudo-label
+                     같은 비디오 내 = 같은 사람 (비디오 상수)
+                     다른 비디오 간 = ArcFace similarity로 자동 매칭
+
+State supervision:   face.expression 8D + face.au 12D → z_state pseudo-label
+                     crowds consensus로 noise 필터링
+
+Pose supervision:    head.pose yaw/pitch/roll → z_pose pseudo-label
+
+Quality supervision: face.quality blur/exposure/contrast → z_quality pseudo-label
+                     face.parse segmentation ratios
+
+→ member_id 수동 라벨 불필요
+→ ArcFace similarity = pseudo identity label
+→ crowds가 모든 모드의 supervision 제공
+```
+
+### Identity vs State 분리의 핵심
+
+```
+ArcFace (기존):
+  같은 사람, 웃는 표정  → embedding A
+  같은 사람, 무표정    → embedding A (거의 동일)
+  → 표정이 noise로 취급됨
+
+Conditional Embedding (제안):
+  같은 사람, 웃는 표정  → z_id=A, z_state=smile
+  같은 사람, 무표정    → z_id=A, z_state=neutral
+  → z_id는 같고 z_state가 다름 → 분리 성공
+
+  다른 사람, 웃는 표정  → z_id=B, z_state=smile
+  → z_state는 같고 z_id가 다름 → identity 무관하게 상태 검색 가능
+```
+
+### 비디오 상수의 활용
+
+탑승 비디오의 특성이 identity 학습에 큰 이점:
+
+```
+비디오 내 상수:
+  - 같은 사람이 2분간 다양한 표정/포즈
+  - face_id가 변하면 검출 오류 (비디오 상수이므로)
+  - 같은 identity의 다양한 state를 자연스럽게 수집
+
+학습:
+  같은 비디오의 프레임 → z_id 가까워야 함 (contrastive)
+  같은 비디오의 다른 표정 → z_state 달라야 함 (diverse)
+  다른 비디오의 비슷한 표정 → z_state 가까워야 함 (invariant)
 ```
 
 ---
@@ -158,15 +237,16 @@ Time-R1 스타일 RL fine-tuning에 두 가지 reward:
 
 ### 논문 제목 후보
 
-- "Face State Embedding: Annotation-Free Multi-Specialist Distillation for Unified Facial Analysis"
-- "Beyond Identity: Learning Face State Representations from Frozen Specialist Crowds"
+- "Conditional Face Embedding: Identity, State, and Pose in One Model via Frozen Specialist Crowds"
+- "Beyond Identity: Disentangled Face Representation from Annotation-Free Multi-Teacher Distillation"
 
 ### Contribution
 
-1. **Face State Embedding**: identity가 아닌 state 공간 정의 — expression, AU, pose, quality 통합
-2. **Annotation-free learning**: 14개 frozen specialist의 crowds consensus로 학습, 수동 라벨 불필요
-3. **Video-LLM integration**: face encoder를 Video-LLM에 장착, face event temporal grounding 개선
-4. **야외 강인성**: 실환경 데이터에서 학습된 모델의 범용 face analysis 성능
+1. **Conditional Multi-Mode Embedding**: identity/state/pose/quality를 하나의 모델에서 conditional하게 분리/결합. 모드별 subspace로 다양한 쿼리 지원.
+2. **Annotation-free learning**: 14개 frozen specialist가 각 모드의 pseudo-label 제공 — ArcFace→identity, expression/AU→state, head.pose→pose. 수동 라벨 0건.
+3. **비디오 상수 활용**: 탑승 비디오의 identity 상수를 contrastive learning에 활용 — 같은 비디오 = 같은 사람의 다양한 상태.
+4. **Video-LLM integration**: face encoder를 Video-LLM에 장착, face event temporal grounding 개선.
+5. **야외 강인성**: 실환경 데이터에서 학습된 모델의 범용 face analysis 성능.
 
 ### 필요한 실증
 
