@@ -30,9 +30,11 @@ def main(argv: list[str] | None = None) -> None:
     p_label.add_argument("--max-frames", type=int, default=500, help="max frames to include")
 
     # --- review ---
-    p_review = sub.add_parser("review", help="Generate dataset review HTML with label editing")
+    p_review = sub.add_parser("review", help="Review dataset — serve or generate HTML")
     p_review.add_argument("dataset", help="dataset directory (e.g. data/datasets/portrait-v1)")
-    p_review.add_argument("--output", "-o", default="review.html", help="output HTML path")
+    p_review.add_argument("--serve", action="store_true", help="Start local server (auto-save, no download needed)")
+    p_review.add_argument("--port", type=int, default=8765, help="server port (default: 8765)")
+    p_review.add_argument("--output", "-o", default="review.html", help="output HTML path (non-serve mode)")
 
     # --- merge ---
     p_merge = sub.add_parser("merge", help="Merge anchor ZIP files into dataset directory")
@@ -52,11 +54,15 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     elif args.command == "review":
-        from annotator.review import generate_review_html
-        generate_review_html(
-            dataset_dir=args.dataset,
-            output_path=args.output,
-        )
+        if args.serve:
+            from annotator.serve import start_server
+            start_server(dataset_dir=args.dataset, port=args.port)
+        else:
+            from annotator.review import generate_review_html
+            generate_review_html(
+                dataset_dir=args.dataset,
+                output_path=args.output,
+            )
 
     elif args.command == "merge":
         from annotator.merge import merge_zips
