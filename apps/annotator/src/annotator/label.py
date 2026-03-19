@@ -71,7 +71,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .filter-btn {{ background: #333; color: #ccc; padding: 4px 10px; border: 1px solid #555;
     border-radius: 3px; cursor: pointer; font-size: 12px; }}
 .filter-btn.active {{ background: #e94560; color: #fff; border-color: #e94560; }}
-.main {{ flex: 1; display: flex; overflow: hidden; }}
+.main {{ flex: 1; display: flex; flex-direction: column; overflow: hidden; }}
 .focus-panel {{ flex: 1; display: flex; flex-direction: column; align-items: center;
     justify-content: center; padding: 20px; min-width: 0; }}
 .focus-img {{ max-width: 100%; max-height: 55vh; border-radius: 8px; object-fit: contain; }}
@@ -93,14 +93,13 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .nav button:hover {{ background: #555; }}
 .nav button:disabled {{ opacity: 0.3; cursor: default; }}
 .nav .pos {{ font-size: 14px; color: #aaa; min-width: 80px; text-align: center; }}
-.sidebar {{ width: 180px; overflow-y: auto; background: #0f0f23; border-left: 1px solid #333;
-    flex-shrink: 0; }}
-.thumb {{ width: 100%; padding: 4px; cursor: pointer; opacity: 0.5; transition: opacity .15s;
-    border-left: 3px solid transparent; }}
+.strip {{ display: flex; overflow-x: auto; background: #0f0f23; border-top: 1px solid #333;
+    flex-shrink: 0; padding: 4px; gap: 3px; }}
+.thumb {{ flex-shrink: 0; cursor: pointer; opacity: 0.5; transition: opacity .15s;
+    border-bottom: 3px solid transparent; position: relative; }}
 .thumb:hover {{ opacity: 0.8; }}
-.thumb.active {{ opacity: 1; border-left-color: #e94560; }}
-.thumb.labeled {{ border-left-color: #4CAF50; }}
-.thumb img {{ width: 100%; border-radius: 3px; display: block; }}
+.thumb.active {{ opacity: 1; border-bottom-color: #e94560; }}
+.thumb img {{ height: 56px; border-radius: 3px; display: block; }}
 .shortcut-hint {{ font-size: 11px; color: #555; text-align: center; margin-top: 8px; }}
 .bucket-bar {{ padding: 6px 20px; background: #0a0a1a; border-bottom: 1px solid #333; flex-shrink: 0; }}
 .timeline-bar {{
@@ -162,7 +161,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 <div class="timeline-bar" id="timelineBar"></div>
 <div class="main">
     <div class="focus-panel" id="focus"></div>
-    <div class="sidebar" id="sidebar"></div>
+    <div class="strip" id="strip"></div>
 </div>
 
 <div class="modal-overlay" id="metaModal" style="display:none">
@@ -355,7 +354,7 @@ function saveMetaAndStart() {{
     updateMetaIndicator();
     buildFilteredList();
     renderFocus();
-    renderSidebar();
+    renderStrip();
 }}
 
 function buildFilteredList() {{
@@ -374,8 +373,8 @@ function buildFilteredList() {{
     }});
 }}
 
-function renderSidebar() {{
-    const sb = document.getElementById('sidebar');
+function renderStrip() {{
+    const sb = document.getElementById('strip');
     sb.innerHTML = '';
     filteredList.forEach((f, pos) => {{
         const div = document.createElement('div');
@@ -383,14 +382,12 @@ function renderSidebar() {{
         const isLabeled = lbl !== undefined;
         const borderColor = isLabeled ? (getColor(lbl) || '#4CAF50') : 'transparent';
         div.className = 'thumb' + (pos === currentPos ? ' active' : '');
-        div.style.borderLeftColor = borderColor;
-        div.style.borderLeftWidth = isLabeled ? '4px' : '3px';
+        div.style.borderBottomColor = borderColor;
         div.style.opacity = isLabeled ? '0.7' : (pos === currentPos ? '1' : '0.5');
-        const tag = isLabeled ? `<div style="font-size:9px;color:${{borderColor}};text-align:center;margin-top:1px">${{lbl}}</div>` : '';
-        div.innerHTML = `<img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">${{tag}}`;
-        div.onclick = () => {{ currentPos = pos; renderFocus(); renderSidebar(); }};
+        div.innerHTML = `<img src="data:image/jpeg;base64,${{IMAGES[f.index]}}" loading="lazy">`;
+        div.onclick = () => {{ currentPos = pos; renderFocus(); renderStrip(); }};
         sb.appendChild(div);
-        if (pos === currentPos) div.scrollIntoView({{ block: 'nearest' }});
+        if (pos === currentPos) div.scrollIntoView({{ inline: 'center', block: 'nearest' }});
     }});
 }}
 
@@ -510,7 +507,7 @@ function go(delta) {{
     currentPos = Math.max(0, Math.min(filteredList.length - 1, currentPos + delta));
     manualStep = null;  // 프레임 이동 시 자동 step으로 복귀
     renderFocus();
-    renderSidebar();
+    renderStrip();
 }}
 
 let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
@@ -528,7 +525,7 @@ function setLabel(index, label) {{
         setTimeout(() => {{ go(1); }}, 300);
     }}
     renderFocus();
-    renderSidebar();
+    renderStrip();
 }}
 
 function setPose(index, pose) {{
@@ -540,7 +537,7 @@ function setPose(index, pose) {{
     localStorage.setItem(STORAGE_KEY + '_pose', JSON.stringify(poses));
     checkAutoAdvance(index);
     renderFocus();
-    renderSidebar();
+    renderStrip();
 }}
 
 function setChemistry(index, chem) {{
@@ -552,7 +549,7 @@ function setChemistry(index, chem) {{
     localStorage.setItem(STORAGE_KEY + '_chem', JSON.stringify(chemistries));
     checkAutoAdvance(index);
     renderFocus();
-    renderSidebar();
+    renderStrip();
 }}
 
 function checkAutoAdvance(index) {{
@@ -577,7 +574,7 @@ function focusBucket(axis, value) {{
     }});
     if (target) {{
         const pos = filteredList.indexOf(target);
-        if (pos >= 0) {{ currentPos = pos; renderFocus(); renderSidebar(); }}
+        if (pos >= 0) {{ currentPos = pos; renderFocus(); renderStrip(); }}
     }}
 }}
 
@@ -719,7 +716,7 @@ function resetLabels() {{
     buildFilteredList();
     currentPos = 0;
     renderFocus();
-    renderSidebar();
+    renderStrip();
 }}
 
 // Step-based options: solo vs duo
@@ -879,7 +876,7 @@ function renderTimeline() {{
                 currentPos = pos;
                 manualStep = null;
                 renderFocus();
-                renderSidebar();
+                renderStrip();
             }}
         }};
         bar.appendChild(el);
@@ -894,14 +891,14 @@ document.querySelectorAll('.filter-btn').forEach(btn => {{
         buildFilteredList();
         currentPos = 0;
         renderFocus();
-        renderSidebar();
+        renderStrip();
     }});
 }});
 
 // Init: always render frames first, then show modal overlay if needed
 buildFilteredList();
 renderFocus();
-renderSidebar();
+renderStrip();
 updateMetaIndicator();
 if (!videoMeta) {{
     showMetaModal();
