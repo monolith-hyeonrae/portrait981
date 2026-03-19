@@ -205,6 +205,7 @@ let labels = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{}}'  );
 let currentFilter = 'all';
 let filteredList = [];
 let currentPos = 0;
+let manualStep = null;  // null = auto, number = manual override
 
 let videoMeta = JSON.parse(localStorage.getItem(META_KEY) || 'null');
 let metaDraft = {{ scene: null, gender: null, ethnicity: null }};
@@ -360,19 +361,20 @@ function renderFocus() {{
     let btnsHtml = '';
 
     // Determine current step: shoot → chemistry(duo only) → expression → pose
-    const step = getStep(f.index);
+    const autoStep = getStep(f.index);
+    const step = (manualStep !== null && manualStep >= -1) ? manualStep : autoStep;
 
     if (step === -1) {{
         // cut — 변경 가능
         btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}H</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}Q</span></button>`;
         btnsHtml += `<button class="cat-btn selected" style="background:#d32f2f;color:#fff">cut ✂️</button>`;
         btnsHtml += '</div>';
     }} else {{
         // Step 0: SHOOT / CUT
         btnsHtml += `<div class="buttons" style="${{step === 0 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-        btnsHtml += `<button class="cat-btn" style="${{label && label !== 'cut' ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}H</span></button>`;
-        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}L</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="${{label && label !== 'cut' ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Q</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}W</span></button>`;
         btnsHtml += '</div>';
 
         if (isDuo && step === 1) {{
@@ -441,17 +443,18 @@ function renderFocus() {{
         ${{labelHtml}}
         ${{btnsHtml}}
         <div class="nav">
-            <button onclick="go(-1)" ${{currentPos <= 0 ? 'disabled' : ''}}>Prev ${{K}}K</span></button>
+            <button onclick="go(-1)" ${{currentPos <= 0 ? 'disabled' : ''}}>Prev ${{K}}H</span></button>
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
-            <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next ${{K}}J</span></button>
+            <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next ${{K}}L</span></button>
         </div>
-        <div class="shortcut-hint">H shoot L cut | J next K prev | 1-4 step 선택 | ${{stepHint}}</div>
+        <div class="shortcut-hint">H prev L next | J step↓ K step↑ | Q W E R = 선택 | ${{stepHint}}</div>
     `;
     updateCount();
 }}
 
 function go(delta) {{
     currentPos = Math.max(0, Math.min(filteredList.length - 1, currentPos + delta));
+    manualStep = null;  // 프레임 이동 시 자동 step으로 복귀
     renderFocus();
     renderSidebar();
 }}
@@ -746,21 +749,45 @@ document.addEventListener('keydown', e => {{
     const isDuo = videoMeta && videoMeta.scene === 'duo';
     const STEP_OPTIONS = isDuo ? STEP_OPTIONS_DUO : STEP_OPTIONS_SOLO;
 
-    if (e.key === 'j') go(1);
-    else if (e.key === 'k') go(-1);
-    else if (e.key === 'h') {{ setLabel(idx, '__shoot__'); }}
-    else if (e.key === 'l') {{ setLabel(idx, 'cut'); }}
-    else {{
-        const n = parseInt(e.key);
-        if (n >= 1 && step >= 0 && STEP_OPTIONS[step]) {{
-            const opts = STEP_OPTIONS[step];
-            if (n <= opts.length) {{
-                const [value, fn] = opts[n - 1];
-                if (fn === 'setLabel') setLabel(idx, value);
-                else if (fn === 'setChemistry') setChemistry(idx, value);
-                else if (fn === 'setPose') setPose(idx, value);
-            }}
+    // h/l = prev/next frame
+    if (e.key === 'h') {{ go(-1); return; }}
+    if (e.key === 'l') {{ go(1); return; }}
+
+    // j/k = step focus down/up
+    const isDuo2 = videoMeta && videoMeta.scene === 'duo';
+    const maxStep = isDuo2 ? 3 : 3;
+    const minStep = -1;
+    if (e.key === 'j') {{
+        if (manualStep === null) manualStep = step;
+        manualStep = Math.min(maxStep, manualStep + 1);
+        renderFocus();
+        return;
+    }}
+    if (e.key === 'k') {{
+        if (manualStep === null) manualStep = step;
+        manualStep = Math.max(minStep, manualStep - 1);
+        renderFocus();
+        return;
+    }}
+
+    // q/w/e/r = 현재 포커스 step에서 1/2/3/4번 선택
+    const QWER = {{'q': 1, 'w': 2, 'e': 3, 'r': 4}};
+    const n = QWER[e.key];
+    if (n && step >= 0 && STEP_OPTIONS[step]) {{
+        const opts = STEP_OPTIONS[step];
+        if (n <= opts.length) {{
+            const [value, fn] = opts[n - 1];
+            if (fn === 'setLabel') setLabel(idx, value);
+            else if (fn === 'setChemistry') setChemistry(idx, value);
+            else if (fn === 'setPose') setPose(idx, value);
+            manualStep = null;  // 선택 후 자동 step으로
         }}
+    }}
+
+    // step 0에서도 q=shoot, w=cut
+    if (step === 0) {{
+        if (e.key === 'q') {{ setLabel(idx, '__shoot__'); manualStep = null; }}
+        else if (e.key === 'w') {{ setLabel(idx, 'cut'); manualStep = null; }}
     }}
 }});
 
