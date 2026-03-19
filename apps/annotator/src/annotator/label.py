@@ -225,7 +225,7 @@ const FRAMES = {frames_json};
 const IMAGES = {{{img_entries}}};
 const CATEGORIES = {cat_list_json};
 const CAT_COLORS = {cat_colors_json};
-const STORAGE_KEY = "label_tool_{video_name.replace('.', '_')}";
+const STORAGE_KEY = "label_tool_{video_name.replace('.', '_')}_{len(frames_info)}";
 const META_KEY = STORAGE_KEY + '_video_meta';
 
 let labels = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{}}'  );
