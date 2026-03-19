@@ -62,6 +62,14 @@ class ReviewHandler(SimpleHTTPRequestHandler):
             self._delete_image(data["filename"])
             self._send_json({"ok": True})
 
+        elif parsed.path == "/api/delete_batch":
+            data = json.loads(body)
+            count = 0
+            for fname in data.get("filenames", []):
+                self._delete_image(fname)
+                count += 1
+            self._send_json({"ok": True, "deleted": count})
+
         else:
             self.send_error(404)
 
@@ -219,6 +227,11 @@ h2 { margin-top: 30px; }
         <button class="filter-btn" onclick="setView('occluded',this)">Occluded</button>
         <button class="filter-btn" onclick="setView('all',this)">All</button>
     </div>
+    <div style="display:flex;gap:6px;margin-left:auto">
+        <button class="filter-btn" id="selectBtn" onclick="toggleSelectMode()" style="background:#FF9800;color:#fff;display:none">Select Mode</button>
+        <button class="filter-btn" id="deleteSelBtn" onclick="deleteSelected()" style="background:#d32f2f;color:#fff;display:none">Delete Selected (<span id="selCount">0</span>)</button>
+        <button class="filter-btn" id="cancelSelBtn" onclick="cancelSelect()" style="display:none">Cancel</button>
+    </div>
 </div>
 
 <div id="videoMeta"></div>
@@ -243,6 +256,8 @@ const CHEMS = ['sync','interact'];
 let ROWS = [];
 let VIDEOS = {};
 let currentView = 'expression';
+let selectMode = false;
+let selected = new Set();
 
 function getColor(c) { return COLORS[c] || '#666'; }
 function status(msg) { document.getElementById('status').textContent = msg; setTimeout(() => document.getElementById('status').textContent = '', 2000); }
@@ -291,6 +306,57 @@ async function deleteImage(idx) {
     renderSummary();
     renderAll();
 }
+
+function toggleSelectMode() {
+    selectMode = !selectMode;
+    selected.clear();
+    updateSelectUI();
+    renderAll();
+}
+
+function cancelSelect() {
+    selectMode = false;
+    selected.clear();
+    updateSelectUI();
+    renderAll();
+}
+
+function toggleSelect(idx) {
+    if (selected.has(idx)) selected.delete(idx);
+    else selected.add(idx);
+    updateSelectUI();
+    renderAll();
+}
+
+function updateSelectUI() {
+    document.getElementById('selectBtn').style.display = selectMode ? 'none' : '';
+    document.getElementById('deleteSelBtn').style.display = selectMode ? '' : 'none';
+    document.getElementById('cancelSelBtn').style.display = selectMode ? '' : 'none';
+    document.getElementById('selCount').textContent = selected.size;
+}
+
+async function deleteSelected() {
+    if (selected.size === 0) return;
+    if (!confirm('Delete ' + selected.size + ' images?')) return;
+    const filenames = [...selected].map(i => ROWS[i].filename);
+    await fetch('/api/delete_batch', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({filenames}),
+    });
+    // Remove from ROWS in reverse order
+    const indices = [...selected].sort((a,b) => b-a);
+    indices.forEach(i => ROWS.splice(i, 1));
+    selected.clear();
+    selectMode = false;
+    updateSelectUI();
+    status('Deleted ' + filenames.length + ' ✓');
+    renderSummary();
+    renderAll();
+}
+
+// Show select button always
+document.getElementById('selectBtn').style.display = '';
 
 function setView(view, btn) {
     currentView = view;
@@ -370,6 +436,11 @@ function renderCard(idx) {
     btns += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="deleteImage(${idx})">✕</button>`;
     btns += '</div>';
 
+    if (selectMode) {
+        const isSel = selected.has(idx);
+        const selStyle = isSel ? 'box-shadow:0 0 0 3px #e94560;opacity:1' : 'opacity:0.7';
+        return `<div class="card" style="${selStyle};cursor:pointer" onclick="toggleSelect(${idx})"><img src="/api/image/${r.filename}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div></div>`;
+    }
     return `<div class="card"><img src="/api/image/${r.filename}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${btns}</div>`;
 }
 
