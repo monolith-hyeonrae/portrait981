@@ -446,15 +446,19 @@ function renderFocus() {{
         btnsHtml += '</div>';
     }} else {{
         // Step 0: SHOOT / CUT
-        btnsHtml += `<div class="buttons" style="${{step === 0 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-        btnsHtml += `<button class="cat-btn" style="${{label && label !== 'cut' ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Q</span></button>`;
-        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}W</span></button>`;
+        const isShot = label && label !== 'cut';
+        const s0Focus = step === 0 ? FOCUS + 'padding:4px;border-radius:8px;' : '';
+        const s0Size = step === 0 ? '12px 32px;font-size:16px' : '8px 16px';
+        btnsHtml += `<div class="buttons" style="${{s0Focus}}">`;
+        btnsHtml += `<button class="cat-btn${{isShot ? ' selected' : ''}}" style="${{isShot ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{s0Size}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Q</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{s0Size}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}W</span></button>`;
         btnsHtml += '</div>';
+        if (step === 0) btnsHtml += descHtml(isShot ? '__shoot__' : null);
 
         if (isDuo && step === 1) {{
             // Step 1: CHEMISTRY (duo, focused)
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{FOCUS}}padding:4px;border-radius:8px;">`;
-            for (const [c, key] of [['sync','1'],['interact','2']]) {{
+            for (const [c, key] of [['sync','Q'],['interact','W']]) {{
                 const sel = chem === c;
                 const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
@@ -464,7 +468,7 @@ function renderFocus() {{
         }} else if (isDuo && step > 1 && chem) {{
             // Chemistry selected (not focused)
             btnsHtml += `<div class="buttons" style="margin-top:6px">`;
-            for (const [c, key] of [['sync','1'],['interact','2']]) {{
+            for (const [c, key] of [['sync','Q'],['interact','W']]) {{
                 const sel = chem === c;
                 const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
@@ -488,7 +492,7 @@ function renderFocus() {{
         if (step >= 3) {{
             // Step 3: POSE
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            for (const [p, key] of [['front','1'],['angle','2'],['side','3']]) {{
+            for (const [p, key] of [['front','Q'],['angle','W'],['side','E']]) {{
                 const sel = pose === p;
                 const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
                 btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}} ${{K}}${{key}}</span></button>`;
@@ -746,16 +750,16 @@ function resetLabels() {{
 // Step-based options: solo vs duo
 const STEP_OPTIONS_SOLO = {{
     '-1': [['__shoot__','setLabel']],
-    0: [['__shoot__','setLabel'], ['cut','setLabel']],
-    2: [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
-    3: [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '0': [['__shoot__','setLabel'], ['cut','setLabel']],
+    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
+    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 const STEP_OPTIONS_DUO = {{
     '-1': [['__shoot__','setLabel']],
-    0: [['__shoot__','setLabel'], ['cut','setLabel']],
-    1: [['sync','setChemistry'], ['interact','setChemistry']],
-    2: [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
-    3: [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '0': [['__shoot__','setLabel'], ['cut','setLabel']],
+    '1': [['sync','setChemistry'], ['interact','setChemistry']],
+    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
+    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 
 function getStep(idx) {{
@@ -854,8 +858,9 @@ document.addEventListener('keydown', e => {{
     // q/w/e/r = 현재 포커스 step에서 1/2/3/4번 선택
     const QWER = {{'q': 1, 'w': 2, 'e': 3, 'r': 4}};
     const n = QWER[e.key];
-    if (n && step >= 0 && STEP_OPTIONS[step]) {{
-        const opts = STEP_OPTIONS[step];
+    const activeStep = String(step);  // STEP_OPTIONS keys are strings
+    if (n && STEP_OPTIONS[activeStep]) {{
+        const opts = STEP_OPTIONS[activeStep];
         if (n <= opts.length) {{
             const [value, fn] = opts[n - 1];
             if (fn === 'setLabel') setLabel(idx, value);
@@ -863,12 +868,6 @@ document.addEventListener('keydown', e => {{
             else if (fn === 'setPose') setPose(idx, value);
             manualStep = null;  // 선택 후 자동 step으로
         }}
-    }}
-
-    // step 0에서도 q=shoot, w=cut
-    if (step === 0) {{
-        if (e.key === 'q') {{ setLabel(idx, '__shoot__'); manualStep = null; }}
-        else if (e.key === 'w') {{ setLabel(idx, 'cut'); manualStep = null; }}
     }}
 }});
 
