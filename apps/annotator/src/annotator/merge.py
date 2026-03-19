@@ -82,9 +82,35 @@ def merge_zips(
                     if row["filename"] not in {r["filename"] for r in existing_rows}:
                         new_rows.append(row)
 
+            # Parse video_meta.json → append to videos.csv
+            if "video_meta.json" in zf.namelist():
+                import json as _json
+                meta = _json.loads(zf.read("video_meta.json").decode("utf-8"))
+                videos_path = output_dir / "videos.csv"
+                existing_videos = set()
+                if videos_path.exists():
+                    with open(videos_path) as vf:
+                        for vrow in csv.DictReader(vf):
+                            existing_videos.add(vrow.get("video_id", ""))
+                vid = meta.get("video_id", "")
+                if vid and vid not in existing_videos:
+                    v_fields = ["video_id", "scene", "gender", "ethnicity", "n_persons", "notes"]
+                    write_header = not videos_path.exists()
+                    with open(videos_path, "a", newline="") as vf:
+                        writer = csv.DictWriter(vf, fieldnames=v_fields)
+                        if write_header:
+                            writer.writeheader()
+                        n_p = "2" if meta.get("scene") == "duo" else "1"
+                        writer.writerow({
+                            "video_id": vid, "scene": meta.get("scene", ""),
+                            "gender": meta.get("gender", ""), "ethnicity": meta.get("ethnicity", ""),
+                            "n_persons": n_p, "notes": "",
+                        })
+                    logger.info("  Video meta added: %s (%s)", vid, meta.get("scene", ""))
+
     # Append new rows and save
     all_rows = existing_rows + new_rows
-    fieldnames = ["filename", "member_id", "expression", "pose", "scene", "chemistry", "source"]
+    fieldnames = ["filename", "video_id", "expression", "pose", "chemistry", "source"]
     with open(labels_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

@@ -1,48 +1,53 @@
 name: portrait-v1
 description: 981파크 portrait 데이터셋
-version: "3.0"
-created: "2026-03-18"
+version: "4.0"
+created: "2026-03-19"
 
 structure:
   images: "images/"
-  labels: "labels.csv"
+  labels: "labels.csv"      # 프레임 단위 (변하는 것)
+  videos: "videos.csv"      # 비디오 단위 (고정된 것)
 
-# 표정 (expression) — 셔터를 누를지 결정
+# ── 비디오 단위 (videos.csv) ──
+# 탑승 시작부터 끝까지 변하지 않는 상수
+video_metadata:
+  video_id: "비디오 식별자"
+  scene: "solo = 1인 / duo = 2인"
+  gender: "male / female / mixed(duo)"
+  ethnicity: "asian / western / other"
+  n_persons: "탑승 인원수"
+  notes: "비고"
+
+# ── 프레임 단위 (labels.csv) ──
+# 매 프레임마다 변하는 라벨
+
+# 표정 (expression)
 expression:
-  cheese: "이쁜 미소/웃음 🧀 — 얼굴이 주인공. 프로필 사진, 인물 초상화용"
-  chill:  "쿨하고 여유로운 🧊 — 편안, 힘 빠진 느낌"
-  edge:   "날카롭고 강렬한 🗡️ — 인상 찡그리는데 간지, 제임스딘"
-  hype:   "카타르시스/환호 🔥 — 순간이 주인공. 역동적 액션, 에너지 폭발"
+  cheese: "얼굴이 주인공 — 프로필 사진, 인물 초상화용 이쁜 미소"
+  chill:  "쿨하고 여유로운 — 편안하고 힘 빠진 자연스러운 표정"
+  edge:   "날카롭고 강렬한 — 인상 찡그리는데 간지나는 제임스딘"
+  hype:   "순간이 주인공 — 역동적 액션, 에너지 폭발 카타르시스"
 
 # cheese vs hype 구분:
 #   cheese = 얼굴만 프로필로 쓰고 싶은 장면 → reportrait: 인물 초상화
 #   hype   = 장면 포함 다이나믹을 표현하고 싶은 장면 → reportrait: 액션/배경 합성
 
-# 포즈 (pose) — 독립 축
+# 포즈 (pose)
 pose:
-  front:  "정면"
-  angle:  "3/4 앵글"
-  side:   "측면"
+  front: "정면"
+  angle: "3/4 앵글"
+  side:  "측면"
 
 # 기각
 reject: "cut ✂️ — 이 장면은 찍으면 안 된다"
 
-# 장면 (scene) — 탑승 구성
-scene:
-  solo: "1인 탑승"
-  duo:  "2인 탑승"
-
 # 케미스트리 (chemistry) — scene=duo일 때만
 chemistry:
-  sync: "함께 웃기, 동시 반응"
-  interact: "서로 쳐다보기, 하이파이브"
+  sync: "함께 웃기, 동시 반응 — 둘의 타이밍이 맞는 순간"
+  interact: "서로 쳐다보기, 하이파이브 — 둘이 교감하는 순간"
 
-# labels.csv 컬럼
-columns:
-  filename: "이미지 파일명"
-  member_id: "인물 ID (비디오명 또는 고유 ID, 빈 값 허용)"
-  expression: "표정 라벨 (cheese/chill/edge/hype, 빈 값 = 미지정)"
-  pose: "포즈 라벨 (front/angle/side, 빈 값 = 미지정)"
-  scene: "장면 라벨 (solo/duo, 빈 값 = 미지정)"
-  chemistry: "케미 라벨 (sync/interact, scene=duo일 때만)"
-  source: "reference = 참조 이미지, operational = 운용 프레임"
+# ── 설계 원칙 ──
+# 비디오 상수는 videos.csv에 한번만 기록
+# 프레임 라벨은 labels.csv에 프레임마다 기록
+# video_id로 조인하여 비디오 context를 프레임에 연결
+# XGBoost 학습 시: 45D signal + video context → 판단

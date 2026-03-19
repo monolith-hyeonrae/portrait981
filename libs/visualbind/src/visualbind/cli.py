@@ -250,7 +250,7 @@ def cmd_merge(args: argparse.Namespace) -> None:
 
     # Save merged labels
     all_rows = existing_rows + new_rows
-    fieldnames = ["filename", "member_id", "expression", "pose", "scene", "chemistry", "source"]
+    fieldnames = ["filename", "video_id", "expression", "pose", "chemistry", "source"]
     with open(labels_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()

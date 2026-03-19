@@ -108,6 +108,26 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
 .bucket-matrix td {{ padding: 3px 8px; text-align: center; font-weight: bold; min-width: 40px; }}
 .bucket-matrix .row-total {{ border-left: 1px solid #333; color: #aaa; }}
 .bucket-matrix .col-total {{ border-top: 1px solid #333; color: #aaa; }}
+.modal-overlay {{ position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); z-index: 9999; display: flex; align-items: center;
+    justify-content: center; }}
+.modal-box {{ background: #1a1a2e; border: 2px solid #e94560; border-radius: 12px;
+    padding: 32px 40px; min-width: 360px; max-width: 480px; }}
+.modal-box h2 {{ margin: 0 0 20px; color: #e94560; font-size: 20px; }}
+.modal-row {{ margin: 12px 0; }}
+.modal-row label {{ display: block; font-size: 13px; color: #aaa; margin-bottom: 6px; }}
+.modal-opts {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+.modal-opt {{ padding: 6px 16px; border: 2px solid #444; border-radius: 6px; background: #222;
+    color: #ccc; cursor: pointer; font-size: 13px; transition: all .15s; }}
+.modal-opt:hover {{ background: #444; color: #fff; }}
+.modal-opt.selected {{ background: #e94560; color: #fff; border-color: #e94560; }}
+.modal-start {{ margin-top: 24px; padding: 10px 32px; border: none; border-radius: 6px;
+    background: #4CAF50; color: #fff; font-size: 15px; cursor: pointer; width: 100%; }}
+.modal-start:hover {{ background: #45a049; }}
+.modal-start:disabled {{ opacity: 0.4; cursor: default; }}
+.video-meta-indicator {{ font-size: 12px; color: #aaa; background: #222; padding: 3px 10px;
+    border-radius: 3px; border: 1px solid #444; }}
+.btn-meta {{ background: #444; color: #ccc; font-size: 12px; padding: 4px 10px; }}
 </style>
 </head><body>
 
@@ -123,6 +143,8 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
         <button class="filter-btn" data-filter="labeled">Labeled</button>
         <button class="filter-btn" data-filter="disagree">Disagree</button>
     </div>
+    <span class="video-meta-indicator" id="metaIndicator"></span>
+    <button class="btn-meta" onclick="showMetaModal()">Edit Meta</button>
     <button class="btn-export" onclick="exportLabels()">Export ZIP</button>
     <button class="btn-reset" onclick="resetLabels()">Reset All</button>
 </div>
@@ -133,19 +155,133 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #1a1a2e; 
     <div class="sidebar" id="sidebar"></div>
 </div>
 
+<div class="modal-overlay" id="metaModal" style="display:none">
+    <div class="modal-box">
+        <h2>Video Setup: {video_name}</h2>
+        <div class="modal-row">
+            <label>Scene</label>
+            <div class="modal-opts" id="metaScene">
+                <div class="modal-opt" data-value="solo" onclick="selectMetaOpt('scene','solo')">
+                    <span style="opacity:0.5;font-size:11px">1 </span>solo</div>
+                <div class="modal-opt" data-value="duo" onclick="selectMetaOpt('scene','duo')">
+                    <span style="opacity:0.5;font-size:11px">2 </span>duo</div>
+            </div>
+        </div>
+        <div class="modal-row">
+            <label>Gender</label>
+            <div class="modal-opts" id="metaGender">
+                <div class="modal-opt" data-value="male" onclick="selectMetaOpt('gender','male')">
+                    <span style="opacity:0.5;font-size:11px">1 </span>male</div>
+                <div class="modal-opt" data-value="female" onclick="selectMetaOpt('gender','female')">
+                    <span style="opacity:0.5;font-size:11px">2 </span>female</div>
+                <div class="modal-opt" data-value="mixed" onclick="selectMetaOpt('gender','mixed')">
+                    <span style="opacity:0.5;font-size:11px">3 </span>mixed</div>
+            </div>
+        </div>
+        <div class="modal-row">
+            <label>Ethnicity</label>
+            <div class="modal-opts" id="metaEthnicity">
+                <div class="modal-opt" data-value="asian" onclick="selectMetaOpt('ethnicity','asian')">
+                    <span style="opacity:0.5;font-size:11px">1 </span>asian</div>
+                <div class="modal-opt" data-value="western" onclick="selectMetaOpt('ethnicity','western')">
+                    <span style="opacity:0.5;font-size:11px">2 </span>western</div>
+                <div class="modal-opt" data-value="other" onclick="selectMetaOpt('ethnicity','other')">
+                    <span style="opacity:0.5;font-size:11px">3 </span>other</div>
+            </div>
+        </div>
+        <button class="modal-start" id="metaStartBtn" onclick="saveMetaAndStart()" disabled>Start Labeling</button>
+    </div>
+</div>
+
 <script>
 const FRAMES = {frames_json};
 const IMAGES = {{{img_entries}}};
 const CATEGORIES = {cat_list_json};
 const CAT_COLORS = {cat_colors_json};
 const STORAGE_KEY = "label_tool_{video_name.replace('.', '_')}";
+const META_KEY = STORAGE_KEY + '_video_meta';
 
 let labels = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{{}}'  );
 let currentFilter = 'all';
 let filteredList = [];
 let currentPos = 0;
 
+let videoMeta = JSON.parse(localStorage.getItem(META_KEY) || 'null');
+let metaDraft = {{ scene: null, gender: null, ethnicity: null }};
+let modalMode = 'field';  // 'field' or 'value'
+let modalField = 0;       // 0=scene, 1=gender, 2=ethnicity
+const MODAL_FIELDS = ['scene', 'gender', 'ethnicity'];
+const MODAL_VALUES = {{
+    scene: ['solo', 'duo'],
+    gender: ['male', 'female', 'mixed'],
+    ethnicity: ['asian', 'western', 'other'],
+}};
+
 function getColor(cat) {{ return CAT_COLORS[cat] || '#666'; }}
+
+function updateMetaIndicator() {{
+    const el = document.getElementById('metaIndicator');
+    if (videoMeta) {{
+        el.textContent = videoMeta.scene + ' | ' + videoMeta.gender + ' | ' + videoMeta.ethnicity;
+    }} else {{
+        el.textContent = '(no video meta)';
+        el.style.color = '#e94560';
+    }}
+}}
+
+function selectMetaOpt(field, value) {{
+    metaDraft[field] = value;
+    renderMetaSelections();
+}}
+
+function renderMetaSelections() {{
+    for (const field of MODAL_FIELDS) {{
+        const container = document.getElementById('meta' + field.charAt(0).toUpperCase() + field.slice(1));
+        container.querySelectorAll('.modal-opt').forEach(el => {{
+            el.classList.toggle('selected', el.dataset.value === metaDraft[field]);
+        }});
+    }}
+    // Highlight focused field
+    MODAL_FIELDS.forEach((field, i) => {{
+        const container = document.getElementById('meta' + field.charAt(0).toUpperCase() + field.slice(1));
+        container.parentElement.style.background = (modalMode === 'field' || modalField === i)
+            ? (modalField === i ? 'rgba(233,69,96,0.1)' : '') : '';
+        container.parentElement.style.borderRadius = '6px';
+    }});
+    const btn = document.getElementById('metaStartBtn');
+    btn.disabled = !(metaDraft.scene && metaDraft.gender && metaDraft.ethnicity);
+}}
+
+function showMetaModal() {{
+    metaDraft = videoMeta
+        ? {{ scene: videoMeta.scene, gender: videoMeta.gender, ethnicity: videoMeta.ethnicity }}
+        : {{ scene: null, gender: null, ethnicity: null }};
+    modalMode = 'field';
+    modalField = 0;
+    document.getElementById('metaModal').style.display = 'flex';
+    renderMetaSelections();
+}}
+
+function hideMetaModal() {{
+    document.getElementById('metaModal').style.display = 'none';
+}}
+
+function saveMetaAndStart() {{
+    if (!metaDraft.scene || !metaDraft.gender || !metaDraft.ethnicity) return;
+    const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
+    videoMeta = {{
+        video_id: videoBase,
+        scene: metaDraft.scene,
+        gender: metaDraft.gender,
+        ethnicity: metaDraft.ethnicity,
+    }};
+    localStorage.setItem(META_KEY, JSON.stringify(videoMeta));
+    hideMetaModal();
+    updateMetaIndicator();
+    buildFilteredList();
+    renderFocus();
+    renderSidebar();
+}}
 
 function buildFilteredList() {{
     filteredList = FRAMES.filter(f => {{
@@ -196,10 +332,11 @@ function renderFocus() {{
     const f = filteredList[currentPos];
     const label = labels[f.index];
     const pose = poses[f.index];
-    const scene = scenes[f.index];
+    const scene = videoMeta ? videoMeta.scene : null;
     const chem = chemistries[f.index];
+    const isDuo = scene === 'duo';
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
-    const parts = [scene, label, pose, chem].filter(x => x && x !== '__shoot__');
+    const parts = [label, pose, chem].filter(x => x && x !== '__shoot__');
     const labelHtml = parts.length > 0
         ? `<div class="focus-label">${{parts.join(' + ')}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
@@ -209,8 +346,6 @@ function renderFocus() {{
     const DESC = {{
         '__shoot__': '이 프레임을 촬영합니다',
         'cut': '이 장면은 찍으면 안 됩니다',
-        'solo': '1인 탑승',
-        'duo': '2인 탑승',
         'sync': '함께 웃기, 동시 반응 — 둘의 타이밍이 맞는 순간',
         'interact': '서로 쳐다보기, 하이파이브 — 둘이 교감하는 순간',
         'cheese': '얼굴이 주인공 — 프로필 사진, 인물 초상화용 이쁜 미소',
@@ -224,14 +359,8 @@ function renderFocus() {{
     const descHtml = (val) => val && DESC[val] ? `<div style="font-size:11px;color:#888;margin-top:2px;text-align:center">${{DESC[val]}}</div>` : '';
     let btnsHtml = '';
 
-    // Determine current step: shoot → scene → chemistry(duo) → expression → pose
-    const step = !label ? 0
-        : label === 'cut' ? -1
-        : !scene ? 1
-        : (scene === 'duo' && !chem) ? 2
-        : (label === '__shoot__' || !isAccepted) ? 3
-        : !pose ? 4
-        : 5;  // complete
+    // Determine current step: shoot → chemistry(duo only) → expression → pose
+    const step = getStep(f.index);
 
     if (step === -1) {{
         // cut — 변경 가능
@@ -246,20 +375,8 @@ function renderFocus() {{
         btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{step === 0 ? '12px 32px;font-size:16px' : '8px 16px'}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}2</span></button>`;
         btnsHtml += '</div>';
 
-        if (step >= 1) {{
-            // Step 1: SCENE
-            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            for (const [s, key] of [['solo','1'],['duo','2']]) {{
-                const sel = scene === s;
-                const bg = sel ? `background:${{getColor(s)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}} ${{K}}${{key}}</span></button>`;
-            }}
-            btnsHtml += '</div>';
-            btnsHtml += descHtml(scene);
-        }}
-
-        if (step === 2) {{
-            // Step 2: CHEMISTRY (duo, focused)
+        if (isDuo && step === 1) {{
+            // Step 1: CHEMISTRY (duo, focused)
             btnsHtml += `<div class="buttons" style="margin-top:6px;${{FOCUS}}padding:4px;border-radius:8px;">`;
             for (const [c, key] of [['sync','1'],['interact','2']]) {{
                 const sel = chem === c;
@@ -268,7 +385,7 @@ function renderFocus() {{
             }}
             btnsHtml += '</div>';
             btnsHtml += descHtml(chem);
-        }} else if (step > 2 && scene === 'duo' && chem) {{
+        }} else if (isDuo && step > 1 && chem) {{
             // Chemistry selected (not focused)
             btnsHtml += `<div class="buttons" style="margin-top:6px">`;
             for (const [c, key] of [['sync','1'],['interact','2']]) {{
@@ -280,9 +397,9 @@ function renderFocus() {{
             btnsHtml += descHtml(chem);
         }}
 
-        if (step >= 3) {{
-            // Step 3: EXPRESSION
-            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+        if (step >= 2) {{
+            // Step 2: EXPRESSION
+            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
             for (const [cat, key] of [['cheese','1'],['chill','2'],['edge','3'],['hype','4']]) {{
                 const sel = label === cat;
                 const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
@@ -292,9 +409,9 @@ function renderFocus() {{
             btnsHtml += descHtml(label);
         }}
 
-        if (step >= 4) {{
-            // Step 4: POSE
-            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 4 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+        if (step >= 3) {{
+            // Step 3: POSE
+            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
             for (const [p, key] of [['front','1'],['angle','2'],['side','3']]) {{
                 const sel = pose === p;
                 const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
@@ -304,11 +421,13 @@ function renderFocus() {{
             btnsHtml += descHtml(pose);
         }}
 
-        if (step === 5) {{
-            // Complete — 자동 다음 프레임 (0.3초 후)
+        if (step === 4) {{
+            // Complete
             btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">✓ Complete</div>';
         }}
     }}
+
+    const stepHint = isDuo ? 'shoot→chemistry→expression→pose' : 'shoot→expression→pose';
 
     panel.innerHTML = `
         <img class="focus-img" src="data:image/jpeg;base64,${{IMAGES[f.index]}}">
@@ -326,7 +445,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next ${{K}}J</span></button>
         </div>
-        <div class="shortcut-hint">1-4 = 현재 포커스 step 선택 | J next K prev | shoot→scene→chemistry→expression→pose</div>
+        <div class="shortcut-hint">1-4 = 현재 포커스 step 선택 | J next K prev | ${{stepHint}}</div>
     `;
     updateCount();
 }}
@@ -338,7 +457,6 @@ function go(delta) {{
 }}
 
 let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
-let scenes = JSON.parse(localStorage.getItem(STORAGE_KEY + '_scene') || '{{}}');
 let chemistries = JSON.parse(localStorage.getItem(STORAGE_KEY + '_chem') || '{{}}');
 
 function setLabel(index, label) {{
@@ -368,20 +486,6 @@ function setPose(index, pose) {{
     renderSidebar();
 }}
 
-function setScene(index, scene) {{
-    if (scenes[index] === scene) {{
-        delete scenes[index];
-    }} else {{
-        scenes[index] = scene;
-        // solo면 chemistry 자동 클리어
-        if (scene === 'solo') delete chemistries[index];
-    }}
-    localStorage.setItem(STORAGE_KEY + '_scene', JSON.stringify(scenes));
-    localStorage.setItem(STORAGE_KEY + '_chem', JSON.stringify(chemistries));
-    renderFocus();
-    renderSidebar();
-}}
-
 function setChemistry(index, chem) {{
     if (chemistries[index] === chem) {{
         delete chemistries[index];
@@ -398,17 +502,16 @@ function checkAutoAdvance(index) {{
     // 모든 라벨이 완성되었으면 0.4초 후 다음 프레임으로 자동 이동
     const lbl = labels[index];
     const p = poses[index];
-    const s = scenes[index];
     const c = chemistries[index];
-    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p && s && (s !== 'duo' || c);
+    const isDuo = videoMeta && videoMeta.scene === 'duo';
+    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p && (!isDuo || c);
     if (isComplete) {{
         setTimeout(() => {{ go(1); }}, 400);
     }}
 }}
 
 function focusBucket(axis, value) {{
-    // Find first unlabeled frame for this axis
-    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : axis === 'scene' ? scenes : chemistries;
+    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : chemistries;
     const target = filteredList.find((f, pos) => {{
         if (value === '(none)' || value === '') {{
             return axisData[f.index] === undefined;
@@ -425,19 +528,18 @@ function updateCount() {{
     const total = Object.keys(labels).length;
     document.getElementById('count').textContent = total;
 
+    const isDuo = videoMeta && videoMeta.scene === 'duo';
+
     // Count all axes
     const EXPRS = ['cheese','chill','edge','hype','cut'];
     const POSES = ['front','angle','side',''];
-    const SCENES = ['solo','duo',''];
     const CHEMS = ['sync','interact',''];
 
     const exprCounts = {{}};
     const poseCounts = {{}};
-    const sceneCounts = {{}};
     const chemCounts = {{}};
     EXPRS.forEach(e => exprCounts[e] = 0);
     POSES.forEach(p => poseCounts[p] = 0);
-    SCENES.forEach(s => sceneCounts[s] = 0);
     CHEMS.forEach(c => chemCounts[c] = 0);
 
     const exprPose = {{}};
@@ -446,11 +548,9 @@ function updateCount() {{
     for (const [idx, lbl] of Object.entries(labels)) {{
         if (!lbl || lbl === '__shoot__') continue;
         const p = poses[idx] || '';
-        const s = scenes[idx] || '';
         const c = chemistries[idx] || '';
         if (exprCounts[lbl] !== undefined) exprCounts[lbl]++;
         poseCounts[p] = (poseCounts[p] || 0) + 1;
-        sceneCounts[s] = (sceneCounts[s] || 0) + 1;
         chemCounts[c] = (chemCounts[c] || 0) + 1;
         const key = lbl + '|' + p;
         if (exprPose[key] !== undefined) exprPose[key]++;
@@ -492,14 +592,13 @@ function updateCount() {{
 
     html += '</table>';
 
-    // Scene + Chemistry summary (inline, right side)
-    html += '&nbsp;&nbsp;<span style="font-size:11px;color:#888">';
-    html += `scene: <span style="color:${{getColor('solo')}};cursor:pointer" onclick="focusBucket('scene','solo')">solo ${{sceneCounts['solo'] || 0}}</span>`;
-    html += ` <span style="color:${{getColor('duo')}};cursor:pointer" onclick="focusBucket('scene','duo')">duo ${{sceneCounts['duo'] || 0}}</span>`;
-    html += ` <span style="color:#555;cursor:pointer" onclick="focusBucket('scene','')">(none) ${{sceneCounts[''] || 0}}</span>`;
-    html += ` &nbsp;chem: <span style="color:${{getColor('sync')}};cursor:pointer" onclick="focusBucket('chemistry','sync')">sync ${{chemCounts['sync'] || 0}}</span>`;
-    html += ` <span style="color:${{getColor('interact')}};cursor:pointer" onclick="focusBucket('chemistry','interact')">interact ${{chemCounts['interact'] || 0}}</span>`;
-    html += '</span>';
+    // Chemistry summary (inline, right side) — only for duo
+    if (isDuo) {{
+        html += '&nbsp;&nbsp;<span style="font-size:11px;color:#888">';
+        html += `chem: <span style="color:${{getColor('sync')}};cursor:pointer" onclick="focusBucket('chemistry','sync')">sync ${{chemCounts['sync'] || 0}}</span>`;
+        html += ` <span style="color:${{getColor('interact')}};cursor:pointer" onclick="focusBucket('chemistry','interact')">interact ${{chemCounts['interact'] || 0}}</span>`;
+        html += '</span>';
+    }}
 
     bar.innerHTML = html;
 }}
@@ -519,11 +618,10 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
 
-        const csvRows = ['filename,member_id,expression,pose,scene,chemistry,source'];
+        const csvRows = ['filename,video_id,expression,pose,chemistry,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
             const pose = poses[f.index] || '';
-            const scene = scenes[f.index] || '';
             const chem = chemistries[f.index] || '';
             const fname = `${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`;
             const b64 = IMAGES[f.index];
@@ -531,9 +629,14 @@ async function exportLabels() {{
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             zip.file(`images/${{fname}}`, bytes);
-            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{scene}},${{chem}},operational`);
+            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{chem}},operational`);
         }}
         zip.file('labels.csv', csvRows.join('\\n') + '\\n');
+
+        // Export video metadata
+        if (videoMeta) {{
+            zip.file('video_meta.json', JSON.stringify(videoMeta, null, 2) + '\\n');
+        }}
 
         const blob = await zip.generateAsync({{ type: 'blob' }});
         const a = document.createElement('a');
@@ -552,11 +655,9 @@ function resetLabels() {{
     if (!confirm('Reset all labels?')) return;
     labels = {{}};
     poses = {{}};
-    scenes = {{}};
     chemistries = {{}};
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY + '_pose');
-    localStorage.removeItem(STORAGE_KEY + '_scene');
     localStorage.removeItem(STORAGE_KEY + '_chem');
     buildFilteredList();
     currentPos = 0;
@@ -564,36 +665,86 @@ function resetLabels() {{
     renderSidebar();
 }}
 
-// Step-based numeric input: 1,2,3,4 applies to the currently focused step
-const STEP_OPTIONS = {{
-    '-1': [['__shoot__','setLabel']],                                       // cut → undo
-    0: [['__shoot__','setLabel'], ['cut','setLabel']],                     // shoot/cut
-    1: [['solo','setScene'], ['duo','setScene']],                          // scene
-    2: [['sync','setChemistry'], ['interact','setChemistry']],             // chemistry
-    3: [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],  // expression
-    4: [['front','setPose'], ['angle','setPose'], ['side','setPose']],     // pose
+// Step-based options: solo vs duo
+const STEP_OPTIONS_SOLO = {{
+    '-1': [['__shoot__','setLabel']],
+    0: [['__shoot__','setLabel'], ['cut','setLabel']],
+    2: [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
+    3: [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+}};
+const STEP_OPTIONS_DUO = {{
+    '-1': [['__shoot__','setLabel']],
+    0: [['__shoot__','setLabel'], ['cut','setLabel']],
+    1: [['sync','setChemistry'], ['interact','setChemistry']],
+    2: [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel']],
+    3: [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 
 function getStep(idx) {{
     const lbl = labels[idx];
-    const s = scenes[idx];
     const c = chemistries[idx];
     const p = poses[idx];
+    const isDuo = videoMeta && videoMeta.scene === 'duo';
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
-    if (!lbl) return 0;
-    if (lbl === 'cut') return -1;
-    if (!s) return 1;
-    if (s === 'duo' && !c) return 2;
-    if (lbl === '__shoot__' || !isAccepted) return 3;
-    if (!p) return 4;
-    return 5;
+    if (!lbl) return 0;                          // shoot/cut
+    if (lbl === 'cut') return -1;                // cut done
+    if (isDuo && !c) return 1;                   // chemistry (duo only)
+    if (lbl === '__shoot__' || !isAccepted) return 2;  // expression
+    if (!p) return 3;                            // pose
+    return 4;                                    // complete
+}}
+
+function isModalOpen() {{
+    return document.getElementById('metaModal').style.display !== 'none';
 }}
 
 document.addEventListener('keydown', e => {{
+    // Handle modal keyboard input
+    if (isModalOpen()) {{
+        const n = parseInt(e.key);
+        if (e.key === 'Enter') {{
+            if (metaDraft.scene && metaDraft.gender && metaDraft.ethnicity) {{
+                saveMetaAndStart();
+            }}
+            return;
+        }}
+        if (e.key === 'Escape') {{
+            if (videoMeta) hideMetaModal();
+            return;
+        }}
+        if (e.key === 'Tab') {{
+            e.preventDefault();
+            modalField = (modalField + 1) % MODAL_FIELDS.length;
+            renderMetaSelections();
+            return;
+        }}
+        if (n >= 1) {{
+            const field = MODAL_FIELDS[modalField];
+            const values = MODAL_VALUES[field];
+            if (n <= values.length) {{
+                selectMetaOpt(field, values[n - 1]);
+                // Auto-advance to next unfilled field
+                for (let i = 0; i < MODAL_FIELDS.length; i++) {{
+                    const nextField = (modalField + 1 + i) % MODAL_FIELDS.length;
+                    if (!metaDraft[MODAL_FIELDS[nextField]]) {{
+                        modalField = nextField;
+                        renderMetaSelections();
+                        return;
+                    }}
+                }}
+                // All filled, stay
+                renderMetaSelections();
+            }}
+        }}
+        return;
+    }}
+
     const f = filteredList[currentPos];
     if (!f) return;
     const idx = f.index;
     const step = getStep(idx);
+    const isDuo = videoMeta && videoMeta.scene === 'duo';
+    const STEP_OPTIONS = isDuo ? STEP_OPTIONS_DUO : STEP_OPTIONS_SOLO;
 
     if (e.key === 'j') go(1);
     else if (e.key === 'k') go(-1);
@@ -604,7 +755,6 @@ document.addEventListener('keydown', e => {{
             if (n <= opts.length) {{
                 const [value, fn] = opts[n - 1];
                 if (fn === 'setLabel') setLabel(idx, value);
-                else if (fn === 'setScene') setScene(idx, value);
                 else if (fn === 'setChemistry') setChemistry(idx, value);
                 else if (fn === 'setPose') setPose(idx, value);
             }}
@@ -624,9 +774,15 @@ document.querySelectorAll('.filter-btn').forEach(btn => {{
     }});
 }});
 
-buildFilteredList();
-renderFocus();
-renderSidebar();
+// Init: show modal if no video meta, otherwise start labeling
+updateMetaIndicator();
+if (!videoMeta) {{
+    showMetaModal();
+}} else {{
+    buildFilteredList();
+    renderFocus();
+    renderSidebar();
+}}
 </script>
 </body></html>"""
 
