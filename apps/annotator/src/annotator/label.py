@@ -41,6 +41,7 @@ def _generate_html(frames_info: list[dict], categories: list[str], video_name: s
 
     cat_colors = {
         "cheese": "#4CAF50", "chill": "#2196F3", "edge": "#FF5722", "hype": "#9C27B0",
+        "cut": "#d32f2f",
         "front": "#00BCD4", "angle": "#FF9800", "side": "#795548",
         "solo": "#607D8B", "duo": "#E91E63",
         "sync": "#FFD700", "interact": "#00E676",
@@ -197,64 +198,67 @@ function renderFocus() {{
     const pose = poses[f.index];
     const scene = scenes[f.index];
     const chem = chemistries[f.index];
-    const isAccepted = label && label !== 'pass' && label !== 'skip';
-    const parts = [label, pose, scene, chem].filter(Boolean);
+    const isAccepted = label && label !== 'cut' && label !== '__shoot__';
+    const parts = [label, pose, scene, chem].filter(x => x && x !== '__shoot__');
     const labelHtml = parts.length > 0
         ? `<div class="focus-label">${{parts.join(' + ')}}</div>`
         : `<div class="focus-label" style="color:#888">Unlabeled</div>`;
 
+    const K = '<span style="font-size:10px;opacity:0.5;margin-left:4px">';
     let btnsHtml = '';
 
     if (!label) {{
-        // Step 1: shoot or pass (첫 결정)
+        // Step 1: shoot or cut
         btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸</button>`;
-        btnsHtml += `<button class="cat-btn" style="background:#d32f2f;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'pass')">PASS ⏭️</button>`;
-        btnsHtml += `<button class="cat-btn" style="background:#555;color:#fff;padding:12px 24px" onclick="setLabel(${{f.index}},'skip')">skip</button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Y</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#d32f2f;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}N</span></button>`;
         btnsHtml += '</div>';
     }} else if (label === '__shoot__' || isAccepted) {{
-        // Step 2: expression 선택 (shoot 후)
+        // Step 2: expression
         btnsHtml += '<div class="buttons">';
-        const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
-        for (const cat of EXPRESSIONS) {{
+        const EXPR_MAP = [['cheese','1'],['chill','2'],['edge','3'],['hype','4']];
+        for (const [cat, key] of EXPR_MAP) {{
             const sel = label === cat;
             const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
-            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}}</button>`;
+            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}} ${{K}}${{key}}</span></button>`;
         }}
-        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa" onclick="setLabel(${{f.index}},'pass')">→ pass</button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa" onclick="setLabel(${{f.index}},'cut')">→ cut ${{K}}N</span></button>`;
         btnsHtml += '</div>';
 
-        // Pose + Scene (expression 선택 후)
+        // Pose + Scene
         if (isAccepted) {{
             btnsHtml += '<div class="buttons" style="margin-top:6px">';
-            for (const p of ['front', 'angle', 'side']) {{
+            const POSE_MAP = [['front','Q'],['angle','W'],['side','E']];
+            for (const [p, key] of POSE_MAP) {{
                 const sel = pose === p;
                 const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}}</button>`;
+                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '&nbsp;&nbsp;';
-            for (const s of ['solo', 'duo']) {{
+            const SCENE_MAP = [['solo','Z'],['duo','X']];
+            for (const [s, key] of SCENE_MAP) {{
                 const sel = scene === s;
                 const bg = sel ? `background:${{getColor(s)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}}</button>`;
+                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setScene(${{f.index}},'${{s}}')">${{s}} ${{K}}${{key}}</span></button>`;
             }}
             btnsHtml += '</div>';
 
             if (scene === 'duo') {{
                 btnsHtml += '<div class="buttons" style="margin-top:6px">';
-                for (const c of ['sync', 'interact']) {{
+                const CHEM_MAP = [['sync','V'],['interact','B']];
+                for (const [c, key] of CHEM_MAP) {{
                     const sel = chem === c;
                     const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
-                    btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}}</button>`;
+                    btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
                 }}
                 btnsHtml += '</div>';
             }}
         }}
     }} else {{
-        // pass/skip — 변경 가능
+        // cut — 변경 가능
         btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT</button>`;
-        btnsHtml += `<button class="cat-btn selected" style="background:${{label === 'pass' ? '#d32f2f' : '#888'}};color:#fff">${{label}}</button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}Y</span></button>`;
+        btnsHtml += `<button class="cat-btn selected" style="background:#d32f2f;color:#fff">cut ✂️</button>`;
         btnsHtml += '</div>';
     }}
 
@@ -274,7 +278,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next &rarr;</button>
         </div>
-        <div class="shortcut-hint">y/space=shoot n=pass s=skip | 1=cheese 2=chill 3=edge 4=hype | q=front w=angle e=side | z=solo x=duo | v=sync b=interact</div>
+        <div class="shortcut-hint">Y=shoot N=cut | 1=cheese 2=chill 3=edge 4=hype | Q=front W=angle E=side | Z=solo X=duo | V=sync B=interact</div>
     `;
     updateCount();
 }}
@@ -350,7 +354,7 @@ function updateCount() {{
     document.getElementById('count').textContent = total;
 
     // Count all axes
-    const EXPRS = ['cheese','chill','edge','hype','pass'];
+    const EXPRS = ['cheese','chill','edge','hype','cut'];
     const POSES = ['front','angle','side',''];
     const SCENES = ['solo','duo',''];
     const CHEMS = ['sync','interact',''];
@@ -368,7 +372,7 @@ function updateCount() {{
     EXPRS.forEach(e => POSES.forEach(p => exprPose[e+'|'+p] = 0));
 
     for (const [idx, lbl] of Object.entries(labels)) {{
-        if (!lbl || lbl === 'skip' || lbl === '__shoot__') continue;
+        if (!lbl || lbl === '__shoot__') continue;
         const p = poses[idx] || '';
         const s = scenes[idx] || '';
         const c = chemistries[idx] || '';
@@ -429,7 +433,7 @@ function updateCount() {{
 }}
 
 async function exportLabels() {{
-    const labeled = FRAMES.filter(f => labels[f.index] && labels[f.index] !== 'skip' && labels[f.index] !== '__shoot__');
+    const labeled = FRAMES.filter(f => labels[f.index] && labels[f.index] !== '__shoot__');
     if (labeled.length === 0) {{
         alert('No labeled frames to export.');
         return;
@@ -501,9 +505,8 @@ document.addEventListener('keydown', e => {{
 
     if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === 'ArrowRight') go(1);
-    else if (e.key === 'y' || e.key === ' ') {{ setLabel(idx, lbl ? '__shoot__' : '__shoot__'); }}
-    else if (e.key === 'n') {{ setLabel(idx, 'pass'); }}
-    else if (e.key === 's') {{ setLabel(idx, 'skip'); }}
+    else if (e.key === 'y' || e.key === ' ') {{ setLabel(idx, '__shoot__'); }}
+    else if (e.key === 'n') {{ setLabel(idx, 'cut'); }}
     else if (EXPR_KEYS[e.key]) {{ setLabel(idx, EXPR_KEYS[e.key]); }}
     else if (POSE_KEYS[e.key]) {{ setPose(idx, POSE_KEYS[e.key]); }}
     else if (SCENE_KEYS[e.key]) {{ setScene(idx, SCENE_KEYS[e.key]); }}

@@ -20,8 +20,8 @@ pose:
   angle:  "3/4 앵글"
   side:   "측면"
 
-# 기각 (labels.csv에 포함되지 않음)
-reject: "pass"
+# 기각
+reject: "cut ✂️ — 이 장면은 찍으면 안 된다"
 
 # 장면 (scene) — 탑승 구성
 scene:
