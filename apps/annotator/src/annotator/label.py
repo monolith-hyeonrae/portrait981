@@ -210,7 +210,7 @@ function renderFocus() {{
     if (!label) {{
         // Step 1: shoot or cut
         btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Y</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Enter</span></button>`;
         btnsHtml += `<button class="cat-btn" style="background:#d32f2f;color:#fff;padding:12px 32px;font-size:16px" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}N</span></button>`;
         btnsHtml += '</div>';
     }} else if (label === '__shoot__' || isAccepted) {{
@@ -257,7 +257,7 @@ function renderFocus() {{
     }} else {{
         // cut — 변경 가능
         btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}Y</span></button>`;
+        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}Enter</span></button>`;
         btnsHtml += `<button class="cat-btn selected" style="background:#d32f2f;color:#fff">cut ✂️</button>`;
         btnsHtml += '</div>';
     }}
@@ -278,7 +278,7 @@ function renderFocus() {{
             <div class="pos">${{currentPos + 1}} / ${{filteredList.length}}</div>
             <button onclick="go(1)" ${{currentPos >= filteredList.length - 1 ? 'disabled' : ''}}>Next &rarr;</button>
         </div>
-        <div class="shortcut-hint">Y=shoot N=cut | 1=cheese 2=chill 3=edge 4=hype | Q=front W=angle E=side | Z=solo X=duo | V=sync B=interact</div>
+        <div class="shortcut-hint">Enter=shoot N=cut | 1=cheese 2=chill 3=edge 4=hype | Q=front W=angle E=side | Z=solo X=duo | V=sync B=interact</div>
     `;
     updateCount();
 }}
@@ -505,7 +505,7 @@ document.addEventListener('keydown', e => {{
 
     if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === 'ArrowRight') go(1);
-    else if (e.key === 'y' || e.key === ' ') {{ setLabel(idx, '__shoot__'); }}
+    else if (e.key === 'Enter') {{ e.preventDefault(); setLabel(idx, '__shoot__'); }}
     else if (e.key === 'n') {{ setLabel(idx, 'cut'); }}
     else if (EXPR_KEYS[e.key]) {{ setLabel(idx, EXPR_KEYS[e.key]); }}
     else if (POSE_KEYS[e.key]) {{ setPose(idx, POSE_KEYS[e.key]); }}
