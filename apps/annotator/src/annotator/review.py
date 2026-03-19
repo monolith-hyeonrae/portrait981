@@ -343,6 +343,9 @@ function renderCard(idx, row) {{
     if (vid.main_gender) tags += `<span class="tag" style="background:#444">${{vid.main_gender}}</span>`;
     if (vid.main_ethnicity) tags += `<span class="tag" style="background:#444">${{vid.main_ethnicity}}</span>`;
     if (vid.member_id) tags += `<span class="tag" style="background:#333;color:#FF9800">${{vid.member_id}}</span>`;
+    const srcColor = row.source === 'operational' ? '#FF9800' : '#00BCD4';
+    const srcLabel = row.source === 'operational' ? 'OP' : 'REF';
+    tags += `<span class="tag" style="background:${{srcColor}};font-size:9px">${{srcLabel}}</span>`;
 
     let editHtml = '<div class="edit-btns">';
     for (const e of EXPRESSIONS) {{
