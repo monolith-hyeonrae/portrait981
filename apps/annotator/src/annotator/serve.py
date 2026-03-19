@@ -404,48 +404,59 @@ function renderVideoMeta() {
     el.innerHTML = html;
 }
 
+let editingIdx = null;
+
+function toggleEdit(idx) {
+    editingIdx = (editingIdx === idx) ? null : idx;
+    renderAll();
+}
+
 function renderCard(idx) {
     const r = ROWS[idx];
     const vid = VIDEOS[r.video_id] || {};
-    let tags = '';
+    const srcColor = r.source === 'operational' ? '#8D6E63' : '#78909C';
+    const srcLabel = r.source === 'operational' ? 'OP' : 'REF';
+
+    // Tags: 선택된 라벨만 표시
+    let tags = `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
     if (r.expression) tags += `<span class="tag" style="background:${getColor(r.expression)}">${r.expression}</span>`;
     if (r.pose) tags += `<span class="tag" style="background:${getColor(r.pose)}">${r.pose}</span>`;
     if (r.chemistry) tags += `<span class="tag" style="background:${getColor(r.chemistry)}">${r.chemistry}</span>`;
-    if (vid.scene) tags += `<span class="tag" style="background:${getColor(vid.scene)}">${vid.scene}</span>`;
-    if (vid.main_gender) tags += `<span class="tag" style="background:#444">${vid.main_gender}</span>`;
-    if (vid.main_ethnicity) tags += `<span class="tag" style="background:#444">${vid.main_ethnicity}</span>`;
-    if (vid.member_id) tags += `<span class="tag" style="background:#333;color:#FF9800">${vid.member_id}</span>`;
-    const srcColor = r.source === 'operational' ? '#8D6E63' : '#78909C';
-    const srcLabel = r.source === 'operational' ? 'OP' : 'REF';
-    tags += `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
-
-    let btns = '<div class="edit-btns">';
-    EXPRESSIONS.forEach(e => {
-        const sel = r.expression===e;
-        btns += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(e)+';color:#fff':''}" onclick="updateLabel(${idx},'expression','${e}')">${e}</button>`;
-    });
-    btns += `<button class="edit-btn${r.expression==='cut'?' active':''}" style="${r.expression==='cut'?'background:#d32f2f;color:#fff':''}" onclick="updateLabel(${idx},'expression','cut')">cut</button>`;
-    btns += '</div><div class="edit-btns">';
-    POSES.forEach(p => {
-        const sel = r.pose===p;
-        btns += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(p)+';color:#fff':''}" onclick="updateLabel(${idx},'pose','${p}')">${p}</button>`;
-    });
-    if (vid.scene==='duo') {
-        btns += '&nbsp;';
-        CHEMS.forEach(c => {
-            const sel = r.chemistry===c;
-            btns += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(c)+';color:#fff':''}" onclick="updateLabel(${idx},'chemistry','${c}')">${c}</button>`;
-        });
-    }
-    btns += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="deleteImage(${idx})">✕</button>`;
-    btns += '</div>';
 
     if (selectMode) {
         const isSel = selected.has(idx);
         const selStyle = isSel ? 'box-shadow:0 0 0 3px #e94560;opacity:1' : 'opacity:0.7';
         return `<div class="card" style="${selStyle};cursor:pointer" onclick="toggleSelect(${idx})"><img src="/api/image/${r.filename}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div></div>`;
     }
-    return `<div class="card"><img src="/api/image/${r.filename}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${btns}</div>`;
+
+    // 편집 패널: 카드 클릭 시 토글
+    const isEditing = editingIdx === idx;
+    let editPanel = '';
+    if (isEditing) {
+        editPanel += '<div class="edit-btns" style="margin-top:6px;padding:4px;background:#111;border-radius:4px">';
+        EXPRESSIONS.forEach(e => {
+            const sel = r.expression===e;
+            editPanel += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(e)+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'expression','${e}')">${e}</button>`;
+        });
+        editPanel += `<button class="edit-btn${r.expression==='cut'?' active':''}" style="${r.expression==='cut'?'background:#d32f2f;color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'expression','cut')">cut</button>`;
+        editPanel += '</div><div class="edit-btns" style="padding:4px;background:#111;border-radius:4px">';
+        POSES.forEach(p => {
+            const sel = r.pose===p;
+            editPanel += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(p)+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'pose','${p}')">${p}</button>`;
+        });
+        if (vid.scene==='duo') {
+            editPanel += '&nbsp;';
+            CHEMS.forEach(c => {
+                const sel = r.chemistry===c;
+                editPanel += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(c)+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'chemistry','${c}')">${c}</button>`;
+            });
+        }
+        editPanel += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="event.stopPropagation();deleteImage(${idx})">✕ delete</button>`;
+        editPanel += '</div>';
+    }
+
+    const border = isEditing ? 'box-shadow:0 0 0 2px #e94560;' : '';
+    return `<div class="card" style="${border}cursor:pointer" onclick="toggleEdit(${idx})"><img src="/api/image/${r.filename}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${editPanel}</div>`;
 }
 
 function renderGroup(title, color, indices) {
