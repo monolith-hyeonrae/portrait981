@@ -164,6 +164,7 @@ const EXPRESSIONS = ['cheese', 'chill', 'edge', 'hype'];
 const POSES = ['front', 'angle', 'side'];
 const CHEMS = ['sync', 'interact'];
 let changes = {{}};
+let deleted = new Set();
 let currentView = 'expression';
 
 function getColor(c) {{ return COLORS[c] || '#666'; }}
@@ -179,17 +180,29 @@ function setField(idx, field, value) {{
 }}
 
 function updateSaveBtn() {{
-    const n = Object.keys(changes).length;
+    const n = Object.keys(changes).length + deleted.size;
     document.getElementById('saveBtn').disabled = n === 0;
-    document.getElementById('changesCount').textContent = n > 0 ? n + ' modified' : '';
+    const parts = [];
+    if (Object.keys(changes).length > 0) parts.push(Object.keys(changes).length + ' modified');
+    if (deleted.size > 0) parts.push(deleted.size + ' deleted');
+    document.getElementById('changesCount').textContent = parts.join(', ');
 }}
 
 function downloadCSV() {{
-    // labels.csv
+    // labels.csv (삭제된 항목 제외)
     const header = 'filename,video_id,expression,pose,chemistry,source';
     const lines = [header];
-    for (const r of ROWS) {{
+    const deletedFiles = [];
+    ROWS.forEach((r, i) => {{
+        if (deleted.has(i)) {{
+            deletedFiles.push(r.filename);
+            return;
+        }}
         lines.push([r.filename, r.video_id||'', r.expression||'', r.pose||'', r.chemistry||'', r.source||''].join(','));
+    }});
+
+    if (deletedFiles.length > 0) {{
+        alert('삭제된 이미지 ' + deletedFiles.length + '건:\\n' + deletedFiles.join('\\n') + '\\n\\nimages/ 폴더에서 직접 삭제해주세요.');
     }}
     const blob = new Blob([lines.join('\\n') + '\\n'], {{ type: 'text/csv' }});
     const a = document.createElement('a');
@@ -212,6 +225,17 @@ function downloadCSV() {{
         va.download = 'videos.csv';
         va.click();
     }}
+}}
+
+function toggleDelete(idx) {{
+    const fname = ROWS[idx].filename;
+    if (deleted.has(idx)) {{
+        deleted.delete(idx);
+    }} else {{
+        deleted.add(idx);
+    }}
+    updateSaveBtn();
+    renderAll();
 }}
 
 function editVideoField(videoId, field, value) {{
@@ -279,6 +303,16 @@ function renderCard(idx, row) {{
     const chem = row.chemistry || '';
     const vid = VIDEOS[row.video_id] || {{}};
     const isModified = changes[idx] ? ' modified' : '';
+    const isDeleted = deleted.has(idx);
+
+    if (isDeleted) {{
+        return `<div class="card" id="card-${{idx}}" style="opacity:0.3;position:relative">
+            <img src="data:image/jpeg;base64,${{b64}}">
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#d32f2f;font-size:24px;font-weight:bold">DELETED</div>
+            <div class="name">${{row.filename}}</div>
+            <button class="edit-btn" style="background:#4CAF50;color:#fff;margin-top:4px" onclick="toggleDelete(${{idx}})">Undo</button>
+        </div>`;
+    }}
 
     let tags = '';
     if (expr) tags += `<span class="tag" style="background:${{getColor(expr)}}">${{expr}}</span>`;
@@ -307,6 +341,7 @@ function renderCard(idx, row) {{
             editHtml += `<button class="edit-btn${{act?' active':''}}" style="${{act?'background:'+getColor(c):''}}" onclick="setField(${{idx}},'chemistry','${{c}}')">${{c}}</button>`;
         }}
     }}
+    editHtml += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="toggleDelete(${{idx}})">✕</button>`;
     editHtml += '</div>';
 
     return `<div class="card${{isModified}}" id="card-${{idx}}">
