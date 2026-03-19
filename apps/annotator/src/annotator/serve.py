@@ -241,16 +241,16 @@ h2 { margin-top: 30px; }
 
 <script>
 const COLORS = {
-    cheese:'#4CAF50', chill:'#2196F3', edge:'#FF5722', hype:'#9C27B0',
+    cheese:'#4CAF50', goofy:'#E91E63', chill:'#2196F3', edge:'#FF5722', hype:'#9C27B0',
     cut:'#d32f2f', occluded:'#795548', front:'#00BCD4', angle:'#FF9800', side:'#795548',
     sync:'#FFD700', interact:'#00E676', solo:'#607D8B', duo:'#E91E63',
 };
 const DESC = {
-    cheese:'얼굴이 주인공 — 프로필 사진', chill:'쿨하고 여유로운', edge:'날카롭고 강렬한',
+    cheese:'얼굴이 주인공 — 프로필 사진', goofy:'장난스러운 표정 — 혀 내밀기, 윙크', chill:'쿨하고 여유로운', edge:'날카롭고 강렬한',
     hype:'순간이 주인공 — 에너지 폭발', occluded:'얼굴 가려짐', cut:'촬영 불가',
     front:'정면', angle:'3/4', side:'측면', sync:'동시 반응', interact:'교감',
 };
-const EXPRESSIONS = ['cheese','chill','edge','hype','occluded'];
+const EXPRESSIONS = ['cheese','goofy','chill','edge','hype','occluded'];
 const POSES = ['front','angle','side'];
 const CHEMS = ['sync','interact'];
 

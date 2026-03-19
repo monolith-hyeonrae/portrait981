@@ -40,7 +40,7 @@ def _generate_html(frames_info: list[dict], categories: list[str], video_name: s
     ])
 
     cat_colors = {
-        "cheese": "#4CAF50", "chill": "#2196F3", "edge": "#FF5722", "hype": "#9C27B0",
+        "cheese": "#4CAF50", "goofy": "#E91E63", "chill": "#2196F3", "edge": "#FF5722", "hype": "#9C27B0",
         "cut": "#d32f2f",
         "occluded": "#795548",
         "front": "#00BCD4", "angle": "#FF9800", "side": "#795548",
@@ -439,6 +439,7 @@ function renderFocus() {{
         'sync': '함께 웃기, 동시 반응 — 둘의 타이밍이 맞는 순간',
         'interact': '서로 쳐다보기, 하이파이브 — 둘이 교감하는 순간',
         'cheese': '얼굴이 주인공 — 프로필 사진, 인물 초상화용 이쁜 미소',
+        'goofy': '장난스러운 표정 😜 — 혀 내밀기, 윙크, 과장된 표정, 재미있는 개성',
         'chill': '쿨하고 여유로운 — 편안하고 힘 빠진 자연스러운 표정',
         'edge': '날카롭고 강렬한 — 인상 찡그리는데 간지나는 제임스딘',
         'hype': '순간이 주인공 — 역동적 액션, 에너지 폭발 카타르시스',
@@ -476,7 +477,7 @@ function renderFocus() {{
 
     // Step 2: EXPRESSION (항상 표시)
     btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-    for (const [cat, key] of [['cheese','Q'],['chill','W'],['edge','E'],['hype','R'],['occluded','T']]) {{
+    for (const [cat, key] of [['cheese','Q'],['goofy','W'],['chill','E'],['edge','R'],['hype','T'],['occluded','Y']]) {{
         const sel = label === cat;
         const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
         btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}} ${{K}}${{key}}</span></button>`;
@@ -604,7 +605,7 @@ function updateCount() {{
     const isDuo = videoMeta && videoMeta.scene === 'duo';
 
     // Count all axes
-    const EXPRS = ['cheese','chill','edge','hype','occluded','cut'];
+    const EXPRS = ['cheese','goofy','chill','edge','hype','occluded','cut'];
     const POSES = ['front','angle','side',''];
     const CHEMS = ['sync','interact',''];
 
@@ -742,14 +743,14 @@ function resetLabels() {{
 const STEP_OPTIONS_SOLO = {{
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
+    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 const STEP_OPTIONS_DUO = {{
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
     '1': [['sync','setChemistry'], ['interact','setChemistry']],
-    '2': [['cheese','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
+    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 
@@ -848,7 +849,7 @@ document.addEventListener('keydown', e => {{
     }}
 
     // q/w/e/r = 현재 포커스 step에서 1/2/3/4번 선택
-    const QWER = {{'q': 1, 'w': 2, 'e': 3, 'r': 4, 't': 5}};
+    const QWER = {{'q': 1, 'w': 2, 'e': 3, 'r': 4, 't': 5, 'y': 6}};
     const n = QWER[e.key];
     const activeStep = String(step);  // STEP_OPTIONS keys are strings
     if (n && STEP_OPTIONS[activeStep]) {{
@@ -983,7 +984,7 @@ def generate_label_html(
         })
 
     video_name = video_path.name
-    cat_names = ["cheese", "chill", "edge", "hype"]
+    cat_names = ["cheese", "goofy", "chill", "edge", "hype"]
     html = _generate_html(frames_info, cat_names, video_name)
 
     output_path.write_text(html, encoding="utf-8")
