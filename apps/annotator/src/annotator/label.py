@@ -438,73 +438,48 @@ function renderFocus() {{
     const autoStep = getStep(f.index);
     const step = (manualStep !== null && manualStep >= -1) ? manualStep : autoStep;
 
-    if (step === -1) {{
-        // cut — 변경 가능
-        btnsHtml += '<div class="buttons">';
-        btnsHtml += `<button class="cat-btn" style="background:#4CAF50;color:#fff;padding:10px 24px" onclick="setLabel(${{f.index}},'__shoot__')">→ SHOOT ${{K}}Q</span></button>`;
-        btnsHtml += `<button class="cat-btn selected" style="background:#d32f2f;color:#fff">cut ✂️</button>`;
+    // Step 0: SHOOT / CUT (항상 표시)
+    const isShot = label && label !== 'cut';
+    const isCut = label === 'cut';
+    btnsHtml += `<div class="buttons" style="${{step === 0 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+    btnsHtml += `<button class="cat-btn${{isShot ? ' selected' : ''}}" style="${{isShot ? 'background:#4CAF50;color:#fff;' : ''}}padding:8px 18px" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Q</span></button>`;
+    btnsHtml += `<button class="cat-btn${{isCut ? ' selected' : ''}}" style="${{isCut ? 'background:#d32f2f;color:#fff;' : 'background:#333;color:#aaa;'}}padding:8px 18px" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}W</span></button>`;
+    btnsHtml += '</div>';
+
+    // Step 1: CHEMISTRY (duo only, 항상 표시)
+    if (isDuo) {{
+        btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+        for (const [c, key] of [['sync','Q'],['interact','W']]) {{
+            const sel = chem === c;
+            const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
+            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
+        }}
         btnsHtml += '</div>';
-    }} else {{
-        // Step 0: SHOOT / CUT
-        const isShot = label && label !== 'cut';
-        const s0Focus = step === 0 ? FOCUS + 'padding:4px;border-radius:8px;' : '';
-        const s0Size = step === 0 ? '12px 32px;font-size:16px' : '8px 16px';
-        btnsHtml += `<div class="buttons" style="${{s0Focus}}">`;
-        btnsHtml += `<button class="cat-btn${{isShot ? ' selected' : ''}}" style="${{isShot ? 'background:#4CAF50;color:#fff;' : ''}}padding:${{s0Size}}" onclick="setLabel(${{f.index}},'__shoot__')">SHOOT 📸 ${{K}}Q</span></button>`;
-        btnsHtml += `<button class="cat-btn" style="background:#333;color:#aaa;padding:${{s0Size}}" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}W</span></button>`;
-        btnsHtml += '</div>';
-        if (step === 0) btnsHtml += descHtml(isShot ? '__shoot__' : null);
+        btnsHtml += descHtml(chem);
+    }}
 
-        if (isDuo && step === 1) {{
-            // Step 1: CHEMISTRY (duo, focused)
-            btnsHtml += `<div class="buttons" style="margin-top:6px;${{FOCUS}}padding:4px;border-radius:8px;">`;
-            for (const [c, key] of [['sync','Q'],['interact','W']]) {{
-                const sel = chem === c;
-                const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
-            }}
-            btnsHtml += '</div>';
-            btnsHtml += descHtml(chem);
-        }} else if (isDuo && step > 1 && chem) {{
-            // Chemistry selected (not focused)
-            btnsHtml += `<div class="buttons" style="margin-top:6px">`;
-            for (const [c, key] of [['sync','Q'],['interact','W']]) {{
-                const sel = chem === c;
-                const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
-            }}
-            btnsHtml += '</div>';
-            btnsHtml += descHtml(chem);
-        }}
+    // Step 2: EXPRESSION (항상 표시)
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+    for (const [cat, key] of [['cheese','Q'],['chill','W'],['edge','E'],['hype','R']]) {{
+        const sel = label === cat;
+        const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
+        btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}} ${{K}}${{key}}</span></button>`;
+    }}
+    btnsHtml += '</div>';
+    btnsHtml += descHtml(isAccepted ? label : null);
 
-        if (step >= 2) {{
-            // Step 2: EXPRESSION
-            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            for (const [cat, key] of [['cheese','1'],['chill','2'],['edge','3'],['hype','4']]) {{
-                const sel = label === cat;
-                const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLabel(${{f.index}},'${{cat}}')">${{cat}} ${{K}}${{key}}</span></button>`;
-            }}
-            btnsHtml += '</div>';
-            btnsHtml += descHtml(label);
-        }}
+    // Step 3: POSE (항상 표시)
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+    for (const [p, key] of [['front','Q'],['angle','W'],['side','E']]) {{
+        const sel = pose === p;
+        const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
+        btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}} ${{K}}${{key}}</span></button>`;
+    }}
+    btnsHtml += '</div>';
+    btnsHtml += descHtml(pose);
 
-        if (step >= 3) {{
-            // Step 3: POSE
-            btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-            for (const [p, key] of [['front','Q'],['angle','W'],['side','E']]) {{
-                const sel = pose === p;
-                const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
-                btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setPose(${{f.index}},'${{p}}')">${{p}} ${{K}}${{key}}</span></button>`;
-            }}
-            btnsHtml += '</div>';
-            btnsHtml += descHtml(pose);
-        }}
-
-        if (step === 4) {{
-            // Complete
-            btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">✓ Complete</div>';
-        }}
+    if (step === 4) {{
+        btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">✓ Complete</div>';
     }}
 
     const stepHint = isDuo ? 'shoot→chemistry→expression→pose' : 'shoot→expression→pose';
