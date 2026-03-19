@@ -455,7 +455,11 @@ function renderCard(idx) {
         editPanel += '</div>';
     }
 
-    const border = isEditing ? 'box-shadow:0 0 0 2px #e94560;' : '';
+    const isComplete = r.expression && r.expression !== 'cut' && r.pose;
+    const isCut = r.expression === 'cut';
+    const isEmpty = !r.expression && !r.pose;
+    const statusBorder = isEditing ? '0 0 0 2px #e94560' : isComplete ? '0 0 0 2px #4CAF50' : isCut ? '0 0 0 2px #d32f2f' : isEmpty ? '0 0 0 2px #333' : '0 0 0 2px #FF9800';
+    const border = `box-shadow:${statusBorder};`;
     return `<div class="card" style="${border}cursor:pointer" onclick="toggleEdit(${idx})"><img src="/api/image/${r.filename}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${editPanel}</div>`;
 }
 
