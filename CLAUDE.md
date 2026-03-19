@@ -37,11 +37,12 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-head-pose        (6DRepNet, 6DoF)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
-      → visualbind (multi-observer signal binding, PoC)
+      → visualbind (observer 출력 결합 — XGBoost/Catalog/TwoStage 전략)
       → momentscan (분석/수집 앱)
           → momentscan-plugins (7개 내부 analyzer 플러그인)
       → momentbank (저장/관리)
       → reportrait (AI 초상화 생성, ComfyUI 브릿지)
+      → annotator (라벨링/리뷰/병합 도구)
 ```
 
 ## 디렉토리 구조
@@ -68,7 +69,7 @@ portrait981/                    ← repo root
 │           ├── body-pose/      # YOLO-Pose
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
-│   ├── momentscan/             # 얼굴/장면 분석 + 수집
+│   ├── momentscan/             # 얼굴/장면 분석 + 수집 (observer 실행)
 │   ├── momentscan-plugins/     # momentscan 내부 analyzer 플러그인 (7개)
 │   │   ├── face-classify/      # 역할 분류
 │   │   ├── face-quality/       # 얼굴 품질 (blur/exposure + seg)
@@ -77,15 +78,19 @@ portrait981/                    ← repo root
 │   │   ├── frame-quality/      # 프레임 전체 blur/brightness
 │   │   ├── frame-scoring/      # 프레임 스코어링
 │   │   └── portrait-score/     # CLIP 4축 aesthetic scoring
+│   ├── annotator/              # 라벨링/리뷰/병합 도구 (CLI: annotator)
 │   ├── momentbank/             # Identity memory bank + 프레임 저장
 │   ├── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
 │   ├── momentscan-report/      # HTML 리포트 생성 (Plotly)
 │   └── portrait981-serve/      # 서빙 레이어 (REST API + S3 + 노드풀)
+├── data/
+│   ├── datasets/portrait-v1/   # 통합 데이터셋 (images/ + labels.csv)
+│   └── catalogs/portrait-v1/   # CatalogStrategy 산출물 (_profile.json)
+├── models/                     # 학습 산출물 (XGBoost .pkl/.json)
+├── scripts/                    # Day 0 분석, 비교, Video-LLM 테스트
 ├── docs/
 │   ├── ROADMAP.md
 │   └── planning/
-├── models/
-│   └── yolov8m-pose.pt
 ├── pyproject.toml              # workspace root
 └── CLAUDE.md
 ```
@@ -109,8 +114,8 @@ portrait981/                    ← repo root
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
 | vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
 | vpx-viz | `libs/vpx/viz/` | 시각화 도구 |
-| visualbind | `libs/visualbind/` | Multi-observer signal binding (PoC) |
-| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 |
+| visualbind | `libs/visualbind/` | Observer 출력 결합 (45D signal → XGBoost/Catalog/TwoStage 전략) |
+| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 (observer 실행) |
 | momentscan-face-classify | `apps/momentscan-plugins/face-classify/` | 역할 분류 |
 | momentscan-face-quality | `apps/momentscan-plugins/face-quality/` | 얼굴 품질 (blur/exposure + seg) |
 | momentscan-face-baseline | `apps/momentscan-plugins/face-baseline/` | Welford online stats |
@@ -123,6 +128,7 @@ portrait981/                    ← repo root
 | momentscan-report | `apps/momentscan-report/` | HTML 리포트 생성 (Plotly) |
 | portrait981 | `apps/portrait981/` | 통합 오케스트레이터 (E2E 파이프라인) |
 | portrait981-serve | `apps/portrait981-serve/` | 서빙 레이어 (REST API + S3 + 노드풀) |
+| annotator | `apps/annotator/` | 라벨링/리뷰/병합 도구 (CLI: `annotator label/review/merge`) |
 
 ## Namespace Package 패턴
 
@@ -160,8 +166,9 @@ from momentscan.face_classify.output import FaceClassifierOutput
 from momentscan.face_quality import FaceQualityAnalyzer
 from momentscan.frame_quality import QualityAnalyzer
 
-# visualbind (multi-observer signal binding)
-from visualbind import HintCollector, AgreementEngine, PairMiner, TripletEncoder
+# visualbind (observer 출력 결합)
+from visualbind import CatalogStrategy, TreeStrategy, TwoStageStrategy, select_frames
+from visualbind.signals import SIGNAL_FIELDS, normalize_signal
 
 # DummyAnalyzer (visualpath core, 테스트 전용)
 from visualpath.core import DummyAnalyzer
@@ -195,6 +202,47 @@ vpx new face.landmark --no-backend             # backends/ 생략
 vpx new face.landmark --dry-run                # 미리보기
 vpx new face.landmark --namespace momentscan   # momentscan namespace 플러그인
 vpx new face.landmark --namespace myns --output /path/to/dir  # 커스텀 namespace + 출력 경로
+```
+
+## visualbind CLI
+
+```bash
+# Day 0: N_eff 분석
+visualbind analyze --data signals.parquet
+
+# XGBoost 학습
+visualbind train --data signals.parquet --labels labels.json --strategy xgboost --output model.json
+
+# 평가
+visualbind eval --data signals.parquet --labels labels.json --model model.pkl
+
+# anchor ZIP 병합
+visualbind merge anchors_test3.zip -o data/datasets/portrait-v1
+```
+
+## annotator CLI
+
+```bash
+# 비디오 → 라벨링 HTML (2단계: expression + pose)
+annotator label video.mp4 --fps 2 --output labels.html
+
+# 데이터셋 리뷰 (카테고리별 갤러리 + 라벨 편집)
+annotator review data/datasets/portrait-v1 --output review.html
+
+# anchor ZIP 병합
+annotator merge anchors_test3.zip -o data/datasets/portrait-v1
+```
+
+## 데이터셋 구조
+
+```
+data/datasets/portrait-v1/
+├── images/         ← 모든 이미지 (gitignore, 로컬만)
+├── labels.csv      ← 다축 라벨 (filename, member_id, expression, pose, source)
+└── dataset.yaml    ← 메타데이터
+
+Expression: cheese 🧀 / chill 🧊 / edge 🗡️ / hype 🔥 / pass ⏭️
+Pose:       front / angle / side
 ```
 
 `vpx new`는 파일 생성 후 root `pyproject.toml`의 workspace members에 자동 등록한다.
