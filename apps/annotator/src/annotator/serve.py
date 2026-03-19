@@ -194,7 +194,8 @@ def _build_review_html() -> str:
 body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; margin: 20px; }
 h1 { color: #e94560; }
 h2 { margin-top: 30px; }
-.toolbar { background: #0f0f23; padding: 12px 20px; border-radius: 8px; margin: 10px 0;
+.toolbar { background: #0f0f23; padding: 12px 20px; border-radius: 0;
+    position: sticky; top: 0; z-index: 100;
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .toolbar button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
 .filter-btn { background: #333; color: #ccc; padding: 4px 10px; border: 1px solid #555;
