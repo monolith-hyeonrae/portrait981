@@ -60,32 +60,48 @@ def _frame_to_jpeg(frame_bgr: np.ndarray, max_width: int = 640) -> bytes:
 
 
 def _compress_video(
-    src: Path, dst: Path, max_height: int = 360, crf: int = 28, fps: int = 5,
+    src: Path, dst: Path, max_height: int = 720, fps: int = 3, bitrate: str = "340k",
 ) -> bool:
-    """Compress video with ffmpeg. Returns True on success."""
+    """Compress video with ffmpeg (2-pass ABR).
+
+    Defaults: 720p / 3fps / 340kbps → ~4MB per 2min video.
+    """
     if not shutil.which("ffmpeg"):
         logger.warning("ffmpeg not found — skipping video compression")
         return False
     dst.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
+    vf = f"fps={fps},scale=-2:'min({max_height},ih)':flags=lanczos"
+    pass1 = [
         "ffmpeg", "-y", "-i", str(src),
-        "-vf", f"fps={fps},scale=-2:{max_height}",
-        "-c:v", "libx264", "-crf", str(crf), "-preset", "fast",
-        "-maxrate", "200k", "-bufsize", "400k",
-        "-an",
-        "-movflags", "+faststart",
+        "-vf", vf,
+        "-c:v", "libx264", "-b:v", bitrate, "-pass", "1",
+        "-an", "-f", "null", "/dev/null",
+    ]
+    pass2 = [
+        "ffmpeg", "-y", "-i", str(src),
+        "-vf", vf,
+        "-c:v", "libx264", "-b:v", bitrate, "-pass", "2", "-preset", "slow",
+        "-an", "-movflags", "+faststart",
         str(dst),
     ]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=300)
+        result = subprocess.run(pass1, capture_output=True, timeout=300, cwd=str(dst.parent))
+        if result.returncode != 0:
+            logger.warning("ffmpeg pass 1 failed: %s", result.stderr.decode()[-200:])
+            return False
+        result = subprocess.run(pass2, capture_output=True, timeout=300, cwd=str(dst.parent))
         if result.returncode == 0:
             src_mb = src.stat().st_size / 1e6
             dst_mb = dst.stat().st_size / 1e6
             logger.info("Video compressed: %.1fMB → %.1fMB (%s)", src_mb, dst_mb, dst.name)
             return True
-        logger.warning("ffmpeg failed: %s", result.stderr.decode()[-200:])
+        logger.warning("ffmpeg pass 2 failed: %s", result.stderr.decode()[-200:])
     except Exception as e:
         logger.warning("Video compression failed: %s", e)
+    finally:
+        # Clean up 2-pass log files
+        for f in dst.parent.glob("ffmpeg2pass-*"):
+            f.unlink(missing_ok=True)
     return False
 
 
@@ -255,20 +271,28 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 existing_rows = list(csv.DictReader(f))
                 existing_fnames = {r["filename"] for r in existing_rows}
 
-        # Append new labels (skip if filename already exists)
-        new_rows = []
+        # Update existing labels or append new ones
+        merge_map = {}
         for item in merge_items:
-            if item["filename"] not in existing_fnames:
-                new_rows.append({
-                    "filename": item["filename"],
-                    "workflow_id": self.video_stem,
-                    "expression": item["expression"],
-                    "pose": item["pose"],
-                    "chemistry": item["chemistry"],
-                    "source": "operational",
-                })
+            merge_map[item["filename"]] = {
+                "filename": item["filename"],
+                "workflow_id": self.video_stem,
+                "expression": item["expression"],
+                "pose": item["pose"],
+                "chemistry": item["chemistry"],
+                "source": "operational",
+            }
 
+        updated = 0
+        for r in existing_rows:
+            if r["filename"] in merge_map:
+                r.update(merge_map.pop(r["filename"]))
+                updated += 1
+
+        new_rows = list(merge_map.values())
         all_rows = existing_rows + new_rows
+        if updated:
+            logger.info("Updated %d existing labels, added %d new", updated, len(new_rows))
         with open(labels_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -326,13 +350,13 @@ class LabelHandler(SimpleHTTPRequestHandler):
             "ok": True,
             "merged_images": len(merge_items),
             "new_labels": len(new_rows),
-            "skipped": len(merge_items) - len(new_rows),
+            "updated_labels": updated,
             "video_saved": video_saved,
             "video_path": str(compressed_path) if video_saved else None,
         }
 
     def _serve_html(self):
-        html = _build_label_html(self.video_name, len(self.frames))
+        html = _build_label_html(self.video_name, len(self.frames), str(self.dataset_dir))
         body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -344,7 +368,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
         pass
 
 
-def _build_label_html(video_name: str, frame_count: int) -> str:
+def _build_label_html(video_name: str, frame_count: int, dataset_dir: str = "") -> str:
     """Build the label UI HTML.
 
     Key difference from label.py:
@@ -447,6 +471,7 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; 
         <b id="count">0</b> / <span id="total">{frame_count}</span> labeled
         &nbsp;| {video_name}
     </div>
+    <span style="font-size:11px;color:#999;background:#f0f0f0;padding:2px 8px;border-radius:3px;border:1px solid #ddd">{dataset_dir}</span>
     <div class="filter-group">
         <button class="filter-btn active" data-filter="all">All</button>
         <button class="filter-btn" data-filter="unlabeled">Unlabeled</button>
@@ -600,13 +625,7 @@ function buildFilteredList() {{
         if (currentFilter === 'labeled' && lbl === undefined) continue;
         filteredList.push(i);
     }}
-    // Sort: unlabeled first
-    filteredList.sort((a, b) => {{
-        const la = labels[a] !== undefined ? 1 : 0;
-        const lb = labels[b] !== undefined ? 1 : 0;
-        if (la !== lb) return la - lb;
-        return a - b;
-    }});
+    filteredList.sort((a, b) => a - b);
 }}
 
 // --- Rendering ---
@@ -960,7 +979,7 @@ async function doMerge() {{
         if (res.ok) {{
             const s = document.getElementById('confirmSummary');
             let detail = `${{res.merged_images}} images saved, ${{res.new_labels}} new labels added`;
-            if (res.skipped > 0) detail += `, ${{res.skipped}} skipped (already exist)`;
+            if (res.updated_labels > 0) detail += `, ${{res.updated_labels}} labels updated`;
             if (res.video_saved) detail += `<br>Video saved: <code>${{res.video_path}}</code>`;
             else detail += '<br><span style="color:#FF9800">Video not saved (ffmpeg not found)</span>';
             s.innerHTML = `<div style="color:#4CAF50;font-size:18px;margin:20px 0">Merge complete!</div><p>${{detail}}</p><p style="color:#888;font-size:12px">You can close this tab or continue labeling.</p>`;
@@ -1110,6 +1129,50 @@ def start_label_server(
         logger.info("Resumed staging: %s (%d labels)", staging_path, len(staging.get("labels", {})))
     else:
         staging = {"labels": {}, "poses": {}, "chems": {}, "video_meta": None}
+
+        # Sync from existing dataset
+        labels_path = dataset_dir / "labels.csv"
+        videos_path = dataset_dir / "videos.csv"
+
+        # Import existing frame labels for this workflow_id
+        if labels_path.exists():
+            with open(labels_path, newline="") as f:
+                for r in csv.DictReader(f):
+                    if r.get("workflow_id") != video_stem:
+                        continue
+                    # Parse frame index from filename: {stem}_{idx:04d}.jpg
+                    fname = r["filename"]
+                    prefix = f"{video_stem}_"
+                    if not fname.startswith(prefix):
+                        continue
+                    try:
+                        idx_str = fname[len(prefix):].split(".")[0]
+                        idx = str(int(idx_str))  # normalize "0012" → "12"
+                    except ValueError:
+                        continue
+                    if r.get("expression"):
+                        staging["labels"][idx] = r["expression"]
+                    if r.get("pose"):
+                        staging["poses"][idx] = r["pose"]
+                    if r.get("chemistry"):
+                        staging["chems"][idx] = r["chemistry"]
+
+            synced = len(staging["labels"])
+            if synced:
+                logger.info("Synced %d existing labels from dataset for %s", synced, video_stem)
+
+        # Import existing video metadata
+        if videos_path.exists():
+            with open(videos_path, newline="") as f:
+                for r in csv.DictReader(f):
+                    if r.get("workflow_id") == video_stem:
+                        staging["video_meta"] = {k: v for k, v in r.items() if v}
+                        logger.info("Synced video metadata for %s", video_stem)
+                        break
+
+        # Save synced staging
+        if staging["labels"] or staging["video_meta"]:
+            staging_path.write_text(json.dumps(staging, ensure_ascii=False, indent=2))
 
     # Configure handler
     LabelHandler.video_name = video_name

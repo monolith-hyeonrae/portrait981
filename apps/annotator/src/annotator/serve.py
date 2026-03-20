@@ -72,6 +72,9 @@ class ReviewHandler(SimpleHTTPRequestHandler):
         elif parsed.path.startswith("/api/image/"):
             fname = unquote(parsed.path[len("/api/image/"):])
             self._serve_image(fname)
+        elif parsed.path.startswith("/api/video/"):
+            fname = unquote(parsed.path[len("/api/video/"):])
+            self._serve_video(fname)
         else:
             self.send_error(404)
 
@@ -132,6 +135,19 @@ class ReviewHandler(SimpleHTTPRequestHandler):
               ".avif": "image/avif", ".webp": "image/webp"}.get(suffix, "image/jpeg")
         self.send_response(200)
         self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", len(data))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _serve_video(self, fname: str):
+        videos_dir = self.dataset_dir / "videos"
+        video_path = videos_dir / fname
+        if not video_path.exists() or not str(video_path.resolve()).startswith(str(videos_dir.resolve())):
+            self.send_error(404)
+            return
+        data = video_path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "video/mp4")
         self.send_header("Content-Length", len(data))
         self.end_headers()
         self.wfile.write(data)
@@ -225,7 +241,7 @@ class ReviewHandler(SimpleHTTPRequestHandler):
         return sorted(folders)
 
     def _serve_html(self):
-        html = _build_review_html()
+        html = _build_review_html(str(self.dataset_dir))
         body = html.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -237,15 +253,14 @@ class ReviewHandler(SimpleHTTPRequestHandler):
         pass
 
 
-def _build_review_html() -> str:
-    return """<!DOCTYPE html>
+def _build_review_html(dataset_dir: str = "") -> str:
+    html = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Dataset Review</title>
 <style>
 body { font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; margin: 20px; }
 h1 { color: #e94560; }
 h2 { margin-top: 30px; color: #444; }
-.toolbar { background: #fff; padding: 12px 20px; border-radius: 0;
-    position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #ddd;
+.toolbar { background: #fff; padding: 12px 20px;
     display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .toolbar button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
 .filter-btn { background: #e8e8e8; color: #555; padding: 4px 10px; border: 1px solid #ccc;
@@ -276,11 +291,40 @@ h2 { margin-top: 30px; color: #444; }
 .bucket-cell.selected { box-shadow: inset 0 0 0 2px #e94560; }
 .bucket-cell .bc-fill { position: absolute; inset: 0; border-radius: 4px; }
 .bucket-cell .bc-num { position: relative; z-index: 1; }
+.tab-bar { display: flex; gap: 0; margin: 16px 0 0; border-bottom: 1px solid #ddd; }
+.tab-btn { padding: 8px 20px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+    background: transparent; color: #888; cursor: pointer; font-size: 13px; font-weight: 500;
+    margin-bottom: -1px; }
+.tab-btn:hover { color: #555; }
+.tab-btn.active { background: #fff; color: #e94560; border-color: #ddd; border-bottom-color: #fff; font-weight: 600; }
+.tab-panel { display: none; border: 1px solid #ddd; border-top: none; background: #fafafa; border-radius: 0 0 8px 8px; padding: 12px; }
+.tab-panel.active { display: block; }
+.video-card { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px;
+    margin: 8px 0; display: flex; gap: 16px; align-items: flex-start;
+    transition: box-shadow 0.15s; }
+.video-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.video-card.selected { border-color: #e94560; box-shadow: 0 0 0 2px rgba(233,69,96,0.2); }
+.video-card video { border-radius: 6px; background: #000; flex-shrink: 0; }
+.video-card .vc-info { flex: 1; min-width: 0; }
+.video-card .vc-title { font-weight: 600; color: #e94560; font-size: 14px; }
+.video-card .vc-meta { font-size: 11px; color: #888; margin: 4px 0; }
+.video-card .vc-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.video-card .vc-summary { font-size: 11px; color: #666; margin-top: 4px; }
 </style>
 </head><body>
-<h1>Dataset Review <span class="status" id="status"></span></h1>
+<h1>Dataset Review <span class="status" id="status"></span>
+<span style="font-size:11px;color:#999;font-weight:normal;margin-left:12px;padding:2px 8px;background:#f0f0f0;border-radius:3px;border:1px solid #ddd">__DATASET_DIR__</span></h1>
 
-<div class="toolbar">
+<div id="warnings"></div>
+
+<div class="tab-bar">
+    <div class="tab-btn active" onclick="switchTab('images')">Images</div>
+    <div class="tab-btn" onclick="switchTab('videos')">Videos</div>
+</div>
+
+<!-- Images Tab -->
+<div id="tab-images" class="tab-panel active">
+<div class="toolbar" style="border-bottom:none;position:sticky;top:0;margin:-12px -12px 8px;padding:10px 12px;border-radius:0 0 0 0;background:#fff;z-index:100">
     <div style="display:flex;gap:6px">
         <button class="filter-btn active" onclick="setView('expression',this)">Expression</button>
         <button class="filter-btn" onclick="setView('pose',this)">Pose</button>
@@ -296,12 +340,16 @@ h2 { margin-top: 30px; color: #444; }
         <button class="filter-btn" id="cancelSelBtn" onclick="cancelSelect()" style="display:none">Cancel</button>
     </div>
 </div>
-
-<div id="warnings"></div>
-<div id="videoMeta"></div>
 <div class="summary" id="summary"></div>
 <div id="bucketTable"></div>
 <div id="content"></div>
+</div>
+
+<!-- Videos Tab -->
+<div id="tab-videos" class="tab-panel">
+<div class="summary" id="videoSummary"></div>
+<div id="videoCards"></div>
+</div>
 
 <script>
 const COLORS = {
@@ -329,6 +377,19 @@ let selected = new Set();
 
 function getColor(c) { return COLORS[c] || '#666'; }
 function status(msg) { document.getElementById('status').textContent = msg; setTimeout(() => document.getElementById('status').textContent = '', 2000); }
+
+function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
+    document.getElementById('tab-' + tab).classList.add('active');
+    if (tab === 'videos') renderVideoCards();
+}
+
+function viewVideoImages(wfId) {
+    switchTab('images');
+    setFolder(wfId);
+}
 
 // Folder filter: match by workflow_id prefix convention (workflow_id often equals folder name)
 // But since filename has no path, we use the /api/folders endpoint for folder buttons
@@ -376,7 +437,6 @@ async function loadData() {
     renderFolderFilters();
     renderSummary();
     renderBucketTable();
-    renderVideoMeta();
     renderAll();
 }
 
@@ -488,13 +548,18 @@ async function updateLabel(idx, field, value) {
 
 async function updateVideo(videoId, field, value) {
     VIDEOS[videoId][field] = value;
+    // Clear passenger fields when switching to solo
+    if (field === 'scene' && value === 'solo') {
+        VIDEOS[videoId].passenger_gender = '';
+        VIDEOS[videoId].passenger_ethnicity = '';
+    }
     await fetch('/api/update_video', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(VIDEOS[videoId]),
     });
     status('Video saved');
-    renderVideoMeta();
+    renderVideoCards();
 }
 
 async function deleteImage(idx) {
@@ -577,37 +642,78 @@ function renderSummary() {
     el.innerHTML = `<b>Total:</b> ${count}${folderLabel} | <b>Expression:</b> ${Object.entries(ec).map(([k,v])=>k+'='+v).join(', ')} | <b>Pose:</b> ${Object.entries(pc).map(([k,v])=>k+'='+v).join(', ')} | <b>Videos:</b> ${Object.keys(VIDEOS).length}`;
 }
 
-function renderVideoMeta() {
-    const el = document.getElementById('videoMeta');
+function renderVideoCards() {
+    const el = document.getElementById('videoCards');
+    const sumEl = document.getElementById('videoSummary');
     const vids = Object.values(VIDEOS);
-    if (!vids.length) { el.innerHTML = ''; return; }
-    const fields = ['scene','main_gender','main_ethnicity','passenger_gender','passenger_ethnicity','member_id'];
-    const infoFields = ['source_video','total_frames','labeled_count','summary'];
+
+    // Count images per workflow_id
+    const imgCounts = {};
+    ROWS.forEach(r => { const wf = r.workflow_id || ''; imgCounts[wf] = (imgCounts[wf]||0) + 1; });
+
+    sumEl.innerHTML = `<b>${vids.length}</b> videos, <b>${ROWS.length}</b> total images`;
+
+    if (!vids.length) { el.innerHTML = '<p style="color:#999">No videos registered</p>'; return; }
+
     const opts = { scene:['solo','duo'], main_gender:['male','female'], main_ethnicity:['asian','western','other'],
         passenger_gender:['male','female'], passenger_ethnicity:['asian','western','other'] };
-    let html = '<div class="summary"><b>Videos</b><table style="margin-top:8px;border-collapse:collapse;font-size:12px;width:100%">';
-    html += '<tr><th style="padding:4px 8px;text-align:left;color:#888">workflow_id</th>';
-    fields.forEach(f => html += `<th style="padding:4px 8px;text-align:left;color:#888">${f}</th>`);
-    infoFields.forEach(f => html += `<th style="padding:4px 8px;text-align:left;color:#aaa;font-size:10px">${f}</th>`);
-    html += '<th style="padding:4px 8px;color:#888">notes</th></tr>';
+    const editFields = ['scene','main_gender','main_ethnicity','passenger_gender','passenger_ethnicity','member_id'];
+
+    let html = '';
     for (const v of vids) {
-        html += `<tr><td style="padding:4px 8px;color:#e94560">${v.workflow_id}</td>`;
-        for (const f of fields) {
+        const wf = v.workflow_id;
+        const isDuo = v.scene === 'duo';
+        const count = imgCounts[wf] || 0;
+        const hasVideo = v.source_video && v.source_video.endsWith('.mp4');
+
+        html += `<div class="video-card" id="vc-${wf}">`;
+
+        // Video preview
+        if (hasVideo) {
+            html += `<video width="240" height="135" controls preload="metadata" muted><source src="/api/video/${encodeURIComponent(v.source_video)}" type="video/mp4"></video>`;
+        } else {
+            html += '<div style="width:240px;height:135px;background:#e8e8e8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#bbb;font-size:12px">No video</div>';
+        }
+
+        html += '<div class="vc-info">';
+        html += `<div class="vc-title">${wf}</div>`;
+
+        // Tags
+        html += '<div class="vc-tags">';
+        html += `<span class="tag" style="background:${getColor(v.scene)}">${v.scene||'?'}</span>`;
+        html += `<span class="tag" style="background:#607D8B">${v.main_gender||'?'} / ${v.main_ethnicity||'?'}</span>`;
+        if (isDuo) html += `<span class="tag" style="background:#E91E63">${v.passenger_gender||'?'} / ${v.passenger_ethnicity||'?'}</span>`;
+        if (v.member_id) html += `<span class="tag" style="background:#78909C">${v.member_id}</span>`;
+        html += '</div>';
+
+        // Stats
+        html += `<div class="vc-meta">${v.total_frames||'?'} frames extracted · <b>${count}</b> images in dataset</div>`;
+        if (v.summary) html += `<div class="vc-summary">${v.summary}</div>`;
+
+        // Link to images
+        html += `<div style="margin-top:8px"><button class="filter-btn" onclick="viewVideoImages('${wf}')" style="font-size:11px">View ${count} images →</button></div>`;
+
+        // Edit fields
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee">';
+        for (const f of editFields) {
+            const isPassenger = f.startsWith('passenger_');
+            if (isPassenger && !isDuo) continue;
             if (opts[f]) {
-                html += '<td style="padding:4px 8px">';
+                html += `<div style="display:inline-flex;gap:3px;margin:2px 4px 2px 0;align-items:center"><span style="font-size:10px;color:#aaa">${f.replace('_',' ')}:</span>`;
                 opts[f].forEach(o => {
                     const sel = v[f]===o;
-                    html += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(o)+';color:#fff':''}" onclick="updateVideo('${v.workflow_id}','${f}','${o}')">${o}</button> `;
+                    html += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(o)+';color:#fff':''}" onclick="event.stopPropagation();updateVideo('${wf}','${f}','${o}')">${o}</button>`;
                 });
-                html += '</td>';
+                html += '</div>';
             } else {
-                html += `<td style="padding:4px 8px"><input type="text" value="${v[f]||''}" style="background:#fff;border:1px solid #ccc;color:#333;padding:2px 6px;border-radius:3px;width:80px;font-size:11px" onchange="updateVideo('${v.workflow_id}','${f}',this.value)"></td>`;
+                html += `<span style="font-size:10px;color:#aaa;margin-right:2px">${f}:</span><input type="text" value="${v[f]||''}" style="background:#fff;border:1px solid #ccc;color:#333;padding:1px 4px;border-radius:3px;width:60px;font-size:10px;margin-right:8px" onchange="updateVideo('${wf}','${f}',this.value)">`;
             }
         }
-        infoFields.forEach(f => html += `<td style="padding:4px 8px;font-size:10px;color:#999">${v[f]||''}</td>`);
-        html += `<td style="padding:4px 8px"><input type="text" value="${v.notes||''}" style="background:#fff;border:1px solid #ccc;color:#333;padding:2px 6px;border-radius:3px;width:120px;font-size:11px" onchange="updateVideo('${v.workflow_id}','notes',this.value)"></td></tr>`;
+        html += `<span style="font-size:10px;color:#aaa;margin-right:2px">notes:</span><input type="text" value="${v.notes||''}" style="background:#fff;border:1px solid #ccc;color:#333;padding:1px 4px;border-radius:3px;width:120px;font-size:10px" onchange="updateVideo('${wf}','notes',this.value)">`;
+        html += '</div>';
+
+        html += '</div></div>';
     }
-    html += '</table></div>';
     el.innerHTML = html;
 }
 
@@ -726,6 +832,7 @@ function renderAll() {
 loadData();
 </script>
 </body></html>"""
+    return html.replace("__DATASET_DIR__", dataset_dir)
 
 
 def start_server(dataset_dir: str | Path, port: int = 8765):

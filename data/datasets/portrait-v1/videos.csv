@@ -1,2 +1,3 @@
 workflow_id,scene,main_gender,main_ethnicity,passenger_gender,passenger_ethnicity,member_id,source_video,total_frames,labeled_count,summary,notes
 test_2,solo,female,asian,,,12,test_2.mp4,227,1,cut=1,
+dual_2,duo,male,asian,female,asian,,dual_2.mp4,421,1,hype=1,
