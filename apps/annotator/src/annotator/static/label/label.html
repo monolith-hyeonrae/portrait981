@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Label Tool</title>
+<link rel="stylesheet" href="/static/shared/common.css">
+<link rel="stylesheet" href="/static/label/label.css">
+</head><body>
+<script>window.__CONFIG__ = __CONFIG_PLACEHOLDER__;</script>
+
+<div class="toolbar">
+    <h1>Label Tool <span id="status" style="font-size:12px;color:#4CAF50;font-weight:normal"></span></h1>
+    <div class="progress">
+        <b id="count">0</b> / <span id="total">0</span> labeled
+        &nbsp;| <span id="videoNameLabel"></span>
+    </div>
+    <span id="datasetDirLabel" style="font-size:11px;color:#999;background:#f0f0f0;padding:2px 8px;border-radius:3px;border:1px solid #ddd"></span>
+    <div class="filter-group">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="unlabeled">Unlabeled</button>
+        <button class="filter-btn" data-filter="labeled">Labeled</button>
+    </div>
+    <select id="videoSelect" onchange="switchVideo(this.value)" style="background:#fff;border:1px solid #ccc;color:#333;padding:4px 8px;border-radius:4px;font-size:12px"></select>
+    <button class="btn-merge" id="mergeBtn" onclick="showConfirm()">Confirm Merge</button>
+    <button class="btn-reset" onclick="resetLabels()">Reset All</button>
+</div>
+
+<div id="metaBar" style="background:#fff;padding:8px 20px;border-bottom:1px solid #e0e0e0;font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0"></div>
+
+<div class="bucket-bar" id="bucketBar"></div>
+<div class="timeline-bar" id="timelineBar"></div>
+<div class="main">
+    <div class="focus-panel" id="focus"></div>
+    <div class="strip" id="strip"></div>
+</div>
+
+
+<div class="confirm-overlay" id="confirmOverlay" style="display:none">
+    <div class="confirm-box">
+        <h2>Merge Preview</h2>
+        <div class="confirm-summary" id="confirmSummary">Loading...</div>
+        <div class="confirm-btns">
+            <button style="background:#e0e0e0;color:#555" onclick="hideConfirm()">Back to Edit</button>
+            <button style="background:#4CAF50;color:#fff" id="confirmBtn" onclick="doMerge()">Confirm Merge</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/shared/common.js"></script>
+<script src="/static/label/label.js"></script>
+</body></html>

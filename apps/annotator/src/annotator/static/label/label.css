@@ -1,0 +1,62 @@
+/* label-specific styles */
+* { box-sizing: border-box; }
+body { font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; color: #333;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.toolbar { background: #fff; padding: 10px 20px; border-bottom: 2px solid #e94560;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap; flex-shrink: 0; }
+.toolbar h1 { margin: 0; font-size: 18px; color: #e94560; }
+.progress { font-size: 14px; color: #888; }
+.progress b { color: #4CAF50; font-size: 18px; }
+.toolbar button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.btn-merge { background: #4CAF50; color: #fff; }
+.btn-merge:disabled { opacity: 0.4; cursor: default; }
+.btn-reset { background: #999; color: #fff; }
+.filter-group { display: flex; gap: 6px; }
+.filter-btn { background: #e8e8e8; color: #555; padding: 4px 10px; border: 1px solid #ccc;
+    border-radius: 3px; cursor: pointer; font-size: 12px; }
+.filter-btn.active { background: #e94560; color: #fff; border-color: #e94560; }
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.focus-panel { flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 20px; min-width: 0; }
+.focus-img { max-width: 100%; max-height: 55vh; border-radius: 8px; object-fit: contain;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1); }
+.focus-meta { margin: 12px 0 6px; font-size: 14px; color: #888; }
+.focus-label { font-size: 16px; color: #4CAF50; margin: 8px 0; font-weight: bold; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+.cat-btn { padding: 8px 18px; border: 2px solid #ddd; border-radius: 6px; background: #fff;
+    color: #666; cursor: pointer; font-size: 14px; transition: all .15s; }
+.cat-btn:hover { background: #f0f0f0; color: #333; transform: scale(1.05); }
+.cat-btn.selected { color: #fff; font-weight: bold; }
+.nav { display: flex; gap: 12px; margin-top: 14px; align-items: center; }
+.nav button { padding: 10px 24px; border: none; border-radius: 6px; background: #e8e8e8;
+    color: #444; cursor: pointer; font-size: 16px; }
+.nav button:hover { background: #ddd; }
+.nav button:disabled { opacity: 0.3; cursor: default; }
+.nav .pos { font-size: 14px; color: #888; min-width: 80px; text-align: center; }
+.strip { display: flex; overflow-x: auto; background: #fff; border-top: 1px solid #e0e0e0;
+    flex-shrink: 0; padding: 4px; gap: 3px; }
+.thumb { flex-shrink: 0; cursor: pointer; opacity: 0.5; transition: opacity .15s;
+    border-bottom: 3px solid transparent; }
+.thumb:hover { opacity: 0.8; }
+.thumb.active { opacity: 1; border-bottom-color: #e94560; }
+.thumb img { height: 56px; border-radius: 3px; display: block; }
+.shortcut-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 8px; }
+.bucket-bar { padding: 6px 20px; background: #fff; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; }
+.timeline-bar { display: flex; height: 16px; background: #e8e8e8; border-bottom: 1px solid #ddd; flex-shrink: 0; cursor: pointer; }
+.timeline-bar .tl-frame { flex: 1; min-width: 1px; transition: opacity 0.1s; }
+.bucket-grid { display: grid; gap: 2px; }
+.bucket-cell { display: flex; align-items: center; justify-content: center;
+    height: 28px; border-radius: 4px; font-size: 12px; font-weight: 600; position: relative; overflow: hidden;
+    transition: transform 0.1s; }
+.bucket-cell:hover { transform: scale(1.06); z-index: 1; }
+.bucket-cell .bc-fill { position: absolute; inset: 0; border-radius: 4px; }
+.bucket-cell .bc-num { position: relative; z-index: 1; }
+/* Confirm overlay */
+.confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000;
+    display: flex; align-items: center; justify-content: center; }
+.confirm-box { background: #fff; border: 2px solid #4CAF50; border-radius: 12px;
+    padding: 28px 36px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; color: #333; }
+.confirm-box h2 { margin: 0 0 16px; color: #4CAF50; }
+.confirm-summary { font-size: 13px; color: #555; line-height: 1.6; }
+.confirm-btns { display: flex; gap: 12px; margin-top: 20px; }
+.confirm-btns button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }

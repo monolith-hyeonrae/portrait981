@@ -1,0 +1,49 @@
+/* review.css — review-specific styles */
+
+.warning-bar { background: #fff3e0; border: 1px solid #ffb74d; border-radius: 8px; padding: 10px 16px; margin: 10px 0; font-size: 12px; color: #e65100; }
+.warning-bar b { color: #bf360c; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.card { background: #fff; border-radius: 6px; padding: 6px; text-align: center; border: 1px solid #e0e0e0; }
+.card img { width: 100%; border-radius: 4px; }
+.card .name { font-size: 10px; color: #999; margin-top: 3px; }
+
+.section { margin: 20px 0; }
+.desc { font-size: 11px; color: #999; margin-top: 2px; }
+
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999;
+    display: none; align-items: center; justify-content: center; flex-direction: column; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 90vw; max-height: 75vh; border-radius: 8px; object-fit: contain; }
+.lightbox .lb-info { color: #fff; margin-top: 12px; text-align: center; font-size: 13px; }
+.lightbox .lb-tags { margin-top: 6px; }
+.lightbox .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15);
+    border: none; color: #fff; font-size: 28px; padding: 12px 16px; cursor: pointer; border-radius: 6px; }
+.lightbox .lb-nav:hover { background: rgba(255,255,255,0.3); }
+.lightbox .lb-prev { left: 16px; }
+.lightbox .lb-next { right: 16px; }
+.lightbox .lb-close { position: absolute; top: 16px; right: 20px; background: none; border: none;
+    color: #fff; font-size: 24px; cursor: pointer; opacity: 0.7; }
+.lightbox .lb-close:hover { opacity: 1; }
+.lightbox .lb-edit { margin-top: 8px; }
+
+.tab-bar { display: flex; gap: 0; margin: 16px 0 0; border-bottom: 1px solid #ddd; }
+.tab-btn { padding: 8px 20px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
+    background: transparent; color: #888; cursor: pointer; font-size: 13px; font-weight: 500;
+    margin-bottom: -1px; }
+.tab-btn:hover { color: #555; }
+.tab-btn.active { background: #fff; color: #e94560; border-color: #ddd; border-bottom-color: #fff; font-weight: 600; }
+.tab-panel { display: none; border: 1px solid #ddd; border-top: none; background: #fafafa; border-radius: 0 0 8px 8px; padding: 12px; }
+.tab-panel.active { display: block; }
+
+.video-card { background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px;
+    margin: 8px 0; display: flex; gap: 16px; align-items: flex-start;
+    transition: box-shadow 0.15s; }
+.video-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.video-card.selected { border-color: #e94560; box-shadow: 0 0 0 2px rgba(233,69,96,0.2); }
+.video-card video { border-radius: 6px; background: #000; flex-shrink: 0; }
+.video-card .vc-info { flex: 1; min-width: 0; }
+.video-card .vc-title { font-weight: 600; color: #e94560; font-size: 14px; }
+.video-card .vc-meta { font-size: 11px; color: #888; margin: 4px 0; }
+.video-card .vc-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.video-card .vc-summary { font-size: 11px; color: #666; margin-top: 4px; }
