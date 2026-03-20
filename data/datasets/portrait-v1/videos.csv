@@ -1,3 +1,7 @@
 workflow_id,scene,main_gender,main_ethnicity,passenger_gender,passenger_ethnicity,member_id,source_video,total_frames,labeled_count,summary,notes
-test_2,solo,female,asian,,,12,test_2.mp4,227,1,cut=1,
+test_2,solo,female,asian,,,12,test_2.mp4,227,13,cheese=4 cut=8 goofy=1,
 dual_2,duo,male,asian,female,asian,,dual_2.mp4,421,1,hype=1,
+test_3,solo,male,asian,,,,test_3.mp4,216,155,cheese=4 chill=1 cut=133 edge=5 hype=12,
+test_4,solo,male,asian,,,,test_4.mp4,235,22,cut=20 edge=2,
+test_5,solo,female,asian,,,,test_5.mp4,412,7,cut=7,
+cap_1,duo,male,asian,female,asian,,cap_1.mp4,204,4,cheese=1 chill=1 cut=1 hype=1,

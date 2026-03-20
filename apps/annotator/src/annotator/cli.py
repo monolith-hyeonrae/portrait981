@@ -24,7 +24,8 @@ def main(argv: list[str] | None = None) -> None:
 
     # --- label ---
     p_label = sub.add_parser("label", help="Label video frames — server mode (--dataset) or static HTML")
-    p_label.add_argument("video", help="mp4 video path")
+    p_label.add_argument("video", nargs="?", default=None,
+                         help="mp4 video path or directory (directory → server mode with video selector)")
     p_label.add_argument("--fps", type=int, default=2, help="frames per second to extract")
     p_label.add_argument("--dataset", "-d", default=None,
                          help="dataset directory for server mode (e.g. data/datasets/portrait-v1)")
@@ -48,19 +49,44 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "label":
+        from pathlib import Path
+        video_arg = Path(args.video) if args.video else None
+
         if args.dataset:
+            # Server mode
             from annotator.label_server import start_label_server
+
+            if video_arg and video_arg.is_dir():
+                # Directory given → pick first mp4, use as video_dir
+                video_dir = video_arg
+                first_mp4 = sorted(video_dir.glob("*.mp4"))
+                if not first_mp4:
+                    print(f"No mp4 files found in {video_dir}")
+                    sys.exit(1)
+                video_path = first_mp4[0]
+            elif video_arg and video_arg.is_file():
+                video_path = video_arg
+                video_dir = video_arg.parent
+            else:
+                print("Provide a video file or directory")
+                sys.exit(1)
+
             start_label_server(
-                video_path=args.video,
+                video_path=video_path,
                 dataset_dir=args.dataset,
                 fps=args.fps,
                 max_frames=args.max_frames,
                 port=args.port,
+                video_dir=video_dir,
             )
         else:
+            # Static HTML mode
+            if not video_arg or not video_arg.is_file():
+                print("Provide a video file for static HTML mode")
+                sys.exit(1)
             from annotator.label import generate_label_html
             generate_label_html(
-                video_path=args.video,
+                video_path=video_arg,
                 fps=args.fps,
                 max_frames=args.max_frames,
                 output_path=args.output,

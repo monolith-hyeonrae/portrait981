@@ -291,6 +291,21 @@ h2 { margin-top: 30px; color: #444; }
 .bucket-cell.selected { box-shadow: inset 0 0 0 2px #e94560; }
 .bucket-cell .bc-fill { position: absolute; inset: 0; border-radius: 4px; }
 .bucket-cell .bc-num { position: relative; z-index: 1; }
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999;
+    display: none; align-items: center; justify-content: center; flex-direction: column; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 90vw; max-height: 75vh; border-radius: 8px; object-fit: contain; }
+.lightbox .lb-info { color: #fff; margin-top: 12px; text-align: center; font-size: 13px; }
+.lightbox .lb-tags { margin-top: 6px; }
+.lightbox .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15);
+    border: none; color: #fff; font-size: 28px; padding: 12px 16px; cursor: pointer; border-radius: 6px; }
+.lightbox .lb-nav:hover { background: rgba(255,255,255,0.3); }
+.lightbox .lb-prev { left: 16px; }
+.lightbox .lb-next { right: 16px; }
+.lightbox .lb-close { position: absolute; top: 16px; right: 20px; background: none; border: none;
+    color: #fff; font-size: 24px; cursor: pointer; opacity: 0.7; }
+.lightbox .lb-close:hover { opacity: 1; }
+.lightbox .lb-edit { margin-top: 8px; }
 .tab-bar { display: flex; gap: 0; margin: 16px 0 0; border-bottom: 1px solid #ddd; }
 .tab-btn { padding: 8px 20px; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0;
     background: transparent; color: #888; cursor: pointer; font-size: 13px; font-weight: 500;
@@ -349,6 +364,18 @@ h2 { margin-top: 30px; color: #444; }
 <div id="tab-videos" class="tab-panel">
 <div class="summary" id="videoSummary"></div>
 <div id="videoCards"></div>
+</div>
+
+<div class="lightbox" id="lightbox">
+    <button class="lb-close" onclick="closeLightbox()">&times;</button>
+    <button class="lb-nav lb-prev" onclick="lbNav(-1)">&lsaquo;</button>
+    <button class="lb-nav lb-next" onclick="lbNav(1)">&rsaquo;</button>
+    <img id="lbImg" src="">
+    <div class="lb-info">
+        <div id="lbName"></div>
+        <div class="lb-tags" id="lbTags"></div>
+        <div class="lb-edit" id="lbEdit"></div>
+    </div>
 </div>
 
 <script>
@@ -770,7 +797,7 @@ function renderCard(idx) {
     const isCut = r.expression === 'cut';
     const isEmpty = !r.expression && !r.pose;
     const bg = isEditing ? '#f3e8f9' : isComplete ? '#e8f5e9' : isCut ? '#fce4e4' : isEmpty ? '#fff' : '#fff8e1';
-    return `<div class="card" style="background:${bg};cursor:pointer" onclick="toggleEdit(${idx})"><img src="/api/image/${encodeURIComponent(r.filename)}" loading="lazy"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${editPanel}</div>`;
+    return `<div class="card" style="background:${bg};cursor:pointer" onclick="toggleEdit(${idx})"><img src="/api/image/${encodeURIComponent(r.filename)}" loading="lazy" onclick="event.stopPropagation();openLightbox(${idx})"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${editPanel}</div>`;
 }
 
 function renderGroup(title, color, indices) {
@@ -828,6 +855,81 @@ function renderAll() {
 
     el.innerHTML = html || '<p style="color:#888">No items</p>';
 }
+
+// --- Lightbox ---
+let lbIdx = null;
+let lbList = []; // visible indices for navigation
+
+function openLightbox(idx) {
+    lbIdx = idx;
+    lbList = getFilteredIndices();
+    renderLightbox();
+    document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    lbIdx = null;
+}
+
+function lbNav(delta) {
+    const pos = lbList.indexOf(lbIdx);
+    if (pos < 0) return;
+    const next = pos + delta;
+    if (next >= 0 && next < lbList.length) {
+        lbIdx = lbList[next];
+        renderLightbox();
+    }
+}
+
+function renderLightbox() {
+    const r = ROWS[lbIdx];
+    if (!r) return;
+    const vid = VIDEOS[r.workflow_id] || {};
+    document.getElementById('lbImg').src = '/api/image/' + encodeURIComponent(r.filename);
+    document.getElementById('lbName').textContent = r.filename;
+
+    const srcColor = r.source === 'operational' ? '#8D6E63' : '#78909C';
+    const srcLabel = r.source === 'operational' ? 'OP' : 'REF';
+    let tags = `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
+    if (r.expression) tags += `<span class="tag" style="background:${getColor(r.expression)}">${r.expression}</span>`;
+    if (r.pose) tags += `<span class="tag" style="background:${getColor(r.pose)}">${r.pose}</span>`;
+    if (r.chemistry) tags += `<span class="tag" style="background:${getColor(r.chemistry)}">${r.chemistry}</span>`;
+    document.getElementById('lbTags').innerHTML = tags;
+
+    // Edit buttons in lightbox
+    let edit = '<div class="edit-btns" style="margin-top:4px">';
+    EXPRESSIONS.forEach(e => {
+        const sel = r.expression===e;
+        edit += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(e)+';color:#fff':''}" onclick="updateLabel(${lbIdx},'expression','${e}');renderLightbox()">${e}</button>`;
+    });
+    edit += `<button class="edit-btn${r.expression==='cut'?' active':''}" style="${r.expression==='cut'?'background:#d32f2f;color:#fff':''}" onclick="updateLabel(${lbIdx},'expression','cut');renderLightbox()">cut</button>`;
+    edit += '</div><div class="edit-btns" style="margin-top:2px">';
+    POSES.forEach(p => {
+        const sel = r.pose===p;
+        edit += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(p)+';color:#fff':''}" onclick="updateLabel(${lbIdx},'pose','${p}');renderLightbox()">${p}</button>`;
+    });
+    if (vid.scene==='duo') {
+        edit += '&nbsp;';
+        CHEMS.forEach(c => {
+            const sel = r.chemistry===c;
+            edit += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(c)+';color:#fff':''}" onclick="updateLabel(${lbIdx},'chemistry','${c}');renderLightbox()">${c}</button>`;
+        });
+    }
+    edit += '</div>';
+    document.getElementById('lbEdit').innerHTML = edit;
+
+    // Position indicator
+    const pos = lbList.indexOf(lbIdx);
+    document.getElementById('lbName').textContent = `${r.filename}  (${pos+1}/${lbList.length})`;
+}
+
+document.addEventListener('keydown', e => {
+    if (!document.getElementById('lightbox').classList.contains('open')) return;
+    if (e.key === 'Escape') { closeLightbox(); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'h') { lbNav(-1); e.preventDefault(); }
+    else if (e.key === 'ArrowRight' || e.key === 'l') { lbNav(1); e.preventDefault(); }
+});
 
 loadData();
 </script>

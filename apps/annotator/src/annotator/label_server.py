@@ -70,6 +70,9 @@ def _compress_video(
         logger.warning("ffmpeg not found — skipping video compression")
         return False
     dst.parent.mkdir(parents=True, exist_ok=True)
+    src = src.resolve()
+    dst = dst.resolve()
+    cwd = str(dst.parent)
     vf = f"fps={fps},scale=-2:'min({max_height},ih)':flags=lanczos"
     pass1 = [
         "ffmpeg", "-y", "-i", str(src),
@@ -84,25 +87,29 @@ def _compress_video(
         "-an", "-movflags", "+faststart",
         str(dst),
     ]
+    success = False
     try:
-        result = subprocess.run(pass1, capture_output=True, timeout=300, cwd=str(dst.parent))
+        logger.info("Compressing video: %s → %s", src.name, dst.name)
+        logger.info("Pass 1: %s", " ".join(pass1))
+        result = subprocess.run(pass1, capture_output=True, timeout=300, cwd=cwd)
         if result.returncode != 0:
-            logger.warning("ffmpeg pass 1 failed: %s", result.stderr.decode()[-200:])
+            logger.warning("ffmpeg pass 1 failed (rc=%d): %s", result.returncode, result.stderr.decode()[-300:])
             return False
-        result = subprocess.run(pass2, capture_output=True, timeout=300, cwd=str(dst.parent))
+        logger.info("Pass 1 done, starting pass 2...")
+        result = subprocess.run(pass2, capture_output=True, timeout=300, cwd=cwd)
         if result.returncode == 0:
             src_mb = src.stat().st_size / 1e6
             dst_mb = dst.stat().st_size / 1e6
             logger.info("Video compressed: %.1fMB → %.1fMB (%s)", src_mb, dst_mb, dst.name)
-            return True
-        logger.warning("ffmpeg pass 2 failed: %s", result.stderr.decode()[-200:])
+            success = True
+        else:
+            logger.warning("ffmpeg pass 2 failed (rc=%d): %s", result.returncode, result.stderr.decode()[-300:])
     except Exception as e:
         logger.warning("Video compression failed: %s", e)
     finally:
-        # Clean up 2-pass log files
         for f in dst.parent.glob("ffmpeg2pass-*"):
             f.unlink(missing_ok=True)
-    return False
+    return success
 
 
 class LabelHandler(SimpleHTTPRequestHandler):
@@ -112,6 +119,9 @@ class LabelHandler(SimpleHTTPRequestHandler):
     video_stem: str
     video_path: Path
     dataset_dir: Path
+    video_dir: Path | None  # directory with source videos
+    fps: int
+    max_frames: int
     frames: list[tuple[int, np.ndarray]]  # (original_idx, bgr)
     frame_jpegs: dict[int, bytes]  # frame_index -> jpeg bytes
     staging: dict  # {labels: {idx: expr}, poses: {idx: pose}, chems: {idx: chem}, video_meta: {...}}
@@ -133,12 +143,18 @@ class LabelHandler(SimpleHTTPRequestHandler):
             self._send_json(self.staging)
         elif parsed.path == "/api/preview":
             self._send_json(self._build_preview())
+        elif parsed.path == "/api/video_list":
+            self._send_json(self._get_video_list())
         else:
             self.send_error(404)
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        try:
+            body = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            body = {}
 
         if parsed.path == "/api/save_label":
             idx = str(body["index"])
@@ -165,6 +181,10 @@ class LabelHandler(SimpleHTTPRequestHandler):
             result = self._do_merge()
             self._send_json(result)
 
+        elif parsed.path == "/api/load_video":
+            result = self._load_video(body.get("filename"))
+            self._send_json(result)
+
         else:
             self.send_error(404)
 
@@ -186,6 +206,123 @@ class LabelHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", len(jpeg))
         self.end_headers()
         self.wfile.write(jpeg)
+
+    def _get_video_list(self) -> dict:
+        """List available videos from video_dir and dataset/videos/."""
+        videos = []
+        seen = set()
+
+        # From video_dir
+        if self.video_dir and self.video_dir.exists():
+            for p in sorted(self.video_dir.iterdir()):
+                if p.suffix.lower() == ".mp4" and p.name not in seen:
+                    seen.add(p.name)
+                    videos.append({
+                        "filename": p.name,
+                        "stem": p.stem,
+                        "path": str(p),
+                        "size_mb": round(p.stat().st_size / 1e6, 1),
+                        "source": "video_dir",
+                        "current": p.name == self.video_name,
+                    })
+
+        return {
+            "videos": videos,
+            "current": self.video_name,
+            "video_dir": str(self.video_dir) if self.video_dir else None,
+        }
+
+    def _load_video(self, filename: str) -> dict:
+        """Switch to a different video."""
+        if not self.video_dir:
+            return {"ok": False, "error": "No video directory configured"}
+
+        video_path = self.video_dir / filename
+        if not video_path.exists():
+            return {"ok": False, "error": f"Video not found: {filename}"}
+
+        # Save current staging before switching
+        self._save_staging()
+
+        # Extract frames from new video
+        logger.info("Loading video: %s", filename)
+        try:
+            frames = _extract_frames(video_path, self.fps, self.max_frames)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+        if not frames:
+            return {"ok": False, "error": "No frames extracted"}
+
+        # Update handler state
+        video_name = video_path.name
+        video_stem = video_path.stem
+        self.__class__.video_name = video_name
+        self.__class__.video_stem = video_stem
+        self.__class__.video_path = video_path
+        self.__class__.frames = frames
+
+        # Re-encode JPEGs
+        frame_jpegs = {}
+        for i, (orig_idx, frame_bgr) in enumerate(frames):
+            frame_jpegs[i] = _frame_to_jpeg(frame_bgr)
+        self.__class__.frame_jpegs = frame_jpegs
+
+        # Load or init staging for new video
+        staging_path = self.dataset_dir / f".staging_{video_stem}.json"
+        self.__class__.staging_path = staging_path
+
+        if staging_path.exists():
+            staging = json.loads(staging_path.read_text())
+            logger.info("Resumed staging: %s (%d labels)", staging_path, len(staging.get("labels", {})))
+        else:
+            staging = {"labels": {}, "poses": {}, "chems": {}, "video_meta": None}
+            # Sync from dataset
+            self._sync_from_dataset(staging, video_stem)
+            if staging["labels"] or staging["video_meta"]:
+                staging_path.write_text(json.dumps(staging, ensure_ascii=False, indent=2))
+
+        self.__class__.staging = staging
+        logger.info("Switched to %s (%d frames)", video_name, len(frames))
+
+        return {
+            "ok": True,
+            "video_name": video_name,
+            "frame_count": len(frames),
+            "existing_labels": len(staging.get("labels", {})),
+        }
+
+    def _sync_from_dataset(self, staging: dict, video_stem: str):
+        """Sync labels and video meta from existing dataset."""
+        labels_path = self.dataset_dir / "labels.csv"
+        videos_path = self.dataset_dir / "videos.csv"
+
+        if labels_path.exists():
+            with open(labels_path, newline="") as f:
+                for r in csv.DictReader(f):
+                    if r.get("workflow_id") != video_stem:
+                        continue
+                    fname = r["filename"]
+                    prefix = f"{video_stem}_"
+                    if not fname.startswith(prefix):
+                        continue
+                    try:
+                        idx = str(int(fname[len(prefix):].split(".")[0]))
+                    except ValueError:
+                        continue
+                    if r.get("expression"):
+                        staging["labels"][idx] = r["expression"]
+                    if r.get("pose"):
+                        staging["poses"][idx] = r["pose"]
+                    if r.get("chemistry"):
+                        staging["chems"][idx] = r["chemistry"]
+
+        if videos_path.exists():
+            with open(videos_path, newline="") as f:
+                for r in csv.DictReader(f):
+                    if r.get("workflow_id") == video_stem:
+                        staging["video_meta"] = {k: v for k, v in r.items() if v}
+                        break
 
     def _save_staging(self):
         self.staging_path.write_text(json.dumps(self.staging, ensure_ascii=False, indent=2))
@@ -304,7 +441,11 @@ class LabelHandler(SimpleHTTPRequestHandler):
         compressed_name = f"{self.video_stem}.mp4"
         compressed_path = videos_dir / compressed_name
         video_saved = False
-        video_saved = _compress_video(self.video_path, compressed_path)
+        logger.info("About to compress: src=%s dst=%s", self.video_path, compressed_path)
+        try:
+            video_saved = _compress_video(self.video_path, compressed_path)
+        except Exception as e:
+            logger.warning("Compress call failed: %s", e)
 
         # Build expression summary
         expr_counts = {}
@@ -338,10 +479,16 @@ class LabelHandler(SimpleHTTPRequestHandler):
             for v in videos.values():
                 writer.writerow({k: v.get(k, "") for k in video_fieldnames})
 
-        # Remove staging file
+        # Re-sync staging from dataset (merged labels are now in CSV)
         if self.staging_path.exists():
             self.staging_path.unlink()
-            logger.info("Staging file removed: %s", self.staging_path)
+        new_staging = {
+            "labels": {}, "poses": {}, "chems": {},
+            "video_meta": self.staging.get("video_meta"),
+        }
+        self._sync_from_dataset(new_staging, self.video_stem)
+        self.__class__.staging = new_staging
+        logger.info("Staging re-synced: %d labels from dataset", len(new_staging["labels"]))
 
         logger.info("Merged %d images + %d new labels into %s",
                      len(merge_items), len(new_rows), self.dataset_dir)
@@ -364,8 +511,10 @@ class LabelHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def log_message(self, format, *args):
-        pass
+    def log_message(self, fmt, *args):
+        # Log errors, suppress normal requests
+        if args and str(args[0]).startswith(("4", "5")):
+            logger.warning(fmt, *args)
 
 
 def _build_label_html(video_name: str, frame_count: int, dataset_dir: str = "") -> str:
@@ -434,25 +583,6 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; 
 .bucket-cell:hover {{ transform: scale(1.06); z-index: 1; }}
 .bucket-cell .bc-fill {{ position: absolute; inset: 0; border-radius: 4px; }}
 .bucket-cell .bc-num {{ position: relative; z-index: 1; }}
-.modal-overlay {{ position: fixed; bottom: 0; left: 0; width: 100%;
-    background: rgba(0,0,0,0.5); z-index: 9999; display: flex; justify-content: center; padding: 12px 0; }}
-.modal-box {{ background: #fff; border: 2px solid #e94560; border-radius: 12px 12px 0 0;
-    padding: 20px 32px; min-width: 360px; max-width: 560px; color: #333; }}
-.modal-box h2 {{ margin: 0 0 20px; color: #e94560; font-size: 20px; }}
-.modal-row {{ margin: 12px 0; }}
-.modal-row label {{ display: block; font-size: 13px; color: #888; margin-bottom: 6px; }}
-.modal-opts {{ display: flex; gap: 8px; flex-wrap: wrap; }}
-.modal-opt {{ padding: 6px 16px; border: 2px solid #ddd; border-radius: 6px; background: #f5f5f5;
-    color: #666; cursor: pointer; font-size: 13px; transition: all .15s; }}
-.modal-opt:hover {{ background: #e8e8e8; color: #333; }}
-.modal-opt.selected {{ background: #e94560; color: #fff; border-color: #e94560; }}
-.modal-start {{ margin-top: 24px; padding: 10px 32px; border: none; border-radius: 6px;
-    background: #4CAF50; color: #fff; font-size: 15px; cursor: pointer; width: 100%; }}
-.modal-start:hover {{ background: #45a049; }}
-.modal-start:disabled {{ opacity: 0.4; cursor: default; }}
-.video-meta-indicator {{ font-size: 12px; color: #888; background: #f0f0f0; padding: 3px 10px;
-    border-radius: 3px; border: 1px solid #ddd; }}
-.btn-meta {{ background: #e8e8e8; color: #666; font-size: 12px; padding: 4px 10px; }}
 /* Confirm overlay */
 .confirm-overlay {{ position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000;
     display: flex; align-items: center; justify-content: center; }}
@@ -466,10 +596,10 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; 
 </head><body>
 
 <div class="toolbar">
-    <h1>Label Tool</h1>
+    <h1>Label Tool <span id="status" style="font-size:12px;color:#4CAF50;font-weight:normal"></span></h1>
     <div class="progress">
         <b id="count">0</b> / <span id="total">{frame_count}</span> labeled
-        &nbsp;| {video_name}
+        &nbsp;| <span id="videoNameLabel">{video_name}</span>
     </div>
     <span style="font-size:11px;color:#999;background:#f0f0f0;padding:2px 8px;border-radius:3px;border:1px solid #ddd">{dataset_dir}</span>
     <div class="filter-group">
@@ -477,11 +607,12 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; 
         <button class="filter-btn" data-filter="unlabeled">Unlabeled</button>
         <button class="filter-btn" data-filter="labeled">Labeled</button>
     </div>
-    <span class="video-meta-indicator" id="metaIndicator"></span>
-    <button class="btn-meta" onclick="showMetaModal()">Edit Meta</button>
+    <select id="videoSelect" onchange="switchVideo(this.value)" style="background:#fff;border:1px solid #ccc;color:#333;padding:4px 8px;border-radius:4px;font-size:12px"></select>
     <button class="btn-merge" id="mergeBtn" onclick="showConfirm()">Confirm Merge</button>
     <button class="btn-reset" onclick="resetLabels()">Reset All</button>
 </div>
+
+<div id="metaBar" style="background:#fff;padding:8px 20px;border-bottom:1px solid #e0e0e0;font-size:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex-shrink:0"></div>
 
 <div class="bucket-bar" id="bucketBar"></div>
 <div class="timeline-bar" id="timelineBar"></div>
@@ -490,49 +621,6 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; 
     <div class="strip" id="strip"></div>
 </div>
 
-<div class="modal-overlay" id="metaModal" style="display:none">
-    <div class="modal-box">
-        <h2>Video Setup: {video_name}</h2>
-        <div class="modal-row"><label>Scene</label>
-            <div class="modal-opts" id="metaScene">
-                <div class="modal-opt" data-value="solo" onclick="selectMetaOpt('scene','solo')"><span style="opacity:0.5;font-size:11px">1 </span>solo</div>
-                <div class="modal-opt" data-value="duo" onclick="selectMetaOpt('scene','duo')"><span style="opacity:0.5;font-size:11px">2 </span>duo</div>
-            </div>
-        </div>
-        <div class="modal-row"><label>Main Gender</label>
-            <div class="modal-opts" id="metaMain_gender">
-                <div class="modal-opt" data-value="male" onclick="selectMetaOpt('main_gender','male')"><span style="opacity:0.5;font-size:11px">1 </span>male</div>
-                <div class="modal-opt" data-value="female" onclick="selectMetaOpt('main_gender','female')"><span style="opacity:0.5;font-size:11px">2 </span>female</div>
-            </div>
-        </div>
-        <div class="modal-row"><label>Main Ethnicity</label>
-            <div class="modal-opts" id="metaMain_ethnicity">
-                <div class="modal-opt" data-value="asian" onclick="selectMetaOpt('main_ethnicity','asian')"><span style="opacity:0.5;font-size:11px">1 </span>asian</div>
-                <div class="modal-opt" data-value="western" onclick="selectMetaOpt('main_ethnicity','western')"><span style="opacity:0.5;font-size:11px">2 </span>western</div>
-                <div class="modal-opt" data-value="other" onclick="selectMetaOpt('main_ethnicity','other')"><span style="opacity:0.5;font-size:11px">3 </span>other</div>
-            </div>
-        </div>
-        <div class="modal-row" id="passengerGenderRow" style="display:none"><label>Passenger Gender</label>
-            <div class="modal-opts" id="metaPassenger_gender">
-                <div class="modal-opt" data-value="male" onclick="selectMetaOpt('passenger_gender','male')"><span style="opacity:0.5;font-size:11px">1 </span>male</div>
-                <div class="modal-opt" data-value="female" onclick="selectMetaOpt('passenger_gender','female')"><span style="opacity:0.5;font-size:11px">2 </span>female</div>
-            </div>
-        </div>
-        <div class="modal-row" id="passengerEthnicityRow" style="display:none"><label>Passenger Ethnicity</label>
-            <div class="modal-opts" id="metaPassenger_ethnicity">
-                <div class="modal-opt" data-value="asian" onclick="selectMetaOpt('passenger_ethnicity','asian')"><span style="opacity:0.5;font-size:11px">1 </span>asian</div>
-                <div class="modal-opt" data-value="western" onclick="selectMetaOpt('passenger_ethnicity','western')"><span style="opacity:0.5;font-size:11px">2 </span>western</div>
-                <div class="modal-opt" data-value="other" onclick="selectMetaOpt('passenger_ethnicity','other')"><span style="opacity:0.5;font-size:11px">3 </span>other</div>
-            </div>
-        </div>
-        <div class="modal-row"><label>Member ID (optional)</label>
-            <input type="text" id="metaMemberId" placeholder="예: park_042"
-                style="background:#fff;border:1px solid #ccc;color:#333;padding:6px 12px;border-radius:4px;width:100%;font-size:14px"
-                oninput="metaDraft.member_id=this.value">
-        </div>
-        <button class="modal-start" id="metaStartBtn" onclick="saveMetaAndStart()" disabled>Start Labeling</button>
-    </div>
-</div>
 
 <div class="confirm-overlay" id="confirmOverlay" style="display:none">
     <div class="confirm-box">
@@ -546,9 +634,10 @@ body {{ font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; 
 </div>
 
 <script>
-const FRAME_COUNT = {frame_count};
-const VIDEO_NAME = "{video_name}";
-const VIDEO_STEM = VIDEO_NAME.replace(/\\.[^.]+$/, '');
+let FRAME_COUNT = {frame_count};
+let VIDEO_NAME = "{video_name}";
+let VIDEO_STEM = VIDEO_NAME.replace(/\\.[^.]+$/, '');
+let videoCacheBust = 0;
 const COLORS = {{
     cheese:'#4CAF50', goofy:'#E91E63', chill:'#2196F3', edge:'#FF5722', hype:'#9C27B0',
     cut:'#d32f2f', occluded:'#795548', front:'#00BCD4', angle:'#FF9800', side:'#795548',
@@ -568,15 +657,16 @@ let labels = {{}};
 let poses = {{}};
 let chemistries = {{}};
 let videoMeta = null;
-let metaDraft = {{}};
+
 let currentPos = 0;
 let currentFilter = 'all';
 let filteredList = [];
 let manualStep = null;
-let modalField = 0;
 let saving = false;
 
 function getColor(c) {{ return COLORS[c] || '#666'; }}
+function showStatus(msg) {{ const el = document.getElementById('status'); if (el) {{ el.textContent = msg; setTimeout(() => el.textContent = '', 2000); }} }}
+function frameUrl(idx) {{ return `/api/frame/${{idx}}?v=${{videoCacheBust}}`; }}
 
 // --- Server communication ---
 async function loadStaging() {{
@@ -588,7 +678,58 @@ async function loadStaging() {{
     buildFilteredList();
     renderAll();
     updateMetaIndicator();
-    if (!videoMeta) showMetaModal();
+    loadVideoList();
+}}
+
+async function loadVideoList() {{
+    const data = await (await fetch('/api/video_list')).json();
+    const sel = document.getElementById('videoSelect');
+    if (!data.videos.length) {{ sel.style.display = 'none'; return; }}
+    sel.style.display = '';
+    sel.innerHTML = data.videos.map(v =>
+        `<option value="${{v.filename}}" ${{v.current ? 'selected' : ''}}>${{v.stem}} (${{v.size_mb}}MB)</option>`
+    ).join('');
+}}
+
+async function switchVideo(filename) {{
+    if (!filename) return;
+    const sel = document.getElementById('videoSelect');
+    sel.disabled = true;
+    showStatus('Loading...');
+    try {{
+        const res = await (await fetch('/api/load_video', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{ filename }}),
+        }})).json();
+        if (res.ok) {{
+            // Update UI state
+            VIDEO_NAME = res.video_name;
+            VIDEO_STEM = VIDEO_NAME.replace(/\.[^.]+$/, '');
+            FRAME_COUNT = res.frame_count;
+            videoCacheBust++;
+            document.getElementById('videoNameLabel').textContent = VIDEO_NAME;
+            document.title = 'Label Tool — ' + VIDEO_NAME;
+            document.getElementById('total').textContent = res.frame_count;
+            currentPos = 0;
+            manualStep = null;
+            // Reload staging (new video's labels)
+            const data = await (await fetch('/api/staging')).json();
+            labels = data.labels || {{}};
+            poses = data.poses || {{}};
+            chemistries = data.chems || {{}};
+            videoMeta = data.video_meta || null;
+            buildFilteredList();
+            renderAll();
+            updateMetaIndicator();
+            loadVideoList();
+            showStatus(res.video_name + ' loaded');
+                }} else {{
+            alert('Failed: ' + res.error);
+        }}
+    }} finally {{
+        sel.disabled = false;
+    }}
 }}
 
 async function saveToServer(index) {{
@@ -647,7 +788,7 @@ function renderStrip() {{
         div.className = 'thumb' + (pos === currentPos ? ' active' : '');
         div.style.borderBottomColor = borderColor;
         div.style.opacity = isLabeled ? '0.7' : (pos === currentPos ? '1' : '0.5');
-        div.innerHTML = `<img src="/api/frame/${{idx}}" loading="lazy">`;
+        div.innerHTML = `<img src="${{frameUrl(idx)}}" loading="lazy">`;
         div.onclick = () => {{ currentPos = pos; renderAll(); }};
         sb.appendChild(div);
         if (pos === currentPos) {{
@@ -727,7 +868,7 @@ function renderFocus() {{
 
     const stepHint = isDuo ? 'shoot\u2192chemistry\u2192expression\u2192pose' : 'shoot\u2192expression\u2192pose';
     panel.innerHTML = `
-        <img class="focus-img" src="/api/frame/${{idx}}">
+        <img class="focus-img" src="${{frameUrl(idx)}}">
         <div class="focus-meta">Frame #${{idx}} &nbsp; ${{currentPos + 1}} / ${{filteredList.length}}</div>
         ${{labelHtml}}
         ${{btnsHtml}}
@@ -857,93 +998,65 @@ function renderTimeline() {{
     }}
 }}
 
-// --- Meta modal ---
-const MODAL_VALUES = {{
-    scene: ['solo', 'duo'], main_gender: ['male', 'female'],
-    main_ethnicity: ['asian', 'western', 'other'],
-    passenger_gender: ['male', 'female'], passenger_ethnicity: ['asian', 'western', 'other'],
-}};
-const MODAL_FIELDS_SOLO = ['scene', 'main_gender', 'main_ethnicity'];
-const MODAL_FIELDS_DUO = ['scene', 'main_gender', 'main_ethnicity', 'passenger_gender', 'passenger_ethnicity'];
-function getModalFields() {{ return metaDraft.scene === 'duo' ? MODAL_FIELDS_DUO : MODAL_FIELDS_SOLO; }}
-
-function getMetaContainerId(f) {{ return 'meta' + f.charAt(0).toUpperCase() + f.slice(1); }}
-
-function updateMetaIndicator() {{
-    const el = document.getElementById('metaIndicator');
-    if (videoMeta) {{
-        if (videoMeta.scene === 'duo') {{
-            el.textContent = 'duo | M:' + videoMeta.main_gender + '/' + videoMeta.main_ethnicity
-                + ' P:' + videoMeta.passenger_gender + '/' + videoMeta.passenger_ethnicity;
-        }} else {{
-            el.textContent = 'solo | ' + videoMeta.main_gender + ' | ' + videoMeta.main_ethnicity;
-        }}
-        el.style.color = '#aaa';
-    }} else {{
-        el.textContent = '(no video meta)';
-        el.style.color = '#e94560';
+// --- Meta bar ---
+function setMeta(field, value) {{
+    if (!videoMeta) videoMeta = {{ workflow_id: VIDEO_STEM }};
+    videoMeta[field] = value;
+    if (field === 'scene' && value === 'solo') {{
+        delete videoMeta.passenger_gender;
+        delete videoMeta.passenger_ethnicity;
     }}
-}}
-
-function selectMetaOpt(field, value) {{
-    metaDraft[field] = value;
-    if (field === 'scene') {{
-        document.getElementById('passengerGenderRow').style.display = value === 'duo' ? '' : 'none';
-        document.getElementById('passengerEthnicityRow').style.display = value === 'duo' ? '' : 'none';
-        if (value !== 'duo') {{ metaDraft.passenger_gender = null; metaDraft.passenger_ethnicity = null; }}
-    }}
-    renderMetaSelections();
-}}
-
-function renderMetaSelections() {{
-    for (const field of MODAL_FIELDS_DUO) {{
-        const c = document.getElementById(getMetaContainerId(field));
-        if (!c) continue;
-        c.querySelectorAll('.modal-opt').forEach(el => el.classList.toggle('selected', el.dataset.value === metaDraft[field]));
-        const fields = getModalFields();
-        const idx = fields.indexOf(field);
-        c.parentElement.style.background = (idx >= 0 && modalField === idx) ? 'rgba(233,69,96,0.1)' : '';
-        c.parentElement.style.borderRadius = '6px';
-    }}
-    const isDuo = metaDraft.scene === 'duo';
-    const baseOk = metaDraft.scene && metaDraft.main_gender && metaDraft.main_ethnicity;
-    const passengerOk = !isDuo || (metaDraft.passenger_gender && metaDraft.passenger_ethnicity);
-    document.getElementById('metaStartBtn').disabled = !(baseOk && passengerOk);
-}}
-
-function showMetaModal() {{
-    metaDraft = videoMeta
-        ? {{ ...videoMeta, member_id: videoMeta.member_id || '' }}
-        : {{ scene: null, main_gender: null, main_ethnicity: null, passenger_gender: null, passenger_ethnicity: null, member_id: '' }};
-    document.getElementById('metaMemberId').value = metaDraft.member_id || '';
-    modalField = 0;
-    const isDuo = metaDraft.scene === 'duo';
-    document.getElementById('passengerGenderRow').style.display = isDuo ? '' : 'none';
-    document.getElementById('passengerEthnicityRow').style.display = isDuo ? '' : 'none';
-    document.getElementById('metaModal').style.display = 'flex';
-    renderMetaSelections();
-}}
-
-function hideMetaModal() {{ document.getElementById('metaModal').style.display = 'none'; }}
-
-function saveMetaAndStart() {{
-    const isDuo = metaDraft.scene === 'duo';
-    if (!metaDraft.scene || !metaDraft.main_gender || !metaDraft.main_ethnicity) return;
-    if (isDuo && (!metaDraft.passenger_gender || !metaDraft.passenger_ethnicity)) return;
-    videoMeta = {{ workflow_id: VIDEO_STEM, scene: metaDraft.scene, main_gender: metaDraft.main_gender, main_ethnicity: metaDraft.main_ethnicity }};
-    if (isDuo) {{ videoMeta.passenger_gender = metaDraft.passenger_gender; videoMeta.passenger_ethnicity = metaDraft.passenger_ethnicity; }}
-    if (metaDraft.member_id) videoMeta.member_id = metaDraft.member_id;
     saveMetaToServer();
-    hideMetaModal();
-    updateMetaIndicator();
-    renderAll();
+    renderMetaBar();
 }}
+
+function setMetaText(field, value) {{
+    if (!videoMeta) videoMeta = {{ workflow_id: VIDEO_STEM }};
+    videoMeta[field] = value || undefined;
+    if (!value) delete videoMeta[field];
+    saveMetaToServer();
+}}
+
+function renderMetaBar() {{
+    const el = document.getElementById('metaBar');
+    const m = videoMeta || {{}};
+    const isDuo = m.scene === 'duo';
+    const opts = {{
+        scene: ['solo','duo'], main_gender: ['male','female'],
+        main_ethnicity: ['asian','western','other'],
+        passenger_gender: ['male','female'], passenger_ethnicity: ['asian','western','other'],
+    }};
+    const fields = isDuo
+        ? ['scene','main_gender','main_ethnicity','passenger_gender','passenger_ethnicity']
+        : ['scene','main_gender','main_ethnicity'];
+
+    let html = '';
+    for (const f of fields) {{
+        html += `<span style="color:#999;font-size:11px">${{f.replace(/_/g,' ')}}:</span>`;
+        opts[f].forEach(o => {{
+            const sel = m[f] === o;
+            const bg = sel ? 'background:' + getColor(o) + ';color:#fff;' : '';
+            html += `<button class="edit-btn${{sel?' active':''}}" style="${{bg}}font-size:11px" onclick="setMeta('${{f}}','${{o}}')">${{o}}</button>`;
+        }});
+        html += '&nbsp;';
+    }}
+    html += `<span style="color:#999;font-size:11px">member_id:</span>`;
+    html += `<input type="text" value="${{m.member_id||''}}" style="background:#fff;border:1px solid #ccc;color:#333;padding:1px 4px;border-radius:3px;width:70px;font-size:11px" onchange="setMetaText('member_id',this.value)">`;
+
+    if (!m.scene) html += `<span style="color:#e94560;font-size:11px;margin-left:8px">← set scene to start</span>`;
+    el.innerHTML = html;
+}}
+
+function updateMetaIndicator() {{ renderMetaBar(); }}
 
 // --- Confirm merge ---
 async function showConfirm() {{
     document.getElementById('confirmOverlay').style.display = 'flex';
-    const preview = await (await fetch('/api/preview')).json();
+    // Reset buttons to default state
+    document.querySelector('.confirm-btns').innerHTML = '<button style="background:#e0e0e0;color:#555;flex:1;padding:12px;border:none;border-radius:6px;font-size:15px;cursor:pointer" onclick="hideConfirm()">Back to Edit</button><button style="background:#4CAF50;color:#fff;flex:1;padding:12px;border:none;border-radius:6px;font-size:15px;cursor:pointer" id="confirmBtn" onclick="doMerge()">Confirm Merge</button>';
     const s = document.getElementById('confirmSummary');
+    s.innerHTML = 'Loading...';
+    const preview = await (await fetch('/api/preview')).json();
     if (preview.total === 0) {{
         s.innerHTML = '<p style="color:#e94560">No completed labels to merge.</p>';
         document.getElementById('confirmBtn').disabled = true;
@@ -970,6 +1083,20 @@ async function showConfirm() {{
 
 function hideConfirm() {{ document.getElementById('confirmOverlay').style.display = 'none'; }}
 
+async function afterMerge() {{
+    hideConfirm();
+    // Reload staging from server (synced from dataset)
+    const data = await (await fetch('/api/staging')).json();
+    labels = data.labels || {{}};
+    poses = data.poses || {{}};
+    chemistries = data.chems || {{}};
+    videoMeta = data.video_meta || null;
+    buildFilteredList();
+    renderAll();
+    renderMetaBar();
+    showStatus('Ready for more labeling');
+}}
+
 async function doMerge() {{
     const btn = document.getElementById('confirmBtn');
     btn.textContent = 'Merging...';
@@ -983,7 +1110,7 @@ async function doMerge() {{
             if (res.video_saved) detail += `<br>Video saved: <code>${{res.video_path}}</code>`;
             else detail += '<br><span style="color:#FF9800">Video not saved (ffmpeg not found)</span>';
             s.innerHTML = `<div style="color:#4CAF50;font-size:18px;margin:20px 0">Merge complete!</div><p>${{detail}}</p><p style="color:#888;font-size:12px">You can close this tab or continue labeling.</p>`;
-            document.querySelector('.confirm-btns').innerHTML = '<button style="background:#e0e0e0;color:#555;flex:1;padding:12px;border:none;border-radius:6px;font-size:15px;cursor:pointer" onclick="hideConfirm()">Close</button>';
+            document.querySelector('.confirm-btns').innerHTML = '<button style="background:#e0e0e0;color:#555;flex:1;padding:12px;border:none;border-radius:6px;font-size:15px;cursor:pointer" onclick="afterMerge()">Close</button>';
         }} else {{
             alert('Merge failed: ' + (res.error || 'unknown error'));
         }}
@@ -1021,34 +1148,12 @@ const STEP_OPTIONS_DUO = {{
 }};
 
 function isModalOpen() {{
-    return document.getElementById('metaModal').style.display !== 'none'
-        || document.getElementById('confirmOverlay').style.display !== 'none';
+    return document.getElementById('confirmOverlay').style.display !== 'none';
 }}
 
 document.addEventListener('keydown', e => {{
     if (isModalOpen()) {{
-        if (document.getElementById('confirmOverlay').style.display !== 'none') {{
-            if (e.key === 'Escape') hideConfirm();
-            return;
-        }}
-        const n = parseInt(e.key);
-        const fields = getModalFields();
-        if (e.key === 'Enter') {{ const isDuo = metaDraft.scene === 'duo'; const baseOk = metaDraft.scene && metaDraft.main_gender && metaDraft.main_ethnicity; const passengerOk = !isDuo || (metaDraft.passenger_gender && metaDraft.passenger_ethnicity); if (baseOk && passengerOk) saveMetaAndStart(); return; }}
-        if (e.key === 'Escape') {{ if (videoMeta) hideMetaModal(); return; }}
-        if (e.key === 'Tab') {{ e.preventDefault(); modalField = (modalField + 1) % fields.length; renderMetaSelections(); return; }}
-        if (n >= 1) {{
-            const field = fields[modalField];
-            const values = MODAL_VALUES[field];
-            if (n <= values.length) {{
-                selectMetaOpt(field, values[n - 1]);
-                const updatedFields = getModalFields();
-                for (let i = 0; i < updatedFields.length; i++) {{
-                    const next = (modalField + 1 + i) % updatedFields.length;
-                    if (!metaDraft[updatedFields[next]]) {{ modalField = next; renderMetaSelections(); return; }}
-                }}
-                renderMetaSelections();
-            }}
-        }}
+        if (e.key === 'Escape') hideConfirm();
         return;
     }}
 
@@ -1103,6 +1208,7 @@ def start_label_server(
     fps: int = 2,
     max_frames: int = 500,
     port: int = 8766,
+    video_dir: str | Path | None = None,
 ):
     """Start label server for a video targeting a dataset."""
     video_path = Path(video_path)
@@ -1174,11 +1280,17 @@ def start_label_server(
         if staging["labels"] or staging["video_meta"]:
             staging_path.write_text(json.dumps(staging, ensure_ascii=False, indent=2))
 
+    if video_dir:
+        video_dir = Path(video_dir)
+
     # Configure handler
     LabelHandler.video_name = video_name
     LabelHandler.video_stem = video_stem
     LabelHandler.video_path = video_path
     LabelHandler.dataset_dir = dataset_dir
+    LabelHandler.video_dir = video_dir
+    LabelHandler.fps = fps
+    LabelHandler.max_frames = max_frames
     LabelHandler.frames = frames
     LabelHandler.frame_jpegs = frame_jpegs
     LabelHandler.staging = staging
