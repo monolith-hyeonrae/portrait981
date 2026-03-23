@@ -60,6 +60,11 @@ _SEGMENTATION_FIELDS: tuple[str, ...] = (
     "seg_face", "seg_eye", "seg_mouth", "seg_hair",
 )
 
+# Derived segmentation fields -- 4
+_DERIVED_SEG_FIELDS: tuple[str, ...] = (
+    "eye_visible_ratio", "mouth_open_ratio", "glasses_ratio", "backlight_score",
+)
+
 # Composite fields -- 3
 _COMPOSITE_FIELDS: tuple[str, ...] = (
     "duchenne_smile", "wild_intensity", "chill_score",
@@ -74,11 +79,12 @@ _DEFAULT_CLIP_AXIS_NAMES: tuple[str, ...] = (
 # Signal field sets
 # ---------------------------------------------------------------------------
 
-# Extended: all available fields (45D base + 4D CLIP = 49D)
+# Extended: all available fields (45D base + 4D derived + 4D CLIP = 53D)
 SIGNAL_FIELDS_EXTENDED: tuple[str, ...] = (
     _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
     + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
     + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
+    + _DERIVED_SEG_FIELDS
     + _COMPOSITE_FIELDS + _DEFAULT_CLIP_AXIS_NAMES
 )
 
@@ -148,6 +154,11 @@ SIGNAL_RANGES: dict[str, tuple[float, float]] = {
     "seg_eye": (0.0, 1.0),
     "seg_mouth": (0.0, 1.0),
     "seg_hair": (0.0, 1.0),
+    # Derived segmentation (0-1)
+    "eye_visible_ratio": (0.0, 0.15),     # eye pixels / face area
+    "mouth_open_ratio": (0.0, 0.15),      # mouth_in pixels / face area
+    "glasses_ratio": (0.0, 0.5),          # glasses pixels / face area
+    "backlight_score": (0.0, 100.0),      # brightness - face_exposure
     # Composites (0-1)
     "duchenne_smile": (0.0, 1.0),
     "wild_intensity": (0.0, 1.0),
@@ -183,6 +194,7 @@ def get_signal_fields(
             _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
             + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
             + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
+            + _DERIVED_SEG_FIELDS
             + _COMPOSITE_FIELDS + axes
         )
     return _AU_FIELDS_LEGACY + _EMOTION_FIELDS_LEGACY + _POSE_FIELDS + axes

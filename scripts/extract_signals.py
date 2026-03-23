@@ -142,18 +142,39 @@ def extract_signals_from_image(img_bgr: np.ndarray, analyzers: dict, frame_id: i
         except Exception as e:
             logger.debug("Head pose failed: %s", e)
 
-    # --- Face Parse / Segmentation (4D) ---
-    # Signal key mapping: skin_ratio → seg_face, etc.
+    # --- Face Parse / Segmentation — from BiSeNet 19-class map ---
+    # Classes: 0=bg, 1=face, 2=l_brow, 3=r_brow, 4=l_eye, 5=r_eye,
+    #   6=glasses, 7=l_ear, 8=r_ear, 9=earring, 10=nose,
+    #   11=mouth_in, 12=u_lip, 13=l_lip, 14=neck, 15=necklace,
+    #   16=cloth, 17=hair, 18=hat
     face_parse = analyzers.get("face_parse")
     if face_parse:
         try:
             parse_obs = face_parse.analyze(frame, deps={"face.detect": det_obs})
-            if parse_obs and parse_obs.signals:
-                s = parse_obs.signals
-                signals["seg_face"] = float(s.get("skin_ratio", 0.0))
-                signals["seg_eye"] = float(s.get("features_ratio", 0.0)) * 0.3  # approx eye portion
-                signals["seg_mouth"] = float(s.get("features_ratio", 0.0)) * 0.3  # approx mouth portion
-                signals["seg_hair"] = float(s.get("hair_ratio", 0.0))
+            if parse_obs and parse_obs.data and parse_obs.data.results:
+                seg = parse_obs.data.results[0].class_map
+                total = seg.size
+                if total > 0:
+                    face_px = np.isin(seg, [1]).sum()
+                    eye_px = np.isin(seg, [4, 5]).sum()
+                    mouth_px = np.isin(seg, [11, 12, 13]).sum()
+                    mouth_in_px = np.isin(seg, [11]).sum()
+                    hair_px = np.isin(seg, [17]).sum()
+                    glasses_px = np.isin(seg, [6]).sum()
+                    brow_px = np.isin(seg, [2, 3]).sum()
+                    nose_px = np.isin(seg, [10]).sum()
+
+                    # Original 4D segmentation signals
+                    signals["seg_face"] = float(face_px / total)
+                    signals["seg_eye"] = float(eye_px / total)
+                    signals["seg_mouth"] = float(mouth_px / total)
+                    signals["seg_hair"] = float(hair_px / total)
+
+                    # New signals: relative to face area
+                    face_area = max(face_px + eye_px + brow_px + nose_px + mouth_px, 1)
+                    signals["eye_visible_ratio"] = float(eye_px / face_area)
+                    signals["mouth_open_ratio"] = float(mouth_in_px / face_area)
+                    signals["glasses_ratio"] = float(glasses_px / face_area)
         except Exception as e:
             logger.debug("Face parse failed: %s", e)
 
@@ -187,6 +208,10 @@ def extract_signals_from_image(img_bgr: np.ndarray, analyzers: dict, frame_id: i
     signals["blur_score"] = float(cv2.Laplacian(gray, cv2.CV_64F).var())
     signals["brightness"] = float(gray.mean())
     signals["contrast"] = float(gray.std())
+
+    # --- Backlight score (derived) ---
+    # High frame brightness + low face exposure = backlit
+    signals["backlight_score"] = max(0.0, signals.get("brightness", 0.0) - signals.get("face_exposure", 0.0))
 
     # --- CLIP Mood Axes (4D) — placeholder, needs portrait-score ---
     for axis in ("warm_smile", "cool_gaze", "playful_face", "wild_energy"):
