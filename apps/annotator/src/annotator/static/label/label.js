@@ -290,7 +290,7 @@ function updateCount() {
     document.getElementById('count').textContent = total;
 
     const EXPRS = [...EXPRESSIONS, 'cut'];
-    const ALL_POSES = [...POSES_LIST, ''];
+    const ALL_POSES = [...POSES, ''];
     const poseLabel = p => p || '(none)';
 
     const counts = {};
