@@ -186,6 +186,18 @@ h2 {{ margin-top: 24px; color: #444; }}
 .bar-seg {{ height: 16px; border-radius: 3px; display: flex; align-items: center; justify-content: center;
     font-size: 10px; color: #fff; font-weight: 600; min-width: 30px; }}
 .conf-bar {{ height: 4px; border-radius: 2px; margin-top: 4px; }}
+.timeline {{ cursor: pointer; }}
+.tl-seg:hover {{ opacity: 0.7; }}
+.tl-seg.active {{ outline: 2px solid #e94560; z-index: 1; }}
+.preview {{ background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px;
+    margin: 12px 0; display: none; align-items: flex-start; gap: 16px; }}
+.preview.open {{ display: flex; }}
+.preview img {{ max-width: 480px; max-height: 360px; border-radius: 6px; object-fit: contain; }}
+.preview .pv-info {{ font-size: 12px; line-height: 1.8; }}
+.preview .pv-nav {{ display: flex; gap: 8px; margin-top: 8px; }}
+.preview .pv-nav button {{ padding: 6px 16px; border: none; border-radius: 4px; background: #e8e8e8;
+    cursor: pointer; font-size: 13px; }}
+.preview .pv-nav button:hover {{ background: #ddd; }}
 </style>
 </head><body>
 <h1>Prediction Report</h1>
@@ -209,19 +221,89 @@ h2 {{ margin-top: 24px; color: #444; }}
 
     # Timeline — expression
     html += '<div style="font-size:10px;color:#999;margin-top:8px">Expression</div>'
-    html += '<div class="timeline">'
+    html += '<div class="timeline" id="tlExpr">'
     for r in results:
         color = COLORS.get(r["pred"], '#999')
-        html += f'<div class="tl-seg" style="background:{color}" title="#{r["idx"]} {r["pred"]} {r["conf"]:.0%}"></div>'
+        html += f'<div class="tl-seg" data-idx="{r["idx"]}" style="background:{color}" title="#{r["idx"]} {r["pred"]} {r["conf"]:.0%}" onclick="showPreview({r["idx"]})"></div>'
     html += '</div>'
 
     # Timeline — pose
     html += '<div style="font-size:10px;color:#999;margin-top:2px">Pose</div>'
-    html += '<div class="timeline" style="height:10px">'
+    html += '<div class="timeline" style="height:10px" id="tlPose">'
     for r in results:
         pose_color = COLORS.get(r.get("pose",""), '#eee')
-        html += f'<div class="tl-seg" style="background:{pose_color}" title="#{r["idx"]} {r.get("pose","?")}"></div>'
+        html += f'<div class="tl-seg" data-idx="{r["idx"]}" style="background:{pose_color}" title="#{r["idx"]} {r.get("pose","?")}" onclick="showPreview({r["idx"]})"></div>'
     html += '</div>'
+
+    # Preview panel
+    html += """
+<div class="preview" id="preview">
+    <img id="pvImg" src="">
+    <div class="pv-info">
+        <div id="pvDetail"></div>
+        <div class="pv-nav">
+            <button onclick="pvNav(-1)">← Prev (H)</button>
+            <button onclick="pvNav(1)">Next (L) →</button>
+            <button onclick="closePreview()" style="margin-left:auto;background:#eee">Close (Esc)</button>
+        </div>
+    </div>
+</div>
+"""
+
+    # Frame data as JSON (without b64 to keep small, b64 loaded separately)
+    frame_meta = json.dumps([
+        {"idx": r["idx"], "pred": r["pred"], "conf": round(r["conf"], 3),
+         "pose": r.get("pose",""), "pose_conf": round(r.get("pose_conf",0), 3)}
+        for r in results
+    ])
+    # b64 images stored in separate array
+    b64_list = json.dumps([r["b64"] for r in results])
+
+    html += f"""
+<script>
+const FRAMES = {frame_meta};
+const B64 = {b64_list};
+const COLORS = {json.dumps(COLORS)};
+let pvIdx = -1;
+
+function showPreview(idx) {{
+    pvIdx = idx;
+    const f = FRAMES[idx];
+    document.getElementById('pvImg').src = 'data:image/jpeg;base64,' + B64[idx];
+    const exprColor = COLORS[f.pred] || '#999';
+    const poseColor = COLORS[f.pose] || '#999';
+    document.getElementById('pvDetail').innerHTML =
+        `<div style="font-size:16px;margin-bottom:4px"><span class="tag" style="background:${{exprColor}}">${{f.pred}}</span> ` +
+        `<span class="tag" style="background:${{poseColor}}">${{f.pose||'?'}}</span></div>` +
+        `<div>Frame #${{f.idx}} / ${{FRAMES.length}}</div>` +
+        `<div>Expression: ${{f.pred}} (${{(f.conf*100).toFixed(0)}}%)</div>` +
+        `<div>Pose: ${{f.pose||'?'}} (${{(f.pose_conf*100).toFixed(0)}}%)</div>`;
+    document.getElementById('preview').classList.add('open');
+    // Highlight in timeline
+    document.querySelectorAll('.tl-seg').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll(`.tl-seg[data-idx="${{idx}}"]`).forEach(s => s.classList.add('active'));
+}}
+
+function closePreview() {{
+    document.getElementById('preview').classList.remove('open');
+    document.querySelectorAll('.tl-seg').forEach(s => s.classList.remove('active'));
+    pvIdx = -1;
+}}
+
+function pvNav(delta) {{
+    if (pvIdx < 0) return;
+    const next = pvIdx + delta;
+    if (next >= 0 && next < FRAMES.length) showPreview(next);
+}}
+
+document.addEventListener('keydown', e => {{
+    if (pvIdx < 0) return;
+    if (e.key === 'Escape') {{ closePreview(); e.preventDefault(); }}
+    else if (e.key === 'ArrowLeft' || e.key === 'h') {{ pvNav(-1); e.preventDefault(); }}
+    else if (e.key === 'ArrowRight' || e.key === 'l') {{ pvNav(1); e.preventDefault(); }}
+}});
+</script>
+"""
 
     # SHOOT frames grouped by expression
     for cls in classes:
