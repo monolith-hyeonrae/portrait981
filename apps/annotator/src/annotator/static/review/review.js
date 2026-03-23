@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
 let ROWS = [];
 let VIDEOS = {};
 let FOLDERS = [];
+let SIGNALS = {};  // filename → {signal: value}
 let currentView = 'expression';
 let currentFolder = null;
 let bucketFilter = null;
@@ -68,6 +69,7 @@ async function loadData() {
         ROWS = await (await fetch('/api/labels')).json();
         VIDEOS = await (await fetch('/api/videos')).json();
         FOLDERS = await (await fetch('/api/folders')).json();
+        SIGNALS = await (await fetch('/api/signals')).json();
         const warnings = await (await fetch('/api/warnings')).json();
         renderWarnings(warnings);
         renderFolderFilters();
@@ -559,6 +561,25 @@ function renderLightbox() {
     edit += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="lbDelete()">delete</button>`;
     edit += '</div>';
     document.getElementById('lbEdit').innerHTML = edit;
+
+    // Signal hints
+    const sig = SIGNALS[r.filename];
+    let sigHtml = '';
+    if (sig) {
+        const yaw = sig.head_yaw_dev || 0;
+        const poseHint = yaw < 8 ? 'front' : yaw < 25 ? 'angle' : 'side';
+        const poseMatch = r.pose === poseHint;
+        sigHtml += '<div style="margin-top:6px;font-size:11px;color:#aaa;line-height:1.6">';
+        sigHtml += `<span style="color:${poseMatch ? '#4CAF50' : '#FF9800'}">yaw=${(yaw*60).toFixed(0)}° → ${poseHint}</span>`;
+        if (sig.em_happy !== undefined) sigHtml += ` | happy=${(sig.em_happy*100).toFixed(0)}%`;
+        if (sig.mouth_open_ratio !== undefined) sigHtml += ` | mouth=${(sig.mouth_open_ratio*100).toFixed(0)}%`;
+        if (sig.eye_visible_ratio !== undefined) sigHtml += ` | eye=${(sig.eye_visible_ratio*100).toFixed(0)}%`;
+        if (sig.glasses_ratio !== undefined && sig.glasses_ratio > 0.05) sigHtml += ` | <span style="color:#FF9800">glasses</span>`;
+        if (sig.backlight_score !== undefined && sig.backlight_score > 0.3) sigHtml += ` | <span style="color:#d32f2f">backlight</span>`;
+        if (sig.face_confidence !== undefined) sigHtml += ` | conf=${(sig.face_confidence*100).toFixed(0)}%`;
+        sigHtml += '</div>';
+    }
+    document.getElementById('lbEdit').innerHTML = edit + sigHtml;
 
     // Position
     const pos = lbList.indexOf(lbIdx);

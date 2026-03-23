@@ -68,6 +68,8 @@ class ReviewHandler(SimpleHTTPRequestHandler):
             self._send_json(self._read_labels())
         elif parsed.path == "/api/videos":
             self._send_json(self._read_videos())
+        elif parsed.path == "/api/signals":
+            self._send_json(self._read_signals())
         elif parsed.path == "/api/warnings":
             self._send_json(self._get_warnings())
         elif parsed.path == "/api/folders":
@@ -187,6 +189,30 @@ class ReviewHandler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     # --- CSV operations ---
+
+    def _read_signals(self) -> dict:
+        """Read signals.parquet if available, return {filename: {signal: value}}."""
+        parquet_path = self.dataset_dir / "signals.parquet"
+        if not parquet_path.exists():
+            return {}
+        try:
+            import pandas as pd
+            df = pd.read_parquet(parquet_path)
+            # Select key signals for display (not all 49)
+            key_signals = [
+                "head_yaw_dev", "head_pitch",
+                "em_happy", "em_neutral",
+                "face_confidence", "face_exposure",
+                "mouth_open_ratio", "eye_visible_ratio", "glasses_ratio",
+                "backlight_score",
+            ]
+            cols = ["filename"] + [c for c in key_signals if c in df.columns]
+            result = {}
+            for _, row in df[cols].iterrows():
+                result[row["filename"]] = {c: round(float(row[c]), 3) for c in cols if c != "filename"}
+            return result
+        except Exception:
+            return {}
 
     def _read_labels(self) -> list[dict]:
         if not self.labels_path.exists():
