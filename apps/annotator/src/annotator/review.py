@@ -1,7 +1,7 @@
 """Dataset review HTML with label editing — gallery view by category.
 
 Reads labels.csv + videos.csv and generates an interactive gallery
-grouped by expression/pose/chemistry, with inline editing.
+grouped by expression/pose/moment, with inline editing.
 
 Usage (CLI):
     annotator review data/datasets/portrait-v1 --output review.html
@@ -74,7 +74,7 @@ def generate_review_html(
                     "workflow_id": "",
                     "expression": "",
                     "pose": "",
-                    "chemistry": "",
+                    "moment": "",
                     "source": "reference",
                 })
                 new_count += 1
@@ -98,7 +98,7 @@ def generate_review_html(
     from collections import Counter
     expr_c = Counter(r.get("expression", "") for r in rows if r.get("expression"))
     pose_c = Counter(r.get("pose", "") for r in rows if r.get("pose"))
-    chem_c = Counter(r.get("chemistry", "") for r in rows if r.get("chemistry"))
+    chem_c = Counter(r.get("moment", "") for r in rows if r.get("moment"))
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Dataset Review</title>
@@ -141,7 +141,7 @@ h2:hover {{ opacity: 0.8; }}
     <div class="filter-group">
         <button class="filter-btn active" onclick="setView('expression')">Expression</button>
         <button class="filter-btn" onclick="setView('pose')">Pose</button>
-        <button class="filter-btn" onclick="setView('chemistry')">Chemistry</button>
+        <button class="filter-btn" onclick="setView('moment')">Moment</button>
         <button class="filter-btn" onclick="setView('cut')">Cut</button>
         <button class="filter-btn" onclick="setView('all')">All</button>
     </div>
@@ -153,7 +153,7 @@ h2:hover {{ opacity: 0.8; }}
     <b>Total:</b> {len(rows)} |
     <b>Expression:</b> {', '.join(f'{k}={v}' for k, v in expr_c.most_common())} |
     <b>Pose:</b> {', '.join(f'{k}={v}' for k, v in pose_c.most_common())} |
-    <b>Chemistry:</b> {', '.join(f'{k}={v}' for k, v in chem_c.most_common()) or 'none'} |
+    <b>Moment:</b> {', '.join(f'{k}={v}' for k, v in chem_c.most_common()) or 'none'} |
     <b>Videos:</b> {len(videos)}
     {f'| <b style="color:#FF9800">New:</b> {new_count}' if new_count > 0 else ''}
 </div>
@@ -168,7 +168,7 @@ const VIDEOS = {videos_json};
 const COLORS = {{
     cheese: '#4CAF50', goofy: '#E91E63', chill: '#2196F3', edge: '#FF5722', hype: '#9C27B0',
     cut: '#d32f2f', occluded: '#795548', front: '#00BCD4', angle: '#FF9800', side: '#795548',
-    sync: '#FFD700', interact: '#00E676', solo: '#607D8B', duo: '#E91E63',
+    moment: '#FFD700', solo: '#607D8B', duo: '#E91E63',
 }};
 const DESC = {{
     cheese: '얼굴이 주인공 — 프로필 사진, 인물 초상화용',
@@ -179,11 +179,9 @@ const DESC = {{
     cut: '촬영 가치 없음',
     occluded: '얼굴 가려짐 — 마스크/선글라스/목도리',
     front: '정면', angle: '3/4 앵글', side: '측면',
-    sync: '함께 웃기, 동시 반응', interact: '서로 교감',
 }};
 const EXPRESSIONS = ['cheese', 'goofy', 'chill', 'edge', 'hype', 'occluded'];
 const POSES = ['front', 'angle', 'side'];
-const CHEMS = ['sync', 'interact'];
 let changes = {{}};
 let deleted = new Set();
 let currentView = 'expression';
@@ -211,7 +209,7 @@ function updateSaveBtn() {{
 
 function downloadCSV() {{
     // labels.csv (삭제된 항목 제외)
-    const header = 'filename,workflow_id,expression,pose,chemistry,source';
+    const header = 'filename,workflow_id,expression,pose,moment,source';
     const lines = [header];
     const deletedFiles = [];
     ROWS.forEach((r, i) => {{
@@ -219,7 +217,7 @@ function downloadCSV() {{
             deletedFiles.push(r.filename);
             return;
         }}
-        lines.push([r.filename, r.workflow_id||'', r.expression||'', r.pose||'', r.chemistry||'', r.source||''].join(','));
+        lines.push([r.filename, r.workflow_id||'', r.expression||'', r.pose||'', r.moment||'', r.source||''].join(','));
     }});
 
     if (deletedFiles.length > 0) {{
@@ -321,7 +319,7 @@ function renderCard(idx, row) {{
     if (!b64) return '';
     const expr = row.expression || '';
     const pose = row.pose || '';
-    const chem = row.chemistry || '';
+    const mom = row.moment || '';
     const vid = VIDEOS[row.workflow_id] || {{}};
     const isModified = changes[idx] ? ' modified' : '';
     const isDeleted = deleted.has(idx);
@@ -338,7 +336,7 @@ function renderCard(idx, row) {{
     let tags = '';
     if (expr) tags += `<span class="tag" style="background:${{getColor(expr)}}">${{expr}}</span>`;
     if (pose) tags += `<span class="tag" style="background:${{getColor(pose)}}">${{pose}}</span>`;
-    if (chem) tags += `<span class="tag" style="background:${{getColor(chem)}}">${{chem}}</span>`;
+    if (mom === 'yes') tags += `<span class="tag" style="background:${{getColor('moment')}}">moment</span>`;
     if (vid.scene) tags += `<span class="tag" style="background:${{getColor(vid.scene)}}">${{vid.scene}}</span>`;
     if (vid.main_gender) tags += `<span class="tag" style="background:#444">${{vid.main_gender}}</span>`;
     if (vid.main_ethnicity) tags += `<span class="tag" style="background:#444">${{vid.main_ethnicity}}</span>`;
@@ -360,10 +358,8 @@ function renderCard(idx, row) {{
     }}
     if (vid.scene === 'duo') {{
         editHtml += '&nbsp;';
-        for (const c of CHEMS) {{
-            const act = chem === c;
-            editHtml += `<button class="edit-btn${{act?' active':''}}" style="${{act?'background:'+getColor(c):''}}" onclick="setField(${{idx}},'chemistry','${{c}}')">${{c}}</button>`;
-        }}
+        const mSel = mom === 'yes';
+        editHtml += `<button class="edit-btn${{mSel?' active':''}}" style="${{mSel?'background:'+getColor('moment')+';color:#fff':''}}" onclick="setField(${{idx}},'moment',${{mSel}}?'':'yes')">moment</button>`;
     }}
     editHtml += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="toggleDelete(${{idx}})">✕</button>`;
     editHtml += '</div>';
@@ -414,18 +410,10 @@ function renderAll() {{
         }}
     }}
 
-    if (currentView === 'chemistry') {{
-        const groups = {{}};
-        ROWS.forEach((r, i) => {{
-            const c = r.chemistry || '';
-            if (c) {{
-                if (!groups[c]) groups[c] = [];
-                groups[c].push({{row: r, idx: i}});
-            }}
-        }});
-        for (const c of CHEMS) {{
-            if (groups[c]) html += renderGroup(c, getColor(c), groups[c]);
-        }}
+    if (currentView === 'moment') {{
+        const items = [];
+        ROWS.forEach((r, i) => {{ if (r.moment === 'yes') items.push({{row: r, idx: i}}); }});
+        html += renderGroup('moment', getColor('moment'), items);
     }}
 
     if (currentView === 'cut') {{

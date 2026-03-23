@@ -201,7 +201,7 @@ class ReviewHandler(SimpleHTTPRequestHandler):
             return {r["workflow_id"]: r for r in csv.DictReader(f)}
 
     def _write_labels(self, rows: list[dict]):
-        fieldnames = ["filename", "workflow_id", "expression", "pose", "chemistry", "source"]
+        fieldnames = ["filename", "workflow_id", "expression", "pose", "moment", "source"]
         with open(self.labels_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
@@ -305,12 +305,12 @@ def start_server(dataset_dir: str | Path, port: int = 8765):
             existing = {r["filename"] for r in csv.DictReader(f)}
         new_files = [name for name in sorted(image_index) if name not in existing]
         if new_files:
-            fieldnames = ["filename", "workflow_id", "expression", "pose", "chemistry", "source"]
+            fieldnames = ["filename", "workflow_id", "expression", "pose", "moment", "source"]
             with open(labels_path, "a", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 for fname in new_files:
                     writer.writerow({"filename": fname, "workflow_id": "", "expression": "",
-                                     "pose": "", "chemistry": "", "source": "reference"})
+                                     "pose": "", "moment": "", "source": "reference"})
             logger.info("Added %d new images to labels.csv", len(new_files))
 
     # Configure handler

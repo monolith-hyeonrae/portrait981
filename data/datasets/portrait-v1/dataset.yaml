@@ -54,10 +54,11 @@ pose:
 # 기각
 reject: "cut ✂️ — 이 장면은 찍으면 안 된다"
 
-# 케미스트리 (chemistry) — scene=duo일 때만
-chemistry:
-  sync: "함께 웃기, 동시 반응 — 둘의 타이밍이 맞는 순간"
-  interact: "서로 쳐다보기, 하이파이브 — 둘이 교감하는 순간"
+# 모먼트 (moment) — scene=duo일 때만
+# 두 사람 모두 잘 나온 프레임. duo 기억 사진으로 적합한 순간.
+moment:
+  "yes": "duo 기억 사진으로 적합 — 두 얼굴 모두 visible & good"
+  "": "해당 없음 (solo) 또는 미지정"
 
 # ── 설계 원칙 ──
 # 워크플로우 상수는 videos.csv에 한번만 기록

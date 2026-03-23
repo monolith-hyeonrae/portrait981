@@ -45,7 +45,7 @@ def _generate_html(frames_info: list[dict], categories: list[str], video_name: s
         "occluded": "#795548",
         "front": "#00BCD4", "angle": "#FF9800", "side": "#795548",
         "solo": "#607D8B", "duo": "#E91E63",
-        "sync": "#FFD700", "interact": "#00E676",
+        "moment": "#FFD700",
     }
     cat_list_json = json.dumps(categories)
     cat_colors_json = json.dumps(cat_colors)
@@ -421,11 +421,11 @@ function renderFocus() {{
     const label = labels[f.index];
     const pose = poses[f.index];
     const scene = videoMeta ? videoMeta.scene : null;
-    const chem = chemistries[f.index];
+    const mom = moments[f.index];
     const isDuo = scene === 'duo';
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
     const displayLabel = label === '__shoot__' ? 'SHOOT ⏳' : label;
-    const parts = [displayLabel, pose, chem].filter(x => x && x !== '__shoot__');
+    const parts = [displayLabel, pose, mom === 'yes' ? 'moment' : null].filter(x => x && x !== '__shoot__');
     const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : label === 'occluded' ? '#795548' : '#4CAF50';
     const labelHtml = parts.length > 0
         ? `<div class="focus-label" style="color:${{labelColor}}">${{parts.join(' + ')}}</div>`
@@ -436,8 +436,6 @@ function renderFocus() {{
     const DESC = {{
         '__shoot__': '이 프레임을 촬영합니다',
         'cut': '이 장면은 찍으면 안 됩니다',
-        'sync': '함께 웃기, 동시 반응 — 둘의 타이밍이 맞는 순간',
-        'interact': '서로 쳐다보기, 하이파이브 — 둘이 교감하는 순간',
         'cheese': '얼굴이 주인공 — 프로필 사진, 인물 초상화용 이쁜 미소',
         'goofy': '장난스러운 표정 😜 — 혀 내밀기, 윙크, 과장된 표정, 재미있는 개성',
         'chill': '쿨하고 여유로운 — 편안하고 힘 빠진 자연스러운 표정',
@@ -451,7 +449,7 @@ function renderFocus() {{
     const descHtml = (val) => val && DESC[val] ? `<div style="font-size:11px;color:#888;margin-top:2px;text-align:center">${{DESC[val]}}</div>` : '';
     let btnsHtml = '';
 
-    // Determine current step: shoot → chemistry(duo only) → expression → pose
+    // Determine current step: shoot → expression → pose
     const autoStep = getStep(f.index);
     const step = (manualStep !== null && manualStep >= -1) ? manualStep : autoStep;
 
@@ -463,20 +461,8 @@ function renderFocus() {{
     btnsHtml += `<button class="cat-btn${{isCut ? ' selected' : ''}}" style="${{isCut ? 'background:#d32f2f;color:#fff;' : 'background:#333;color:#aaa;'}}padding:8px 18px" onclick="setLabel(${{f.index}},'cut')">CUT ✂️ ${{K}}W</span></button>`;
     btnsHtml += '</div>';
 
-    // Step 1: CHEMISTRY (duo only, 항상 표시)
-    if (isDuo) {{
-        btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
-        for (const [c, key] of [['sync','Q'],['interact','W']]) {{
-            const sel = chem === c;
-            const bg = sel ? `background:${{getColor(c)}};color:#fff;` : '';
-            btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setChemistry(${{f.index}},'${{c}}')">${{c}} ${{K}}${{key}}</span></button>`;
-        }}
-        btnsHtml += '</div>';
-        btnsHtml += descHtml(chem);
-    }}
-
-    // Step 2: EXPRESSION (항상 표시)
-    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+    // Step 1: EXPRESSION (항상 표시)
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
     for (const [cat, key] of [['cheese','Q'],['goofy','W'],['chill','E'],['edge','R'],['hype','T'],['occluded','Y']]) {{
         const sel = label === cat;
         const bg = sel ? `background:${{getColor(cat)}};color:#fff;` : '';
@@ -485,8 +471,8 @@ function renderFocus() {{
     btnsHtml += '</div>';
     btnsHtml += descHtml(isAccepted ? label : null);
 
-    // Step 3: POSE (항상 표시)
-    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+    // Step 2: POSE (항상 표시)
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
     for (const [p, key] of [['front','Q'],['angle','W'],['side','E']]) {{
         const sel = pose === p;
         const bg = sel ? `background:${{getColor(p)}};color:#fff;` : '';
@@ -495,11 +481,19 @@ function renderFocus() {{
     btnsHtml += '</div>';
     btnsHtml += descHtml(pose);
 
-    if (step === 4) {{
+    // Moment toggle (duo only, optional/non-blocking)
+    if (isDuo) {{
+        const mSel = mom === 'yes';
+        btnsHtml += `<div class="buttons" style="margin-top:6px">`;
+        btnsHtml += `<button class="cat-btn${{mSel ? ' selected' : ''}}" style="${{mSel ? 'background:'+getColor('moment')+';color:#fff;' : ''}}" onclick="setMoment(${{f.index}})">Moment ${{K}}M</span></button>`;
+        btnsHtml += '</div>';
+    }}
+
+    if (step === 3) {{
         btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">✓ Complete</div>';
     }}
 
-    const stepHint = isDuo ? 'shoot→chemistry→expression→pose' : 'shoot→expression→pose';
+    const stepHint = 'shoot→expression→pose';
 
     panel.innerHTML = `
         <img class="focus-img" src="data:image/jpeg;base64,${{IMAGES[f.index]}}">
@@ -531,7 +525,7 @@ function go(delta) {{
 }}
 
 let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
-let chemistries = JSON.parse(localStorage.getItem(STORAGE_KEY + '_chem') || '{{}}');
+let moments = JSON.parse(localStorage.getItem(STORAGE_KEY + '_moment') || '{{}}');
 
 function setLabel(index, label) {{
     if (labels[index] === label) {{
@@ -560,14 +554,13 @@ function setPose(index, pose) {{
     renderStrip();
 }}
 
-function setChemistry(index, chem) {{
-    if (chemistries[index] === chem) {{
-        delete chemistries[index];
+function setMoment(index) {{
+    if (moments[index] === 'yes') {{
+        delete moments[index];
     }} else {{
-        chemistries[index] = chem;
+        moments[index] = 'yes';
     }}
-    localStorage.setItem(STORAGE_KEY + '_chem', JSON.stringify(chemistries));
-    checkAutoAdvance(index);
+    localStorage.setItem(STORAGE_KEY + '_moment', JSON.stringify(moments));
     renderFocus();
     renderStrip();
 }}
@@ -576,16 +569,14 @@ function checkAutoAdvance(index) {{
     // 모든 라벨이 완성되었으면 0.4초 후 다음 프레임으로 자동 이동
     const lbl = labels[index];
     const p = poses[index];
-    const c = chemistries[index];
-    const isDuo = videoMeta && videoMeta.scene === 'duo';
-    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p && (!isDuo || c);
+    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p;
     if (isComplete) {{
         setTimeout(() => {{ go(1); }}, 400);
     }}
 }}
 
 function focusBucket(axis, value) {{
-    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : chemistries;
+    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : moments;
     const target = filteredList.find((f, pos) => {{
         if (value === '(none)' || value === '') {{
             return axisData[f.index] === undefined;
@@ -607,14 +598,11 @@ function updateCount() {{
     // Count all axes
     const EXPRS = ['cheese','goofy','chill','edge','hype','occluded','cut'];
     const POSES = ['front','angle','side',''];
-    const CHEMS = ['sync','interact',''];
-
     const exprCounts = {{}};
     const poseCounts = {{}};
-    const chemCounts = {{}};
+    let momentCount = 0;
     EXPRS.forEach(e => exprCounts[e] = 0);
     POSES.forEach(p => poseCounts[p] = 0);
-    CHEMS.forEach(c => chemCounts[c] = 0);
 
     const exprPose = {{}};
     EXPRS.forEach(e => POSES.forEach(p => exprPose[e+'|'+p] = 0));
@@ -622,10 +610,9 @@ function updateCount() {{
     for (const [idx, lbl] of Object.entries(labels)) {{
         if (!lbl || lbl === '__shoot__') continue;
         const p = poses[idx] || '';
-        const c = chemistries[idx] || '';
         if (exprCounts[lbl] !== undefined) exprCounts[lbl]++;
         poseCounts[p] = (poseCounts[p] || 0) + 1;
-        chemCounts[c] = (chemCounts[c] || 0) + 1;
+        if (moments[idx] === 'yes') momentCount++;
         const key = lbl + '|' + p;
         if (exprPose[key] !== undefined) exprPose[key]++;
     }}
@@ -666,12 +653,9 @@ function updateCount() {{
 
     html += '</table>';
 
-    // Chemistry summary (inline, right side) — only for duo
+    // Moment summary (inline, right side) — only for duo
     if (isDuo) {{
-        html += '&nbsp;&nbsp;<span style="font-size:11px;color:#888">';
-        html += `chem: <span style="color:${{getColor('sync')}};cursor:pointer" onclick="focusBucket('chemistry','sync')">sync ${{chemCounts['sync'] || 0}}</span>`;
-        html += ` <span style="color:${{getColor('interact')}};cursor:pointer" onclick="focusBucket('chemistry','interact')">interact ${{chemCounts['interact'] || 0}}</span>`;
-        html += '</span>';
+        html += `&nbsp;&nbsp;<span style="font-size:11px;color:#888">moment: <span style="color:${{getColor('moment')}}">${{momentCount}}</span></span>`;
     }}
 
     bar.innerHTML = html;
@@ -692,18 +676,18 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
 
-        const csvRows = ['filename,workflow_id,expression,pose,chemistry,source'];
+        const csvRows = ['filename,workflow_id,expression,pose,moment,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
             const pose = poses[f.index] || '';
-            const chem = chemistries[f.index] || '';
+            const mom = moments[f.index] || '';
             const fname = `${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`;
             const b64 = IMAGES[f.index];
             const binary = atob(b64);
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             zip.file(`images/${{fname}}`, bytes);
-            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{chem}},operational`);
+            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{mom}},operational`);
         }}
         zip.file('labels.csv', csvRows.join('\\n') + '\\n');
 
@@ -729,10 +713,10 @@ function resetLabels() {{
     if (!confirm('Reset all labels?')) return;
     labels = {{}};
     poses = {{}};
-    chemistries = {{}};
+    moments = {{}};
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY + '_pose');
-    localStorage.removeItem(STORAGE_KEY + '_chem');
+    localStorage.removeItem(STORAGE_KEY + '_moment');
     buildFilteredList();
     currentPos = 0;
     renderFocus();
@@ -740,32 +724,22 @@ function resetLabels() {{
 }}
 
 // Step-based options: solo vs duo
-const STEP_OPTIONS_SOLO = {{
+const STEP_OPTIONS = {{
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
-    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
-}};
-const STEP_OPTIONS_DUO = {{
-    '-1': [['__shoot__','setLabel']],
-    '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '1': [['sync','setChemistry'], ['interact','setChemistry']],
-    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
-    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '1': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
+    '2': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 }};
 
 function getStep(idx) {{
     const lbl = labels[idx];
-    const c = chemistries[idx];
     const p = poses[idx];
-    const isDuo = videoMeta && videoMeta.scene === 'duo';
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
     if (!lbl) return 0;                          // shoot/cut
     if (lbl === 'cut') return -1;                // cut done
-    if (isDuo && !c) return 1;                   // chemistry (duo only)
-    if (lbl === '__shoot__' || !isAccepted) return 2;  // expression
-    if (!p) return 3;                            // pose
-    return 4;                                    // complete
+    if (lbl === '__shoot__' || !isAccepted) return 1;  // expression
+    if (!p) return 2;                            // pose
+    return 3;                                    // complete
 }}
 
 function isModalOpen() {{
@@ -824,16 +798,13 @@ document.addEventListener('keydown', e => {{
     const idx = f.index;
     const autoStep = getStep(idx);
     const step = (manualStep !== null) ? manualStep : autoStep;
-    const isDuo = videoMeta && videoMeta.scene === 'duo';
-    const STEP_OPTIONS = isDuo ? STEP_OPTIONS_DUO : STEP_OPTIONS_SOLO;
-
     // h/l = prev/next frame
     if (e.key === 'h') {{ go(-1); return; }}
     if (e.key === 'l') {{ go(1); return; }}
+    if (e.key === 'm') {{ const isDuo = videoMeta && videoMeta.scene === 'duo'; if (isDuo) setMoment(idx); return; }}
 
     // j/k = step focus down/up
-    const isDuo2 = videoMeta && videoMeta.scene === 'duo';
-    const maxStep = isDuo2 ? 3 : 3;
+    const maxStep = 2;
     const minStep = -1;
     if (e.key === 'j') {{
         if (manualStep === null) manualStep = step;
@@ -857,7 +828,6 @@ document.addEventListener('keydown', e => {{
         if (n <= opts.length) {{
             const [value, fn] = opts[n - 1];
             if (fn === 'setLabel') setLabel(idx, value);
-            else if (fn === 'setChemistry') setChemistry(idx, value);
             else if (fn === 'setPose') setPose(idx, value);
             manualStep = null;  // 선택 후 자동 step으로
         }}

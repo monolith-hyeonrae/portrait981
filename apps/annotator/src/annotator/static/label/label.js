@@ -8,7 +8,7 @@ let videoCacheBust = 0;
 
 let labels = {};
 let poses = {};
-let chemistries = {};
+let moments = {};
 let videoMeta = null;
 
 let currentPos = 0;
@@ -24,7 +24,7 @@ async function loadStaging() {
     const data = await (await fetch('/api/staging')).json();
     labels = data.labels || {};
     poses = data.poses || {};
-    chemistries = data.chems || {};
+    moments = data.moments || {};
     videoMeta = data.video_meta || null;
     buildFilteredList();
     renderAll();
@@ -68,7 +68,7 @@ async function switchVideo(filename) {
             const data = await (await fetch('/api/staging')).json();
             labels = data.labels || {};
             poses = data.poses || {};
-            chemistries = data.chems || {};
+            moments = data.moments || {};
             videoMeta = data.video_meta || null;
             buildFilteredList();
             renderAll();
@@ -94,7 +94,7 @@ async function saveToServer(index) {
                 index: index,
                 expression: labels[index] || '',
                 pose: poses[index] || '',
-                chemistry: chemistries[index] || '',
+                moment: moments[index] || '',
             }),
         });
     } finally { saving = false; }
@@ -160,12 +160,12 @@ function renderFocus() {
     const idx = filteredList[currentPos];
     const label = labels[idx];
     const pose = poses[idx];
-    const chem = chemistries[idx];
+    const mom = moments[idx];
     const scene = videoMeta ? videoMeta.scene : null;
     const isDuo = scene === 'duo';
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
     const displayLabel = label === '__shoot__' ? 'SHOOT' : label;
-    const parts = [displayLabel, pose, chem].filter(x => x && x !== '__shoot__');
+    const parts = [displayLabel, pose, mom === 'yes' ? 'moment' : null].filter(x => x && x !== '__shoot__');
     const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : label === 'occluded' ? '#795548' : '#4CAF50';
     const labelHtml = parts.length > 0
         ? `<div class="focus-label" style="color:${labelColor}">${parts.join(' + ')}</div>`
@@ -187,19 +187,8 @@ function renderFocus() {
     btnsHtml += `<button class="cat-btn${isCut ? ' selected' : ''}" style="${isCut ? 'background:#d32f2f;color:#fff;' : 'background:#f5f5f5;color:#999;'}" onclick="setLabel(${idx},'cut')">CUT ${K}W</span></button>`;
     btnsHtml += '</div>';
 
-    // Step 1: CHEMISTRY (duo)
-    if (isDuo) {
-        btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
-        for (const [c, key] of [['sync','Q'],['interact','W']]) {
-            const sel = chem === c;
-            btnsHtml += `<button class="cat-btn${sel ? ' selected' : ''}" style="${sel ? 'background:'+getColor(c)+';color:#fff;' : ''}" onclick="setChemistry(${idx},'${c}')">${c} ${K}${key}</span></button>`;
-        }
-        btnsHtml += '</div>';
-        btnsHtml += descHtml(chem);
-    }
-
-    // Step 2: EXPRESSION
-    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
+    // Step 1: EXPRESSION
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
     for (const [cat, key] of [['cheese','Q'],['goofy','W'],['chill','E'],['edge','R'],['hype','T'],['occluded','Y']]) {
         const sel = label === cat;
         btnsHtml += `<button class="cat-btn${sel ? ' selected' : ''}" style="${sel ? 'background:'+getColor(cat)+';color:#fff;' : ''}" onclick="setLabel(${idx},'${cat}')">${cat} ${K}${key}</span></button>`;
@@ -207,17 +196,26 @@ function renderFocus() {
     btnsHtml += '</div>';
     btnsHtml += descHtml(isAccepted ? label : null);
 
-    // Step 3: POSE
-    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
+    // Step 2: POSE
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
     for (const [p, key] of [['front','Q'],['angle','W'],['side','E']]) {
         const sel = pose === p;
         btnsHtml += `<button class="cat-btn${sel ? ' selected' : ''}" style="${sel ? 'background:'+getColor(p)+';color:#fff;' : ''}" onclick="setPose(${idx},'${p}')">${p} ${K}${key}</span></button>`;
     }
     btnsHtml += '</div>';
     btnsHtml += descHtml(pose);
-    if (step === 4) btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">Complete</div>';
 
-    const stepHint = isDuo ? 'shoot\u2192chemistry\u2192expression\u2192pose' : 'shoot\u2192expression\u2192pose';
+    // Moment toggle (duo only, optional/non-blocking)
+    if (isDuo) {
+        const mSel = mom === 'yes';
+        btnsHtml += `<div class="buttons" style="margin-top:6px">`;
+        btnsHtml += `<button class="cat-btn${mSel ? ' selected' : ''}" style="${mSel ? 'background:'+getColor('moment')+';color:#fff;' : ''}" onclick="setMoment(${idx})">Moment ${K}M</span></button>`;
+        btnsHtml += '</div>';
+    }
+
+    if (step === 3) btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">Complete</div>';
+
+    const stepHint = 'shoot\u2192expression\u2192pose';
     panel.innerHTML = `
         <img class="focus-img" src="${frameUrl(idx)}">
         <div class="focus-meta">Frame #${idx} &nbsp; ${currentPos + 1} / ${filteredList.length}</div>
@@ -240,16 +238,13 @@ function go(delta) {
 
 function getStep(idx) {
     const lbl = labels[idx];
-    const c = chemistries[idx];
     const p = poses[idx];
-    const isDuo = videoMeta && videoMeta.scene === 'duo';
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
-    if (!lbl) return 0;
-    if (lbl === 'cut') return -1;
-    if (isDuo && !c) return 1;
-    if (lbl === '__shoot__' || !isAccepted) return 2;
-    if (!p) return 3;
-    return 4;
+    if (!lbl) return 0;                          // shoot/cut
+    if (lbl === 'cut') return -1;                // cut done
+    if (lbl === '__shoot__' || !isAccepted) return 1;  // expression
+    if (!p) return 2;                            // pose
+    return 3;                                    // complete
 }
 
 function setLabel(idx, value) {
@@ -268,20 +263,17 @@ function setPose(idx, value) {
     renderAll();
 }
 
-function setChemistry(idx, value) {
-    if (chemistries[idx] === value) delete chemistries[idx];
-    else chemistries[idx] = value;
+function setMoment(idx) {
+    if (moments[idx] === 'yes') delete moments[idx];
+    else moments[idx] = 'yes';
     saveToServer(idx);
-    checkAutoAdvance(idx);
     renderAll();
 }
 
 function checkAutoAdvance(idx) {
     const lbl = labels[idx];
     const p = poses[idx];
-    const c = chemistries[idx];
-    const isDuo = videoMeta && videoMeta.scene === 'duo';
-    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p && (!isDuo || c);
+    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p;
     if (isComplete) setTimeout(() => go(1), 400);
 }
 
@@ -440,7 +432,7 @@ async function afterMerge() {
     const data = await (await fetch('/api/staging')).json();
     labels = data.labels || {};
     poses = data.poses || {};
-    chemistries = data.chems || {};
+    moments = data.moments || {};
     videoMeta = data.video_meta || null;
     buildFilteredList();
     renderAll();
@@ -476,7 +468,7 @@ function resetLabels() {
     if (!confirm('Reset all labels?')) return;
     labels = {};
     poses = {};
-    chemistries = {};
+    moments = {};
     fetch('/api/save_label', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({index:-1,expression:'__reset__'}) });
     buildFilteredList();
     currentPos = 0;
@@ -484,18 +476,11 @@ function resetLabels() {
 }
 
 // --- Keyboard ---
-const STEP_OPTIONS_SOLO = {
+const STEP_OPTIONS = {
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
-    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
-};
-const STEP_OPTIONS_DUO = {
-    '-1': [['__shoot__','setLabel']],
-    '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '1': [['sync','setChemistry'], ['interact','setChemistry']],
-    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
-    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '1': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
+    '2': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 };
 
 function isModalOpen() {
@@ -512,13 +497,11 @@ document.addEventListener('keydown', e => {
     if (idx === undefined) return;
     const autoStep = getStep(idx);
     const step = (manualStep !== null) ? manualStep : autoStep;
-    const isDuo = videoMeta && videoMeta.scene === 'duo';
-    const STEP_OPTIONS = isDuo ? STEP_OPTIONS_DUO : STEP_OPTIONS_SOLO;
-
     if (e.key === 'h') { go(-1); return; }
     if (e.key === 'l') { go(1); return; }
-    if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(3, manualStep + 1); renderAll(); return; }
+    if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(2, manualStep + 1); renderAll(); return; }
     if (e.key === 'k') { if (manualStep === null) manualStep = step; manualStep = Math.max(-1, manualStep - 1); renderAll(); return; }
+    if (e.key === 'm') { const isDuo = videoMeta && videoMeta.scene === 'duo'; if (isDuo) setMoment(idx); return; }
 
     const QWER = {'q':1,'w':2,'e':3,'r':4,'t':5,'y':6};
     const n = QWER[e.key];
@@ -528,7 +511,6 @@ document.addEventListener('keydown', e => {
         if (n <= opts.length) {
             const [value, fn] = opts[n - 1];
             if (fn === 'setLabel') setLabel(idx, value);
-            else if (fn === 'setChemistry') setChemistry(idx, value);
             else if (fn === 'setPose') setPose(idx, value);
             manualStep = null;
         }

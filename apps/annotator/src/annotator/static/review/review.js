@@ -403,7 +403,7 @@ function renderCard(idx) {
     let tags = `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
     if (r.expression) tags += `<span class="tag" style="background:${getColor(r.expression)}">${r.expression}</span>`;
     if (r.pose) tags += `<span class="tag" style="background:${getColor(r.pose)}">${r.pose}</span>`;
-    if (r.chemistry) tags += `<span class="tag" style="background:${getColor(r.chemistry)}">${r.chemistry}</span>`;
+    if (r.moment === 'yes') tags += `<span class="tag" style="background:${getColor('moment')}">moment</span>`;
 
     if (selectMode) {
         const isSel = selected.has(idx);
@@ -427,10 +427,8 @@ function renderCard(idx) {
         });
         if (vid.scene==='duo') {
             editPanel += '&nbsp;';
-            CHEMS.forEach(c => {
-                const sel = r.chemistry===c;
-                editPanel += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(c)+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'chemistry','${c}')">${c}</button>`;
-            });
+            const mSel = r.moment==='yes';
+            editPanel += `<button class="edit-btn${mSel?' active':''}" style="${mSel?'background:'+getColor('moment')+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'moment',${mSel}?'':'yes')">moment</button>`;
         }
         editPanel += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="event.stopPropagation();deleteImage(${idx})">delete</button>`;
         editPanel += '</div>';
@@ -481,10 +479,9 @@ function renderAll() {
         ROWS.forEach((r,i) => { if (!visible.has(i)) return; const p = r.pose||'(none)'; (groups[p]=groups[p]||[]).push(i); });
         [...POSES, '(none)'].forEach(p => { if (groups[p]) html += renderGroup('pose:'+p, getColor(p), groups[p]); });
     }
-    if (currentView === 'chemistry') {
-        const groups = {};
-        ROWS.forEach((r,i) => { if (!visible.has(i)) return; if (r.chemistry) (groups[r.chemistry]=groups[r.chemistry]||[]).push(i); });
-        CHEMS.forEach(c => { if (groups[c]) html += renderGroup(c, getColor(c), groups[c]); });
+    if (currentView === 'moment') {
+        const items = []; ROWS.forEach((r,i) => { if (!visible.has(i)) return; if (r.moment==='yes') items.push(i); });
+        html += renderGroup('moment', getColor('moment'), items);
     }
     if (currentView === 'cut') {
         const items = []; ROWS.forEach((r,i) => { if (!visible.has(i)) return; if (r.expression==='cut') items.push(i); });
@@ -537,7 +534,7 @@ function renderLightbox() {
     let tags = `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
     if (r.expression) tags += `<span class="tag" style="background:${getColor(r.expression)}">${r.expression}</span>`;
     if (r.pose) tags += `<span class="tag" style="background:${getColor(r.pose)}">${r.pose}</span>`;
-    if (r.chemistry) tags += `<span class="tag" style="background:${getColor(r.chemistry)}">${r.chemistry}</span>`;
+    if (r.moment === 'yes') tags += `<span class="tag" style="background:${getColor('moment')}">moment</span>`;
     document.getElementById('lbTags').innerHTML = tags;
 
     // Edit: expression row
@@ -548,7 +545,7 @@ function renderLightbox() {
     });
     edit += `<button class="edit-btn${r.expression==='cut'?' active':''}" style="${r.expression==='cut'?'background:#d32f2f;color:#fff':''}" onclick="lbUpdate('expression','cut')">cut</button>`;
 
-    // Edit: pose + chemistry + delete row
+    // Edit: pose + moment + delete row
     edit += '</div><div class="edit-btns" style="margin-top:2px">';
     POSES.forEach(p => {
         const sel = r.pose===p;
@@ -556,10 +553,8 @@ function renderLightbox() {
     });
     if (vid.scene==='duo') {
         edit += '&nbsp;';
-        CHEMS.forEach(c => {
-            const sel = r.chemistry===c;
-            edit += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(c)+';color:#fff':''}" onclick="lbUpdate('chemistry','${c}')">${c}</button>`;
-        });
+        const mSel = r.moment==='yes';
+        edit += `<button class="edit-btn${mSel?' active':''}" style="${mSel?'background:'+getColor('moment')+';color:#fff':''}" onclick="lbUpdate('moment',${mSel}?'':'yes')">moment</button>`;
     }
     edit += `&nbsp;<button class="edit-btn" style="background:#d32f2f;color:#fff" onclick="lbDelete()">delete</button>`;
     edit += '</div>';

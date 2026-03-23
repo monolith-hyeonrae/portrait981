@@ -124,7 +124,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
     max_frames: int
     frames: list[tuple[int, np.ndarray]]  # (original_idx, bgr)
     frame_jpegs: dict[int, bytes]  # frame_index -> jpeg bytes
-    staging: dict  # {labels: {idx: expr}, poses: {idx: pose}, chems: {idx: chem}, video_meta: {...}}
+    staging: dict  # {labels: {idx: expr}, poses: {idx: pose}, moments: {idx: moment}, video_meta: {...}}
     staging_path: Path
 
     def do_GET(self):
@@ -166,15 +166,15 @@ class LabelHandler(SimpleHTTPRequestHandler):
             idx = str(body["index"])
             # Handle reset
             if idx == "-1" and body.get("expression") == "__reset__":
-                self.staging = {"labels": {}, "poses": {}, "chems": {}, "video_meta": self.staging.get("video_meta")}
+                self.staging = {"labels": {}, "poses": {}, "moments": {}, "video_meta": self.staging.get("video_meta")}
                 self._save_staging()
                 self._send_json({"ok": True})
                 return
             self.staging["labels"][idx] = body.get("expression", "")
             if "pose" in body:
                 self.staging["poses"][idx] = body["pose"]
-            if "chemistry" in body:
-                self.staging["chems"][idx] = body["chemistry"]
+            if "moment" in body:
+                self.staging["moments"][idx] = body["moment"]
             self._save_staging()
             self._send_json({"ok": True})
 
@@ -282,7 +282,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
             staging = json.loads(staging_path.read_text())
             logger.info("Resumed staging: %s (%d labels)", staging_path, len(staging.get("labels", {})))
         else:
-            staging = {"labels": {}, "poses": {}, "chems": {}, "video_meta": None}
+            staging = {"labels": {}, "poses": {}, "moments": {}, "video_meta": None}
             # Sync from dataset
             self._sync_from_dataset(staging, video_stem)
             if staging["labels"] or staging["video_meta"]:
@@ -320,8 +320,8 @@ class LabelHandler(SimpleHTTPRequestHandler):
                         staging["labels"][idx] = r["expression"]
                     if r.get("pose"):
                         staging["poses"][idx] = r["pose"]
-                    if r.get("chemistry"):
-                        staging["chems"][idx] = r["chemistry"]
+                    if r.get("moment"):
+                        staging["moments"][idx] = r["moment"]
 
         if videos_path.exists():
             with open(videos_path, newline="") as f:
@@ -337,7 +337,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
         """Build merge preview: what will be added to dataset."""
         labels = self.staging.get("labels", {})
         poses = self.staging.get("poses", {})
-        chems = self.staging.get("chems", {})
+        moments = self.staging.get("moments", {})
         meta = self.staging.get("video_meta")
 
         items = []
@@ -349,7 +349,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 "filename": f"{self.video_stem}_{int(idx_str):04d}.jpg",
                 "expression": expr,
                 "pose": poses.get(idx_str, ""),
-                "chemistry": chems.get(idx_str, ""),
+                "moment": moments.get(idx_str, ""),
             })
 
         # Bucket counts
@@ -370,7 +370,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
         """Merge staging into dataset."""
         labels_data = self.staging.get("labels", {})
         poses_data = self.staging.get("poses", {})
-        chems_data = self.staging.get("chems", {})
+        moments_data = self.staging.get("moments", {})
         meta = self.staging.get("video_meta")
 
         images_dir = self.dataset_dir / "images"
@@ -390,7 +390,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 "filename": fname,
                 "expression": expr,
                 "pose": poses_data.get(idx_str, ""),
-                "chemistry": chems_data.get(idx_str, ""),
+                "moment": moments_data.get(idx_str, ""),
             })
 
         if not merge_items:
@@ -406,7 +406,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 (images_dir / item["filename"]).write_bytes(bytes(buf))
 
         # Read existing labels
-        fieldnames = ["filename", "workflow_id", "expression", "pose", "chemistry", "source"]
+        fieldnames = ["filename", "workflow_id", "expression", "pose", "moment", "source"]
         existing_rows = []
         existing_fnames = set()
         if labels_path.exists():
@@ -422,7 +422,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 "workflow_id": self.video_stem,
                 "expression": item["expression"],
                 "pose": item["pose"],
-                "chemistry": item["chemistry"],
+                "moment": item["moment"],
                 "source": "operational",
             }
 
@@ -489,7 +489,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
         if self.staging_path.exists():
             self.staging_path.unlink()
         new_staging = {
-            "labels": {}, "poses": {}, "chems": {},
+            "labels": {}, "poses": {}, "moments": {},
             "video_meta": self.staging.get("video_meta"),
         }
         self._sync_from_dataset(new_staging, self.video_stem)
@@ -578,7 +578,7 @@ def start_label_server(
         staging = json.loads(staging_path.read_text())
         logger.info("Resumed staging: %s (%d labels)", staging_path, len(staging.get("labels", {})))
     else:
-        staging = {"labels": {}, "poses": {}, "chems": {}, "video_meta": None}
+        staging = {"labels": {}, "poses": {}, "moments": {}, "video_meta": None}
 
         # Sync from existing dataset
         labels_path = dataset_dir / "labels.csv"
@@ -604,8 +604,8 @@ def start_label_server(
                         staging["labels"][idx] = r["expression"]
                     if r.get("pose"):
                         staging["poses"][idx] = r["pose"]
-                    if r.get("chemistry"):
-                        staging["chems"][idx] = r["chemistry"]
+                    if r.get("moment"):
+                        staging["moments"][idx] = r["moment"]
 
             synced = len(staging["labels"])
             if synced:
