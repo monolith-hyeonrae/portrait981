@@ -12,6 +12,7 @@ const DESC = {
     chill:'쿨하고 여유로운', edge:'날카롭고 강렬한',
     hype:'순간이 주인공 — 에너지 폭발', occluded:'얼굴 가려짐',
     front:'정면', angle:'3/4', side:'측면',
+    moment:'두 사람 다 잘 나온 추억 사진 — 고객이 구매할 만한 장면',
 };
 
 const EXPRESSIONS = ['cheese','goofy','chill','edge','hype','occluded'];

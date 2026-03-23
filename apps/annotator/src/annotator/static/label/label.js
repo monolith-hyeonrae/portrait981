@@ -187,8 +187,19 @@ function renderFocus() {
     btnsHtml += `<button class="cat-btn${isCut ? ' selected' : ''}" style="${isCut ? 'background:#d32f2f;color:#fff;' : 'background:#f5f5f5;color:#999;'}" onclick="setLabel(${idx},'cut')">CUT ${K}W</span></button>`;
     btnsHtml += '</div>';
 
-    // Step 1: EXPRESSION
-    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
+    // Step 1: MOMENT (duo only, right after shoot)
+    if (isDuo) {
+        const mYes = mom === 'yes';
+        const mNo = mom === 'no';
+        btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
+        btnsHtml += `<button class="cat-btn${mYes ? ' selected' : ''}" style="${mYes ? 'background:'+getColor('moment')+';color:#fff;' : ''}" onclick="setMoment(${idx})">Moment ${K}Q</span></button>`;
+        btnsHtml += `<button class="cat-btn${mNo ? ' selected' : ''}" style="${mNo ? 'background:#999;color:#fff;' : 'background:#f5f5f5;color:#999;'}" onclick="setMomentNo(${idx})">No ${K}W</span></button>`;
+        btnsHtml += '</div>';
+        btnsHtml += descHtml(mYes ? 'moment' : null);
+    }
+
+    // Step 2: EXPRESSION
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
     for (const [cat, key] of [['cheese','Q'],['goofy','W'],['chill','E'],['edge','R'],['hype','T'],['occluded','Y']]) {
         const sel = label === cat;
         btnsHtml += `<button class="cat-btn${sel ? ' selected' : ''}" style="${sel ? 'background:'+getColor(cat)+';color:#fff;' : ''}" onclick="setLabel(${idx},'${cat}')">${cat} ${K}${key}</span></button>`;
@@ -196,8 +207,8 @@ function renderFocus() {
     btnsHtml += '</div>';
     btnsHtml += descHtml(isAccepted ? label : null);
 
-    // Step 2: POSE
-    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 2 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
+    // Step 3: POSE
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
     for (const [p, key] of [['front','Q'],['angle','W'],['side','E']]) {
         const sel = pose === p;
         btnsHtml += `<button class="cat-btn${sel ? ' selected' : ''}" style="${sel ? 'background:'+getColor(p)+';color:#fff;' : ''}" onclick="setPose(${idx},'${p}')">${p} ${K}${key}</span></button>`;
@@ -205,17 +216,9 @@ function renderFocus() {
     btnsHtml += '</div>';
     btnsHtml += descHtml(pose);
 
-    // Moment toggle (duo only, optional/non-blocking)
-    if (isDuo) {
-        const mSel = mom === 'yes';
-        btnsHtml += `<div class="buttons" style="margin-top:6px">`;
-        btnsHtml += `<button class="cat-btn${mSel ? ' selected' : ''}" style="${mSel ? 'background:'+getColor('moment')+';color:#fff;' : ''}" onclick="setMoment(${idx})">Moment ${K}M</span></button>`;
-        btnsHtml += '</div>';
-    }
+    if (step === 4) btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">Complete</div>';
 
-    if (step === 3) btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">Complete</div>';
-
-    const stepHint = 'shoot\u2192expression\u2192pose';
+    const stepHint = isDuo ? 'shoot\u2192moment\u2192expression\u2192pose' : 'shoot\u2192expression\u2192pose';
     panel.innerHTML = `
         <img class="focus-img" src="${frameUrl(idx)}">
         <div class="focus-meta">Frame #${idx} &nbsp; ${currentPos + 1} / ${filteredList.length}</div>
@@ -238,13 +241,16 @@ function go(delta) {
 
 function getStep(idx) {
     const lbl = labels[idx];
+    const m = moments[idx];
     const p = poses[idx];
+    const isDuo = videoMeta && videoMeta.scene === 'duo';
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
     if (!lbl) return 0;                          // shoot/cut
     if (lbl === 'cut') return -1;                // cut done
-    if (lbl === '__shoot__' || !isAccepted) return 1;  // expression
-    if (!p) return 2;                            // pose
-    return 3;                                    // complete
+    if (isDuo && lbl && !m) return 1;            // moment (duo only)
+    if (lbl === '__shoot__' || !isAccepted) return 2;  // expression
+    if (!p) return 3;                            // pose
+    return 4;                                    // complete
 }
 
 function setLabel(idx, value) {
@@ -479,9 +485,16 @@ function resetLabels() {
 const STEP_OPTIONS = {
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '1': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
-    '2': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '1': [['yes','setMoment'], ['no','setMomentNo']],
+    '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
+    '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 };
+
+function setMomentNo(idx) {
+    moments[idx] = 'no';
+    saveToServer(idx);
+    renderAll();
+}
 
 function isModalOpen() {
     return document.getElementById('confirmOverlay').style.display !== 'none';
@@ -499,9 +512,8 @@ document.addEventListener('keydown', e => {
     const step = (manualStep !== null) ? manualStep : autoStep;
     if (e.key === 'h') { go(-1); return; }
     if (e.key === 'l') { go(1); return; }
-    if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(2, manualStep + 1); renderAll(); return; }
+    if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(3, manualStep + 1); renderAll(); return; }
     if (e.key === 'k') { if (manualStep === null) manualStep = step; manualStep = Math.max(-1, manualStep - 1); renderAll(); return; }
-    if (e.key === 'm') { const isDuo = videoMeta && videoMeta.scene === 'duo'; if (isDuo) setMoment(idx); return; }
 
     const QWER = {'q':1,'w':2,'e':3,'r':4,'t':5,'y':6};
     const n = QWER[e.key];
