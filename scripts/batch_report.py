@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger("batch_report")
 
 
-def extract_shoot_thumbnails(video_dir: Path, predictions: dict, fps: int = 2, max_w: int = 200) -> dict:
+def extract_shoot_thumbnails(video_dir: Path, predictions: dict, fps: int = 2, max_w: int = 320) -> dict:
     """Extract thumbnails for SHOOT frames from videos. Returns {filename: b64}."""
     thumbnails = {}
     for wf_id, preds in predictions.items():
@@ -280,8 +280,8 @@ th {{ background: #f5f5f5; text-align: left; }}
                 continue
             color = COLORS.get(p["expression"], "#999")
             conf = float(p["confidence"])
-            html += f'''<div style="text-align:center;width:120px">
-                <img src="data:image/jpeg;base64,{b64}" style="width:120px;border-radius:4px;border:2px solid {color}">
+            html += f'''<div style="text-align:center;width:200px">
+                <img src="data:image/jpeg;base64,{b64}" style="width:200px;border-radius:4px;border:2px solid {color}">
                 <div style="font-size:10px;margin-top:2px">
                     <span class="tag" style="background:{color}">{p["expression"]}</span>
                     <span style="color:#888">{conf:.0%}</span>

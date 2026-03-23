@@ -141,11 +141,33 @@ def main(argv=None):
             results.append({"idx": i, "orig_idx": orig_idx, "pred": "no_face", "conf": 0, "b64": frame_to_b64(img)})
             continue
 
+        # Quality gate — override to CUT if quality is too poor
+        quality_cut = False
+        quality_reason = ""
+        raw_exposure = signals.get("face_exposure", 128)
+        raw_clipped = signals.get("clipped_ratio", 0)
+        raw_crushed = signals.get("crushed_ratio", 0)
+        raw_blur = signals.get("face_blur", 100)
+        if raw_clipped > 0.3:
+            quality_cut, quality_reason = True, "overexposed"
+        elif raw_crushed > 0.3:
+            quality_cut, quality_reason = True, "underexposed"
+        elif raw_exposure > 230:
+            quality_cut, quality_reason = True, "too_bright"
+        elif raw_exposure < 30:
+            quality_cut, quality_reason = True, "too_dark"
+        elif raw_blur < 15:
+            quality_cut, quality_reason = True, "blurry"
+
         vec = np.array([normalize_signal(signals.get(f, 0.0), f) for f in feature_names]).reshape(1, -1)
         proba = clf.predict_proba(vec)[0]
         pred_idx = np.argmax(proba)
         pred = classes[pred_idx]
         conf = float(proba[pred_idx])
+
+        if quality_cut and pred != "cut":
+            pred = "cut"
+            conf = 0.99
 
         # Pose prediction
         pose_pred = ""
