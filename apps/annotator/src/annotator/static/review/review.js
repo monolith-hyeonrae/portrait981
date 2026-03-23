@@ -504,6 +504,20 @@ function renderAll() {
         });
         html += renderGroup('mismatch (manual ≠ model)', '#FF9800', items);
     }
+    if (currentView === 'predicted') {
+        // Show model predictions grouped by expression (for all frames with predictions)
+        const groups = {};
+        ROWS.forEach((r,i) => {
+            if (!visible.has(i)) return;
+            const pred = PREDICTIONS[r.filename];
+            if (!pred || pred.expression === 'cut') return;
+            const key = pred.expression;
+            (groups[key] = groups[key] || []).push(i);
+        });
+        [...EXPRESSIONS].forEach(e => {
+            if (groups[e]) html += renderGroup('pred:' + e, getColor(e), groups[e]);
+        });
+    }
 
     el.innerHTML = html || '<p style="color:#888">No items</p>';
 }

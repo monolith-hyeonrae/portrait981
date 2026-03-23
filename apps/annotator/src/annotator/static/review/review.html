@@ -26,6 +26,7 @@
         <button class="filter-btn" onclick="setView('occluded',this)">Occluded</button>
         <button class="filter-btn" onclick="setView('all',this)">All</button>
         <button class="filter-btn" onclick="setView('mismatch',this)" style="border-color:#FF9800">Mismatch</button>
+        <button class="filter-btn" onclick="setView('predicted',this)" style="border-color:#2196F3">Predicted</button>
     </div>
     <select id="folderFilters" onchange="setFolder(this.value === '__all__' ? null : this.value)" style="background:#fff;border:1px solid #ccc;color:#333;padding:4px 8px;border-radius:4px;font-size:12px"></select>
     <div style="display:flex;gap:6px;margin-left:auto">
