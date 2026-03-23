@@ -132,7 +132,7 @@ SIGNAL_RANGES: dict[str, tuple[float, float]] = {
     "em_fear": (0.0, 1.0),
     "em_sad": (0.0, 1.0),
     # Pose
-    "head_yaw_dev": (0.0, 60.0),
+    "head_yaw_dev": (0.0, 90.0),
     "head_pitch": (-30.0, 30.0),
     "head_roll": (-30.0, 30.0),
     # Detection

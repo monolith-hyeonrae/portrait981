@@ -242,9 +242,10 @@ async function loadSignalHint(idx) {
         if (filteredList[currentPos] !== idx) return;
 
         const yaw = sig.head_yaw_dev || 0;
-        const poseHint = yaw < 0.13 ? 'front' : yaw < 0.42 ? 'angle' : 'side';
+        const yawDeg = yaw * 90;
+        const poseHint = yawDeg < 8 ? 'front' : yawDeg < 25 ? 'angle' : 'side';
         let parts = [];
-        parts.push(`yaw=${(yaw*60).toFixed(0)}°→<b>${poseHint}</b>`);
+        parts.push(`yaw=${yawDeg.toFixed(0)}°→<b>${poseHint}</b>`);
         if (sig.em_happy !== undefined) parts.push(`happy=${(sig.em_happy*100).toFixed(0)}%`);
         if (sig.mouth_open_ratio !== undefined) parts.push(`mouth=${(sig.mouth_open_ratio*100).toFixed(0)}%`);
         if (sig.eye_visible_ratio !== undefined) parts.push(`eye=${(sig.eye_visible_ratio*100).toFixed(0)}%`);

@@ -567,10 +567,11 @@ function renderLightbox() {
     let sigHtml = '';
     if (sig) {
         const yaw = sig.head_yaw_dev || 0;
-        const poseHint = yaw < 8 ? 'front' : yaw < 25 ? 'angle' : 'side';
+        const yawDeg = yaw * 90;  // denormalize to degrees
+        const poseHint = yawDeg < 8 ? 'front' : yawDeg < 25 ? 'angle' : 'side';
         const poseMatch = r.pose === poseHint;
         sigHtml += '<div style="margin-top:6px;font-size:11px;color:#aaa;line-height:1.6">';
-        sigHtml += `<span style="color:${poseMatch ? '#4CAF50' : '#FF9800'}">yaw=${(yaw*60).toFixed(0)}° → ${poseHint}</span>`;
+        sigHtml += `<span style="color:${poseMatch ? '#4CAF50' : '#FF9800'}">yaw=${yawDeg.toFixed(0)}° → ${poseHint}</span>`;
         if (sig.em_happy !== undefined) sigHtml += ` | happy=${(sig.em_happy*100).toFixed(0)}%`;
         if (sig.mouth_open_ratio !== undefined) sigHtml += ` | mouth=${(sig.mouth_open_ratio*100).toFixed(0)}%`;
         if (sig.eye_visible_ratio !== undefined) sigHtml += ` | eye=${(sig.eye_visible_ratio*100).toFixed(0)}%`;
