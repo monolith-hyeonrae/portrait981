@@ -323,23 +323,37 @@ function updateCount() {
     bar.innerHTML = html;
 }
 
-const TL_COLORS = { '':'#ddd', '__shoot__':'#bbb', cut:'#d32f2f', occluded:'#795548',
+const TL_EXPR_COLORS = { '':'#e0e0e0', '__shoot__':'#bbb', cut:'#d32f2f', occluded:'#795548',
     cheese:'#4CAF50', goofy:'#E91E63', chill:'#2196F3', edge:'#FF5722', hype:'#9C27B0' };
+const TL_POSE_COLORS = { front:'#00BCD4', angle:'#FF9800', side:'#795548' };
 
 function renderTimeline() {
-    const bar = document.getElementById('timelineBar');
-    bar.innerHTML = '';
+    const wrap = document.getElementById('timelineWrap');
     const currentIdx = filteredList[currentPos];
-    for (let i = 0; i < FRAME_COUNT; i++) {
-        const el = document.createElement('div');
-        el.className = 'tl-frame';
-        el.style.background = TL_COLORS[labels[i] || ''] || '#ddd';
-        if (i === currentIdx) { el.style.outline = '2px solid #e94560'; el.style.zIndex = '1'; }
-        el.onclick = () => {
-            const pos = filteredList.indexOf(i);
-            if (pos >= 0) { currentPos = pos; manualStep = null; renderAll(); }
-        };
-        bar.appendChild(el);
+    const isDuo = videoMeta && videoMeta.scene === 'duo';
+
+    function makeRow(cls, colorFn) {
+        const row = document.createElement('div');
+        row.className = 'timeline-row ' + cls;
+        for (let i = 0; i < FRAME_COUNT; i++) {
+            const el = document.createElement('div');
+            el.className = 'tl-frame';
+            el.style.background = colorFn(i);
+            if (i === currentIdx) { el.style.outline = '1px solid #e94560'; el.style.zIndex = '1'; }
+            el.onclick = () => {
+                const pos = filteredList.indexOf(i);
+                if (pos >= 0) { currentPos = pos; manualStep = null; renderAll(); }
+            };
+            row.appendChild(el);
+        }
+        return row;
+    }
+
+    wrap.innerHTML = '';
+    wrap.appendChild(makeRow('tl-expression', i => TL_EXPR_COLORS[labels[i] || ''] || '#e0e0e0'));
+    wrap.appendChild(makeRow('tl-pose', i => TL_POSE_COLORS[poses[i]] || '#eee'));
+    if (isDuo) {
+        wrap.appendChild(makeRow('tl-moment', i => moments[i] === 'yes' ? '#FFD700' : '#f0f0f0'));
     }
 }
 

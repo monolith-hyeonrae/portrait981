@@ -42,8 +42,12 @@ body { font-family: -apple-system, sans-serif; margin: 0; background: #f5f5f5; c
 .thumb img { height: 56px; border-radius: 3px; display: block; }
 .shortcut-hint { font-size: 11px; color: #aaa; text-align: center; margin-top: 8px; }
 .bucket-bar { padding: 6px 20px; background: #fff; border-bottom: 1px solid #e0e0e0; flex-shrink: 0; }
-.timeline-bar { display: flex; height: 16px; background: #e8e8e8; border-bottom: 1px solid #ddd; flex-shrink: 0; cursor: pointer; }
-.timeline-bar .tl-frame { flex: 1; min-width: 1px; transition: opacity 0.1s; }
+.timeline-wrap { flex-shrink: 0; border-bottom: 1px solid #ddd; cursor: pointer; }
+.timeline-row { display: flex; }
+.timeline-row .tl-frame { flex: 1; min-width: 1px; }
+.tl-expression { height: 8px; }
+.tl-pose { height: 4px; }
+.tl-moment { height: 3px; }
 .bucket-grid { display: grid; gap: 2px; }
 .bucket-cell { display: flex; align-items: center; justify-content: center;
     height: 28px; border-radius: 4px; font-size: 12px; font-weight: 600; position: relative; overflow: hidden;
