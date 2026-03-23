@@ -279,6 +279,12 @@ async function deleteSelected() {
     renderAll();
 }
 
+function setCardSize(size) {
+    document.documentElement.style.setProperty('--card-size', size);
+    document.querySelectorAll('.size-toggle button').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
 function setView(view, btn) {
     currentView = view;
     document.querySelectorAll('.toolbar > div:first-child .filter-btn').forEach(b => b.classList.remove('active'));
@@ -337,7 +343,20 @@ function renderVideoCards() {
         if (v.member_id) html += `<span class="tag" style="background:#78909C">${v.member_id}</span>`;
         html += '</div>';
         html += `<div class="vc-meta">${v.total_frames||'?'} frames · <b>${count}</b> images in dataset</div>`;
-        if (v.summary) html += `<div class="vc-summary">${v.summary}</div>`;
+        if (v.summary) {
+            html += `<div class="vc-summary">${v.summary}</div>`;
+            // Distribution bar
+            const parts = v.summary.split(' ').map(s => { const [k,n] = s.split('='); return {k, n:parseInt(n)||0}; });
+            const total = parts.reduce((s,p) => s + p.n, 0);
+            if (total > 0) {
+                html += '<div class="vc-bar">';
+                parts.forEach(p => {
+                    const pct = (p.n / total * 100).toFixed(1);
+                    html += `<div class="vc-bar-seg" style="width:${pct}%;background:${getColor(p.k)}" title="${p.k}: ${p.n}"></div>`;
+                });
+                html += '</div>';
+            }
+        }
         html += `<div style="margin-top:8px"><button class="filter-btn" onclick="viewVideoImages('${wf}')" style="font-size:11px">View ${count} images →</button></div>`;
 
         html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee">';
@@ -416,7 +435,7 @@ function renderCard(idx) {
     const isCut = r.expression === 'cut';
     const isEmpty = !r.expression && !r.pose;
     const bg = isEditing ? '#f3e8f9' : isComplete ? '#e8f5e9' : isCut ? '#fce4e4' : isEmpty ? '#fff' : '#fff8e1';
-    return `<div class="card" style="background:${bg};cursor:pointer" onclick="toggleEdit(${idx})"><img src="/api/image/${encodeURIComponent(r.filename)}" loading="lazy" onclick="event.stopPropagation();openLightbox(${idx})"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${editPanel}</div>`;
+    return `<div class="card" style="background:${bg};cursor:pointer" onclick="toggleEdit(${idx})"><div class="zoom-hint">&#x1F50D;</div><img src="/api/image/${encodeURIComponent(r.filename)}" loading="lazy" onclick="event.stopPropagation();openLightbox(${idx})"><div class="name">${r.filename}</div><div class="tags">${tags}</div>${editPanel}</div>`;
 }
 
 function renderGroup(title, color, indices) {
