@@ -151,10 +151,15 @@ function renderFolderFilters() {
     const videoIds = new Set();
     ROWS.forEach(r => { if (r.workflow_id) videoIds.add(r.workflow_id); });
     FOLDERS.forEach(f => videoIds.add(f));
-    if (videoIds.size === 0) { el.innerHTML = ''; return; }
-    let html = `<button class="filter-btn${currentFolder===null?' active':''}" onclick="setFolder(null)" style="font-size:11px">All</button>`;
+
+    // Count per workflow
+    const counts = {};
+    ROWS.forEach(r => { const wf = r.workflow_id || ''; counts[wf] = (counts[wf]||0) + 1; });
+
+    let html = `<option value="__all__"${currentFolder===null?' selected':''}>All (${ROWS.length})</option>`;
     [...videoIds].sort().forEach(f => {
-        html += `<button class="filter-btn${currentFolder===f?' active':''}" onclick="setFolder('${f}')" style="font-size:11px">${f}</button>`;
+        const n = counts[f] || 0;
+        html += `<option value="${f}"${currentFolder===f?' selected':''}>${f} (${n})</option>`;
     });
     el.innerHTML = html;
 }
