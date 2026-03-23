@@ -151,6 +151,9 @@ class LabelHandler(SimpleHTTPRequestHandler):
             self._send_json(self._build_preview())
         elif parsed.path == "/api/video_list":
             self._send_json(self._get_video_list())
+        elif parsed.path.startswith("/api/signal/"):
+            idx = int(parsed.path.split("/")[-1])
+            self._send_json(self._get_signal(idx))
         else:
             self.send_error(404)
 
@@ -193,6 +196,51 @@ class LabelHandler(SimpleHTTPRequestHandler):
 
         else:
             self.send_error(404)
+
+    # Signal cache: idx → signal dict
+    _signal_cache: dict = {}
+    _signal_analyzers: dict | None = None
+
+    def _get_signal(self, idx: int) -> dict:
+        """Extract key signals for a single frame (on-demand, cached)."""
+        if idx in self._signal_cache:
+            return self._signal_cache[idx]
+
+        if idx < 0 or idx >= len(self.frames):
+            return {}
+
+        # Lazy-load analyzers on first call
+        if self.__class__._signal_analyzers is None:
+            try:
+                import sys
+                sys.path.insert(0, str(Path(__file__).parents[4] / "scripts"))
+                from extract_signals import load_analyzers, extract_signals_from_image
+                self.__class__._signal_analyzers = load_analyzers()
+                self.__class__._extract_fn = extract_signals_from_image
+                logger.info("Signal analyzers loaded for hints")
+            except Exception as e:
+                logger.warning("Cannot load signal analyzers: %s", e)
+                self.__class__._signal_analyzers = {}
+
+        if not self._signal_analyzers:
+            return {}
+
+        _, frame_bgr = self.frames[idx]
+        try:
+            raw = self._extract_fn(frame_bgr, self._signal_analyzers, frame_id=idx)
+            # Return key signals only
+            from visualbind.signals import normalize_signal
+            result = {}
+            for key in ("head_yaw_dev", "head_pitch", "em_happy", "em_neutral",
+                         "face_confidence", "face_exposure", "mouth_open_ratio",
+                         "eye_visible_ratio", "glasses_ratio", "backlight_score"):
+                if key in raw:
+                    result[key] = round(normalize_signal(raw[key], key), 3)
+            self._signal_cache[idx] = result
+            return result
+        except Exception as e:
+            logger.debug("Signal extraction failed for frame %d: %s", idx, e)
+            return {}
 
     def _send_json(self, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -289,6 +337,7 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 staging_path.write_text(json.dumps(staging, ensure_ascii=False, indent=2))
 
         self.__class__.staging = staging
+        self.__class__._signal_cache = {}  # clear cache on video switch
         logger.info("Switched to %s (%d frames)", video_name, len(frames))
 
         return {

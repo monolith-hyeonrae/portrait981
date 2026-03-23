@@ -221,6 +221,7 @@ function renderFocus() {
         <div class="focus-meta">Frame #${idx} &nbsp; ${currentPos + 1} / ${filteredList.length}</div>
         ${labelHtml}
         ${btnsHtml}
+        <div id="signalHint" style="font-size:11px;color:#aaa;text-align:center;margin-top:4px;min-height:16px"></div>
         <div class="nav">
             <button onclick="go(-1)" ${currentPos <= 0 ? 'disabled' : ''}>Prev ${K}H</span></button>
             <div class="pos">${currentPos + 1} / ${filteredList.length}</div>
@@ -228,6 +229,30 @@ function renderFocus() {
         </div>
         <div class="shortcut-hint">H prev L next | J step\u2193 K step\u2191 | Q W E R T Y = select | ${stepHint}</div>
     `;
+    // Async signal hint
+    loadSignalHint(idx);
+}
+
+async function loadSignalHint(idx) {
+    try {
+        const sig = await (await fetch(`/api/signal/${idx}`)).json();
+        const el = document.getElementById('signalHint');
+        if (!el || !sig || Object.keys(sig).length === 0) return;
+        // Check if still viewing the same frame
+        if (filteredList[currentPos] !== idx) return;
+
+        const yaw = sig.head_yaw_dev || 0;
+        const poseHint = yaw < 0.13 ? 'front' : yaw < 0.42 ? 'angle' : 'side';
+        let parts = [];
+        parts.push(`yaw=${(yaw*60).toFixed(0)}°→<b>${poseHint}</b>`);
+        if (sig.em_happy !== undefined) parts.push(`happy=${(sig.em_happy*100).toFixed(0)}%`);
+        if (sig.mouth_open_ratio !== undefined) parts.push(`mouth=${(sig.mouth_open_ratio*100).toFixed(0)}%`);
+        if (sig.eye_visible_ratio !== undefined) parts.push(`eye=${(sig.eye_visible_ratio*100).toFixed(0)}%`);
+        if (sig.glasses_ratio > 0.05) parts.push('<span style="color:#FF9800">glasses</span>');
+        if (sig.backlight_score > 0.3) parts.push('<span style="color:#d32f2f">backlight</span>');
+        if (sig.face_confidence !== undefined) parts.push(`conf=${(sig.face_confidence*100).toFixed(0)}%`);
+        el.innerHTML = parts.join(' | ');
+    } catch(e) { /* silent */ }
 }
 
 function go(delta) {
