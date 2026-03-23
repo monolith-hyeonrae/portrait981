@@ -187,15 +187,12 @@ function renderFocus() {
     btnsHtml += `<button class="cat-btn${isCut ? ' selected' : ''}" style="${isCut ? 'background:#d32f2f;color:#fff;' : 'background:#f5f5f5;color:#999;'}" onclick="setLabel(${idx},'cut')">CUT ${K}W</span></button>`;
     btnsHtml += '</div>';
 
-    // Step 1: MOMENT (duo only, right after shoot)
+    // MOMENT toggle (duo only, non-blocking)
     if (isDuo) {
         const mYes = mom === 'yes';
-        const mNo = mom === 'no';
-        btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 1 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
-        btnsHtml += `<button class="cat-btn${mYes ? ' selected' : ''}" style="${mYes ? 'background:'+getColor('moment')+';color:#fff;' : ''}" onclick="setMoment(${idx})">Moment ${K}Q</span></button>`;
-        btnsHtml += `<button class="cat-btn${mNo ? ' selected' : ''}" style="${mNo ? 'background:#999;color:#fff;' : 'background:#f5f5f5;color:#999;'}" onclick="setMomentNo(${idx})">No ${K}W</span></button>`;
+        btnsHtml += `<div class="buttons" style="margin-top:6px">`;
+        btnsHtml += `<button class="cat-btn${mYes ? ' selected' : ''}" style="${mYes ? 'background:'+getColor('moment')+';color:#fff;' : ''}" onclick="setMoment(${idx})">Moment ${K}M</span></button>`;
         btnsHtml += '</div>';
-        btnsHtml += descHtml(mYes ? 'moment' : null);
     }
 
     // Step 2: EXPRESSION
@@ -247,7 +244,6 @@ function getStep(idx) {
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
     if (!lbl) return 0;                          // shoot/cut
     if (lbl === 'cut') return -1;                // cut done
-    if (isDuo && lbl && !m) return 1;            // moment (duo only)
     if (lbl === '__shoot__' || !isAccepted) return 2;  // expression
     if (!p) return 3;                            // pose
     return 4;                                    // complete
@@ -485,16 +481,9 @@ function resetLabels() {
 const STEP_OPTIONS = {
     '-1': [['__shoot__','setLabel']],
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
-    '1': [['yes','setMoment'], ['no','setMomentNo']],
     '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
 };
-
-function setMomentNo(idx) {
-    moments[idx] = 'no';
-    saveToServer(idx);
-    renderAll();
-}
 
 function isModalOpen() {
     return document.getElementById('confirmOverlay').style.display !== 'none';
@@ -514,6 +503,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'l') { go(1); return; }
     if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(3, manualStep + 1); renderAll(); return; }
     if (e.key === 'k') { if (manualStep === null) manualStep = step; manualStep = Math.max(-1, manualStep - 1); renderAll(); return; }
+    if (e.key === 'm') { const isDuo = videoMeta && videoMeta.scene === 'duo'; if (isDuo) setMoment(idx); return; }
 
     const QWER = {'q':1,'w':2,'e':3,'r':4,'t':5,'y':6};
     const n = QWER[e.key];
@@ -523,8 +513,6 @@ document.addEventListener('keydown', e => {
         if (n <= opts.length) {
             const [value, fn] = opts[n - 1];
             if (fn === 'setLabel') setLabel(idx, value);
-            else if (fn === 'setMoment') setMoment(idx);
-            else if (fn === 'setMomentNo') setMomentNo(idx);
             else if (fn === 'setPose') setPose(idx, value);
             manualStep = null;
         }
