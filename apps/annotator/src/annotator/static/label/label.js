@@ -523,6 +523,8 @@ document.addEventListener('keydown', e => {
         if (n <= opts.length) {
             const [value, fn] = opts[n - 1];
             if (fn === 'setLabel') setLabel(idx, value);
+            else if (fn === 'setMoment') setMoment(idx);
+            else if (fn === 'setMomentNo') setMomentNo(idx);
             else if (fn === 'setPose') setPose(idx, value);
             manualStep = null;
         }
