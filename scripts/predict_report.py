@@ -58,8 +58,9 @@ def frame_to_b64(img, max_w=320):
 def main():
     parser = argparse.ArgumentParser(description="XGBoost prediction report for video")
     parser.add_argument("video", help="mp4 video path")
-    parser.add_argument("--model", default="models/bind_v3.pkl", help="XGBoost model path")
-    parser.add_argument("--meta", default=None, help="model meta JSON path (default: {model}.json)")
+    parser.add_argument("--model", default="models/bind_v3.pkl", help="expression XGBoost model")
+    parser.add_argument("--pose-model", default="models/pose_v1.pkl", help="pose XGBoost model")
+    parser.add_argument("--meta", default=None, help="model meta JSON path")
     parser.add_argument("--fps", type=int, default=2, help="frames per second")
     parser.add_argument("--max-frames", type=int, default=500)
     parser.add_argument("--output", "-o", default=None, help="output HTML path")
@@ -70,15 +71,28 @@ def main():
     meta_path = Path(args.meta) if args.meta else model_path.with_suffix(".json")
     output_path = Path(args.output) if args.output else Path(f"report_{video_path.stem}.html")
 
-    # Load model
+    # Load models
     import joblib
-    logger.info("Loading model: %s", model_path)
+    logger.info("Loading expression model: %s", model_path)
     clf = joblib.load(model_path)
     with open(meta_path) as f:
         meta = json.load(f)
     classes = meta["classes"]
     feature_names = meta["feature_names"]
-    logger.info("Model: %d classes %s, %dD features", len(classes), classes, len(feature_names))
+    logger.info("Expression: %d classes %s", len(classes), classes)
+
+    pose_path = Path(args.pose_model)
+    pose_meta_path = pose_path.with_suffix(".json")
+    clf_pose = None
+    pose_classes = []
+    if pose_path.exists():
+        clf_pose = joblib.load(pose_path)
+        with open(pose_meta_path) as f:
+            pose_meta = json.load(f)
+        pose_classes = pose_meta["classes"]
+        logger.info("Pose: %d classes %s", len(pose_classes), pose_classes)
+    else:
+        logger.warning("Pose model not found: %s", pose_path)
 
     # Extract frames
     logger.info("Extracting frames from %s (fps=%d)", video_path, args.fps)
@@ -108,11 +122,22 @@ def main():
         pred = classes[pred_idx]
         conf = float(proba[pred_idx])
 
+        # Pose prediction
+        pose_pred = ""
+        pose_conf = 0.0
+        if clf_pose is not None:
+            pose_proba = clf_pose.predict_proba(vec)[0]
+            pose_idx = np.argmax(pose_proba)
+            pose_pred = pose_classes[pose_idx]
+            pose_conf = float(pose_proba[pose_idx])
+
         results.append({
             "idx": i,
             "orig_idx": orig_idx,
             "pred": pred,
             "conf": conf,
+            "pose": pose_pred,
+            "pose_conf": pose_conf,
             "proba": {c: float(p) for c, p in zip(classes, proba)},
             "b64": frame_to_b64(img),
         })
@@ -134,6 +159,7 @@ COLORS = {
     'cheese': '#4CAF50', 'goofy': '#E91E63', 'chill': '#2196F3',
     'edge': '#FF5722', 'hype': '#9C27B0', 'cut': '#d32f2f',
     'occluded': '#795548', 'no_face': '#999',
+    'front': '#00BCD4', 'angle': '#FF9800', 'side': '#795548',
 }
 
 
@@ -181,11 +207,20 @@ h2 {{ margin-top: 24px; color: #444; }}
         html += f'<div class="bar-seg" style="background:{color};width:{max(pct, 3):.1f}%">{cls} {n}</div>'
     html += '</div>'
 
-    # Timeline
+    # Timeline — expression
+    html += '<div style="font-size:10px;color:#999;margin-top:8px">Expression</div>'
     html += '<div class="timeline">'
     for r in results:
         color = COLORS.get(r["pred"], '#999')
         html += f'<div class="tl-seg" style="background:{color}" title="#{r["idx"]} {r["pred"]} {r["conf"]:.0%}"></div>'
+    html += '</div>'
+
+    # Timeline — pose
+    html += '<div style="font-size:10px;color:#999;margin-top:2px">Pose</div>'
+    html += '<div class="timeline" style="height:10px">'
+    for r in results:
+        pose_color = COLORS.get(r.get("pose",""), '#eee')
+        html += f'<div class="tl-seg" style="background:{pose_color}" title="#{r["idx"]} {r.get("pose","?")}"></div>'
     html += '</div>'
 
     # SHOOT frames grouped by expression
@@ -199,10 +234,13 @@ h2 {{ margin-top: 24px; color: #444; }}
         html += f'<h2 style="color:{color}">{cls} ({len(group)})</h2>'
         html += '<div class="grid">'
         for r in sorted(group, key=lambda x: -x["conf"]):
+            pose_color = COLORS.get(r.get("pose",""), "#999")
+            pose_tag = f'<span class="tag" style="background:{pose_color}">{r.get("pose","?")}</span>' if r.get("pose") else ""
             html += f'''<div class="card">
                 <img src="data:image/jpeg;base64,{r["b64"]}">
                 <div class="info">
                     <span class="tag" style="background:{color}">{cls}</span>
+                    {pose_tag}
                     <span style="color:#888">#{r["idx"]} ({r["conf"]:.0%})</span>
                 </div>
                 <div class="conf-bar" style="background:linear-gradient(to right, {color} {r["conf"]*100:.0f}%, #eee {r["conf"]*100:.0f}%)"></div>
