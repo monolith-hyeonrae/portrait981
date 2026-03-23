@@ -197,9 +197,10 @@ class LabelHandler(SimpleHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    # Signal cache: idx → signal dict
-    _signal_cache: dict = {}
-    _signal_analyzers: dict | None = None
+    # Signal cache: idx → signal dict (reset per server start)
+    _signal_cache = {}
+    _signal_analyzers = None
+    _signal_load_attempted = False
 
     def _get_signal(self, idx: int) -> dict:
         """Extract key signals for a single frame (on-demand, cached)."""
@@ -210,25 +211,31 @@ class LabelHandler(SimpleHTTPRequestHandler):
             return {}
 
         # Lazy-load analyzers on first call
-        if self.__class__._signal_analyzers is None:
+        if not self.__class__._signal_load_attempted:
+            self.__class__._signal_load_attempted = True
+            import sys
+            scripts_dir = str(Path(__file__).parents[4] / "scripts")
+            if scripts_dir not in sys.path:
+                sys.path.insert(0, scripts_dir)
             try:
-                import sys
-                sys.path.insert(0, str(Path(__file__).parents[4] / "scripts"))
                 from extract_signals import load_analyzers, extract_signals_from_image
                 self.__class__._signal_analyzers = load_analyzers()
                 self.__class__._extract_fn = extract_signals_from_image
-                logger.info("Signal analyzers loaded for hints")
-            except Exception as e:
-                logger.warning("Cannot load signal analyzers: %s", e)
-                self.__class__._signal_analyzers = {}
+                logger.info("Signal analyzers loaded for hints (%d)", len(self._signal_analyzers))
+            except Exception:
+                import traceback
+                logger.warning("Cannot load signal analyzers:\n%s", traceback.format_exc())
 
         if not self._signal_analyzers:
             return {}
 
         _, frame_bgr = self.frames[idx]
         try:
-            raw = self._extract_fn(frame_bgr, self._signal_analyzers, frame_id=idx)
-            # Return key signals only
+            extract_fn = self.__class__._extract_fn
+            raw = extract_fn(frame_bgr, self._signal_analyzers, idx)
+            if not raw:
+                logger.info("No face detected for frame %d", idx)
+                return {}
             from visualbind.signals import normalize_signal
             result = {}
             for key in ("head_yaw_dev", "head_pitch", "em_happy", "em_neutral",
@@ -237,9 +244,11 @@ class LabelHandler(SimpleHTTPRequestHandler):
                 if key in raw:
                     result[key] = round(normalize_signal(raw[key], key), 3)
             self._signal_cache[idx] = result
+            logger.info("Signal extracted for frame %d: %d keys", idx, len(result))
             return result
         except Exception as e:
-            logger.debug("Signal extraction failed for frame %d: %s", idx, e)
+            import traceback
+            logger.warning("Signal extraction failed for frame %d: %s\n%s", idx, e, traceback.format_exc())
             return {}
 
     def _send_json(self, data):
