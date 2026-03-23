@@ -10,7 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
 let ROWS = [];
 let VIDEOS = {};
 let FOLDERS = [];
-let SIGNALS = {};  // filename → {signal: value}
+let SIGNALS = {};       // filename → {signal: value}
+let PREDICTIONS = {};   // filename → {expression, pose, model, confidence}
 let currentView = 'expression';
 let currentFolder = null;
 let bucketFilter = null;
@@ -70,6 +71,7 @@ async function loadData() {
         VIDEOS = await (await fetch('/api/videos')).json();
         FOLDERS = await (await fetch('/api/folders')).json();
         SIGNALS = await (await fetch('/api/signals')).json();
+        PREDICTIONS = await (await fetch('/api/predictions')).json();
         const warnings = await (await fetch('/api/warnings')).json();
         renderWarnings(warnings);
         renderFolderFilters();
@@ -493,6 +495,15 @@ function renderAll() {
         const items = []; ROWS.forEach((r,i) => { if (!visible.has(i)) return; if (r.expression==='occluded') items.push(i); });
         html += renderGroup('occluded', '#795548', items);
     }
+    if (currentView === 'mismatch') {
+        const items = []; ROWS.forEach((r,i) => {
+            if (!visible.has(i)) return;
+            const pred = PREDICTIONS[r.filename];
+            if (!pred || !r.expression) return;
+            if (pred.expression !== r.expression || (r.pose && pred.pose && pred.pose !== r.pose)) items.push(i);
+        });
+        html += renderGroup('mismatch (manual ≠ model)', '#FF9800', items);
+    }
 
     el.innerHTML = html || '<p style="color:#888">No items</p>';
 }
@@ -562,6 +573,23 @@ function renderLightbox() {
     edit += '</div>';
     document.getElementById('lbEdit').innerHTML = edit;
 
+    // Prediction comparison
+    const pred = PREDICTIONS[r.filename];
+    let predHtml = '';
+    if (pred) {
+        const exprMatch = !r.expression || r.expression === pred.expression;
+        const poseMatch = !r.pose || r.pose === pred.pose;
+        const exprColor = exprMatch ? '#4CAF50' : '#FF9800';
+        const poseColor = poseMatch ? '#4CAF50' : '#FF9800';
+        predHtml = `<div style="margin-top:6px;font-size:11px;padding:4px 8px;background:#f5f5f5;border-radius:4px">`;
+        predHtml += `<span style="color:#888">model(${pred.model}):</span> `;
+        predHtml += `<span style="color:${exprColor}">${pred.expression}</span>`;
+        predHtml += ` <span style="color:${poseColor}">${pred.pose}</span>`;
+        predHtml += ` <span style="color:#aaa">(${(parseFloat(pred.confidence)*100).toFixed(0)}%)</span>`;
+        if (!exprMatch || !poseMatch) predHtml += ` <span style="color:#FF9800">≠ manual</span>`;
+        predHtml += `</div>`;
+    }
+
     // Signal hints
     const sig = SIGNALS[r.filename];
     let sigHtml = '';
@@ -580,7 +608,7 @@ function renderLightbox() {
         if (sig.face_confidence !== undefined) sigHtml += ` | conf=${(sig.face_confidence*100).toFixed(0)}%`;
         sigHtml += '</div>';
     }
-    document.getElementById('lbEdit').innerHTML = edit + sigHtml;
+    document.getElementById('lbEdit').innerHTML = edit + predHtml + sigHtml;
 
     // Position
     const pos = lbList.indexOf(lbIdx);

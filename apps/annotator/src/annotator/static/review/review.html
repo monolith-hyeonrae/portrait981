@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Dataset Review</title>
+<link rel="stylesheet" href="/static/shared/common.css">
+<link rel="stylesheet" href="/static/review/review.css">
+</head><body>
+<script>window.__CONFIG__ = __CONFIG_PLACEHOLDER__;</script>
+
+<h1>Dataset Review <span class="status" id="status"></span>
+<span style="font-size:11px;color:#999;font-weight:normal;margin-left:12px;padding:2px 8px;background:#f0f0f0;border-radius:3px;border:1px solid #ddd" id="datasetDir"></span></h1>
+
+<div id="warnings"></div>
+
+<div class="tab-bar">
+    <div class="tab-btn active" onclick="switchTab('images')">Images</div>
+    <div class="tab-btn" onclick="switchTab('videos')">Videos</div>
+</div>
+
+<!-- Images Tab -->
+<div id="tab-images" class="tab-panel active">
+<div class="toolbar" style="border-bottom:none;position:sticky;top:0;margin:-12px -12px 8px;padding:10px 12px;border-radius:0 0 0 0;background:#fff;z-index:100">
+    <div style="display:flex;gap:6px">
+        <button class="filter-btn active" onclick="setView('expression',this)">Expression</button>
+        <button class="filter-btn" onclick="setView('pose',this)">Pose</button>
+        <button class="filter-btn" onclick="setView('moment',this)">Moment</button>
+        <button class="filter-btn" onclick="setView('cut',this)">Cut</button>
+        <button class="filter-btn" onclick="setView('occluded',this)">Occluded</button>
+        <button class="filter-btn" onclick="setView('all',this)">All</button>
+        <button class="filter-btn" onclick="setView('mismatch',this)" style="border-color:#FF9800">Mismatch</button>
+    </div>
+    <select id="folderFilters" onchange="setFolder(this.value === '__all__' ? null : this.value)" style="background:#fff;border:1px solid #ccc;color:#333;padding:4px 8px;border-radius:4px;font-size:12px"></select>
+    <div style="display:flex;gap:6px;margin-left:auto">
+        <button class="filter-btn" id="selectBtn" onclick="toggleSelectMode()" style="background:#FF9800;color:#fff">Select Mode</button>
+        <button class="filter-btn" id="deleteSelBtn" onclick="deleteSelected()" style="background:#d32f2f;color:#fff;display:none">Delete Selected (<span id="selCount">0</span>)</button>
+        <button class="filter-btn" id="cancelSelBtn" onclick="cancelSelect()" style="display:none">Cancel</button>
+        <div class="size-toggle">
+            <button onclick="setCardSize('160px')" title="Small">S</button>
+            <button class="active" onclick="setCardSize('200px')" title="Medium">M</button>
+            <button onclick="setCardSize('280px')" title="Large">L</button>
+        </div>
+    </div>
+</div>
+<div class="summary" id="summary"></div>
+<div id="bucketTable"></div>
+<div id="content"></div>
+</div>
+
+<!-- Videos Tab -->
+<div id="tab-videos" class="tab-panel">
+<div class="summary" id="videoSummary"></div>
+<div id="videoCards"></div>
+</div>
+
+<div class="lightbox" id="lightbox">
+    <button class="lb-close" onclick="closeLightbox()">&times;</button>
+    <button class="lb-nav lb-prev" onclick="lbNav(-1)">&lsaquo;</button>
+    <button class="lb-nav lb-next" onclick="lbNav(1)">&rsaquo;</button>
+    <img id="lbImg" src="">
+    <div class="lb-info">
+        <div id="lbName"></div>
+        <div class="lb-tags" id="lbTags"></div>
+        <div class="lb-edit" id="lbEdit"></div>
+        <div id="lbHint" style="font-size:10px;color:#666;margin-top:6px"></div>
+    </div>
+</div>
+
+<script src="/static/shared/common.js"></script>
+<script src="/static/review/review.js"></script>
+</body></html>

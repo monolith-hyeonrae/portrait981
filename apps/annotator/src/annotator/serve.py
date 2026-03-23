@@ -70,6 +70,8 @@ class ReviewHandler(SimpleHTTPRequestHandler):
             self._send_json(self._read_videos())
         elif parsed.path == "/api/signals":
             self._send_json(self._read_signals())
+        elif parsed.path == "/api/predictions":
+            self._send_json(self._read_predictions())
         elif parsed.path == "/api/warnings":
             self._send_json(self._get_warnings())
         elif parsed.path == "/api/folders":
@@ -189,6 +191,25 @@ class ReviewHandler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     # --- CSV operations ---
+
+    def _read_predictions(self) -> dict:
+        """Read predictions.csv, return {filename: {expression, pose, model, confidence}}."""
+        pred_path = self.dataset_dir / "predictions.csv"
+        if not pred_path.exists():
+            return {}
+        result = {}
+        with open(pred_path, newline="") as f:
+            for r in csv.DictReader(f):
+                # Keep latest model version per filename
+                fname = r["filename"]
+                if fname not in result or r["model"] > result[fname]["model"]:
+                    result[fname] = {
+                        "expression": r.get("expression", ""),
+                        "pose": r.get("pose", ""),
+                        "model": r.get("model", ""),
+                        "confidence": r.get("confidence", ""),
+                    }
+        return result
 
     def _read_signals(self) -> dict:
         """Read signals.parquet if available, return {filename: {signal: value}}."""

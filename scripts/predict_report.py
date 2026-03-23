@@ -55,20 +55,45 @@ def frame_to_b64(img, max_w=320):
     return base64.b64encode(buf).decode()
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description="XGBoost prediction report for video")
-    parser.add_argument("video", help="mp4 video path")
-    parser.add_argument("--model", default="models/bind_v3.pkl", help="expression XGBoost model")
-    parser.add_argument("--pose-model", default="models/pose_v1.pkl", help="pose XGBoost model")
+    parser.add_argument("video", nargs="?", default=None, help="mp4 video path (or directory for batch)")
+    parser.add_argument("--model", default="models/bind_v4.pkl", help="expression XGBoost model")
+    parser.add_argument("--pose-model", default="models/pose_v2.pkl", help="pose XGBoost model")
     parser.add_argument("--meta", default=None, help="model meta JSON path")
+    parser.add_argument("--dataset", "-d", default=None, help="dataset dir → save predictions.csv")
     parser.add_argument("--fps", type=int, default=2, help="frames per second")
     parser.add_argument("--max-frames", type=int, default=500)
-    parser.add_argument("--output", "-o", default=None, help="output HTML path")
-    args = parser.parse_args()
+    parser.add_argument("--output", "-o", default=None, help="output HTML path (skip with --no-html)")
+    parser.add_argument("--no-html", action="store_true", help="skip HTML report, only save predictions.csv")
+    args = parser.parse_args(argv)
 
-    video_path = Path(args.video)
+    if not args.video:
+        parser.error("video path required")
+
+    video_arg = Path(args.video)
     model_path = Path(args.model)
     meta_path = Path(args.meta) if args.meta else model_path.with_suffix(".json")
+
+    # Batch mode: directory → process all mp4s
+    if video_arg.is_dir():
+        videos = sorted(video_arg.glob("*.mp4"))
+        if not videos:
+            print(f"No mp4 files in {video_arg}")
+            sys.exit(1)
+        logger.info("Batch mode: %d videos in %s", len(videos), video_arg)
+        for v in videos:
+            logger.info("=== Processing %s ===", v.name)
+            batch_args = [str(v), "--model", args.model, "--pose-model", args.pose_model,
+                          "--fps", str(args.fps), "--max-frames", str(args.max_frames)]
+            if args.dataset:
+                batch_args += ["--dataset", args.dataset]
+            if args.no_html:
+                batch_args += ["--no-html"]
+            main(batch_args)
+        return
+
+    video_path = video_arg
     output_path = Path(args.output) if args.output else Path(f"report_{video_path.stem}.html")
 
     # Load models
@@ -149,10 +174,59 @@ def main():
     logger.info("Predictions: %s", dict(pred_counts))
     logger.info("SHOOT: %d / %d frames", shoot_count, len(results))
 
+    # Save predictions.csv
+    if args.dataset:
+        save_predictions(Path(args.dataset), video_path.stem, results, meta)
+
     # Generate HTML report
-    html = generate_report_html(video_path.name, results, classes, meta)
-    output_path.write_text(html, encoding="utf-8")
-    logger.info("Report saved: %s (%.1f MB)", output_path, output_path.stat().st_size / 1e6)
+    if not args.no_html:
+        html = generate_report_html(video_path.name, results, classes, meta)
+        output_path.write_text(html, encoding="utf-8")
+        logger.info("Report saved: %s (%.1f MB)", output_path, output_path.stat().st_size / 1e6)
+
+
+def save_predictions(dataset_dir: Path, video_stem: str, results: list, meta: dict):
+    """Save/update predictions.csv in dataset directory."""
+    import csv
+    from datetime import datetime
+
+    pred_path = dataset_dir / "predictions.csv"
+    model_version = meta.get("version", "unknown")
+    timestamp = datetime.now().isoformat(timespec="seconds")
+
+    fieldnames = ["filename", "workflow_id", "expression", "pose", "model", "confidence", "timestamp"]
+
+    # Read existing (keep other workflows and other model versions)
+    existing = []
+    if pred_path.exists():
+        with open(pred_path, newline="") as f:
+            existing = [r for r in csv.DictReader(f)
+                        if not (r["workflow_id"] == video_stem and r["model"] == model_version)]
+
+    # Add new predictions
+    new_rows = []
+    for r in results:
+        if r["pred"] == "no_face":
+            continue
+        fname = f"{video_stem}_{r['idx']:04d}.jpg"
+        new_rows.append({
+            "filename": fname,
+            "workflow_id": video_stem,
+            "expression": r["pred"],
+            "pose": r.get("pose", ""),
+            "model": model_version,
+            "confidence": f"{r['conf']:.3f}",
+            "timestamp": timestamp,
+        })
+
+    all_rows = existing + new_rows
+    with open(pred_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_rows)
+
+    logger.info("Predictions saved: %d rows for %s (model=%s) → %s",
+                len(new_rows), video_stem, model_version, pred_path)
 
 
 COLORS = {
