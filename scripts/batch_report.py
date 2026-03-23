@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import json
 import logging
@@ -19,8 +20,65 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("batch_report")
+
+
+def extract_shoot_thumbnails(video_dir: Path, predictions: dict, fps: int = 2, max_w: int = 200) -> dict:
+    """Extract thumbnails for SHOOT frames from videos. Returns {filename: b64}."""
+    thumbnails = {}
+    for wf_id, preds in predictions.items():
+        shoot_indices = {}
+        for p in preds:
+            if p["expression"] != "cut":
+                # Parse frame index from filename: {stem}_{idx:04d}.jpg
+                parts = p["filename"].rsplit("_", 1)
+                if len(parts) == 2:
+                    try:
+                        idx = int(parts[1].split(".")[0])
+                        shoot_indices[idx] = p["filename"]
+                    except ValueError:
+                        pass
+
+        if not shoot_indices:
+            continue
+
+        # Find video file
+        video_path = video_dir / f"{wf_id}.mp4"
+        if not video_path.exists():
+            continue
+
+        cap = cv2.VideoCapture(str(video_path))
+        if not cap.isOpened():
+            continue
+
+        video_fps = cap.get(cv2.CAP_PROP_FPS)
+        interval = max(1, int(video_fps / fps))
+        frame_idx = 0
+        extracted_idx = 0
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if frame_idx % interval == 0:
+                if extracted_idx in shoot_indices:
+                    h, w = frame.shape[:2]
+                    if w > max_w:
+                        s = max_w / w
+                        frame = cv2.resize(frame, (max_w, int(h * s)))
+                    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                    thumbnails[shoot_indices[extracted_idx]] = base64.b64encode(buf).decode()
+                extracted_idx += 1
+            frame_idx += 1
+
+        cap.release()
+        logger.info("Extracted %d thumbnails from %s", len([k for k in thumbnails if k.startswith(wf_id)]), wf_id)
+
+    return thumbnails
 
 
 def load_predictions(pred_path: Path, model: str | None = None) -> dict[str, list[dict]]:
@@ -85,6 +143,10 @@ def main():
 
     predictions = load_predictions(pred_path, model=model_version)
     labels = load_labels(labels_path)
+
+    # Extract thumbnails for SHOOT frames
+    logger.info("Extracting SHOOT thumbnails...")
+    thumbnails = extract_shoot_thumbnails(video_dir, predictions, fps=args.fps)
 
     if not predictions:
         print("No predictions found")
@@ -202,6 +264,30 @@ th {{ background: #f5f5f5; text-align: left; }}
         html += f'<td>{v["shoot_pct"]:.0f}%</td><td>{v["avg_conf"]:.1%}</td>'
         html += f'<td><div class="bar">{bar}</div></td></tr>'
     html += '</table>'
+
+    # SHOOT gallery per video
+    html += '<h2>SHOOT Frames</h2>'
+    for v in video_stats:
+        wf = v["workflow_id"]
+        shoot_preds = [p for p in predictions.get(wf, []) if p["expression"] != "cut"]
+        if not shoot_preds:
+            continue
+        html += f'<div class="summary"><b>{wf}</b> — {len(shoot_preds)} SHOOT'
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'
+        for p in sorted(shoot_preds, key=lambda x: -float(x["confidence"])):
+            b64 = thumbnails.get(p["filename"])
+            if not b64:
+                continue
+            color = COLORS.get(p["expression"], "#999")
+            conf = float(p["confidence"])
+            html += f'''<div style="text-align:center;width:120px">
+                <img src="data:image/jpeg;base64,{b64}" style="width:120px;border-radius:4px;border:2px solid {color}">
+                <div style="font-size:10px;margin-top:2px">
+                    <span class="tag" style="background:{color}">{p["expression"]}</span>
+                    <span style="color:#888">{conf:.0%}</span>
+                </div>
+            </div>'''
+        html += '</div></div>'
 
     # Low confidence frames
     if low_confidence:
