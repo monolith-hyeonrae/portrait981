@@ -311,29 +311,61 @@ for result in extractor.extract_from_video(video_path):
 gate는 최소 품질 보장, XGBoost는 표정/포즈 판단.
 둘 다 같은 signal을 사용하지만 역할이 다름.
 
-## face.gate와 XGBoost의 관계
+## face.gate → XGBoost 흡수 (visualpath → visualbind 진화)
+
+gate의 품질 판단은 본질적으로 XGBoost의 결정 트리에 포함되어야 한다.
+"사진으로 쓸 수 있는가?"와 "어떤 표정인가?"는 같은 signal에서 나오는 판단이다.
 
 ```
-face.gate (Layer 1):
-  "이 프레임이 사진으로 쓸 수 있는 상태인가?"
-  → 하드코딩 임계값 (엔지니어 튜닝)
-  → 확실한 불량만 거부 (보수적)
-  → 모든 환경에서 안전망
+현재 (두 시스템 분리):
+  face.gate: exposure > 200 → CUT (하드코딩)
+  XGBoost:   em_happy + mouth_open → cheese (학습)
 
-XGBoost (Layer 2):
-  "이 표정이 cheese인가?"
-  → 데이터에서 학습
-  → 미묘한 패턴도 포착
-  → 도메인 적응적
-
-관계:
-  gate가 먼저 → 확실한 불량 제거
-  XGBoost가 이후 → 남은 프레임에서 best 선택
-
-  gate의 임계값도 장기적으로는 XGBoost가 보완:
-  gate가 놓치는 불량을 XGBoost가 CUT으로 학습
-  → gate는 안전망으로 유지, XGBoost가 정밀 필터
+목표 (통합):
+  XGBoost:   exposure 높고 contrast 낮으면 → CUT  (품질 판단)
+             em_happy + mouth_open → cheese        (표정 판단)
+             같은 결정 트리 안에서 품질과 표정을 함께 판단
 ```
+
+이것이 visualpath → visualbind 진화의 핵심:
+**하드코딩 임계값이 학습된 결정 경계로 대체된다.**
+
+gate의 모든 signal은 이미 49D에 포함되어 있다:
+- face_exposure, face_contrast, clipped_ratio, crushed_ratio → 49D 안에 있음
+- XGBoost가 충분한 품질-CUT 예시를 보면 자연스럽게 학습
+
+### 전환 단계
+
+```
+Phase 0 (현재):
+  face.gate = 유일한 품질 필터 (하드코딩)
+  XGBoost = 표정/포즈만 판단
+  → 품질-CUT 라벨 데이터 부족
+
+Phase 1 (단기):
+  face.gate = 안전망으로 유지
+  XGBoost = 표정 + 품질 함께 학습 시작
+  → 품질 나쁜 프레임을 CUT으로 라벨링하여 학습 데이터 축적
+  → gate와 XGBoost가 이중으로 필터링
+
+Phase 2 (중기):
+  face.gate = 극단적 불량만 (매우 보수적)
+  XGBoost = 품질 판단의 주체
+  → XGBoost가 gate보다 정교하게 품질 판단
+  → gate는 XGBoost 실패 시 최후 방어선
+
+Phase 3 (장기):
+  face.gate = 최소한의 하드웨어 레벨 체크 (no face, 프레임 깨짐 등)
+  XGBoost (또는 후속 모델) = 품질 + 표정 + 포즈 통합 판단
+  → gate의 역할이 거의 소멸
+```
+
+### 현재 부족한 것
+
+XGBoost가 품질 gating을 학습하려면 **품질-CUT 라벨**이 필요:
+- 현재 CUT: 대부분 "표정이 안 좋아서" (표정 CUT)
+- 필요: "과노출이라서", "흔들려서", "어두워서" (품질 CUT)
+- 방법: 품질 나쁜 비디오(test_12 등)에서 의도적으로 품질-CUT 라벨링
 
 ## 단계적 진화
 
