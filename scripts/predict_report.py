@@ -1,11 +1,11 @@
 """비디오에 XGBoost 모델을 적용하여 추론 리포트 생성.
 
-비디오 → 프레임 추출 → 45D signal → XGBoost 예측 → HTML 리포트
+SignalExtractor(momentscan DAG 기반) + visualbind XGBoost.
+face.quality(마스크 기반) + face.gate(다중 조건) 포함.
 
 Usage:
     uv run python scripts/predict_report.py ~/Videos/reaction_test/test_3.mp4
-    uv run python scripts/predict_report.py ~/Videos/reaction_test/test_3.mp4 --model models/bind_v3.pkl
-    uv run python scripts/predict_report.py ~/Videos/reaction_test/test_3.mp4 --fps 3 --output report.html
+    uv run python scripts/predict_report.py ~/Videos/reaction_test/ --dataset ... --no-html
 """
 
 from __future__ import annotations
@@ -119,16 +119,15 @@ def main(argv=None):
     else:
         logger.warning("Pose model not found: %s", pose_path)
 
+    # Load SignalExtractor (momentscan DAG 기반)
+    from momentscan.signals import SignalExtractor
+    extractor = SignalExtractor()
+    extractor.initialize()
+
     # Extract frames
     logger.info("Extracting frames from %s (fps=%d)", video_path, args.fps)
     frames = extract_frames(video_path, args.fps, args.max_frames)
     logger.info("Extracted %d frames", len(frames))
-
-    # Load analyzers
-    sys.path.insert(0, str(Path(__file__).parent))
-    from extract_signals import load_analyzers, extract_signals_from_image
-    logger.info("Loading analyzers...")
-    analyzers = load_analyzers()
 
     # Extract signals + predict
     results = []
@@ -136,41 +135,15 @@ def main(argv=None):
         if (i + 1) % 50 == 0:
             logger.info("Processing %d/%d", i + 1, len(frames))
 
-        signals = extract_signals_from_image(img, analyzers, frame_id=i)
-        if not signals:
+        sig_result = extractor.extract(img, frame_id=i)
+        if not sig_result.face_detected:
             results.append({"idx": i, "orig_idx": orig_idx, "pred": "no_face", "conf": 0, "b64": frame_to_b64(img)})
             continue
 
-        # Quality gate — override to CUT if quality is too poor
-        quality_cut = False
-        quality_reason = ""
-        raw_exposure = signals.get("face_exposure", 128)
-        raw_contrast = signals.get("face_contrast", 0.5)
-        raw_clipped = signals.get("clipped_ratio", 0)
-        raw_crushed = signals.get("crushed_ratio", 0)
-        raw_blur = signals.get("face_blur", 100)
+        signals = sig_result.signals
 
-        # Face too bright (washed out, features indistinguishable)
-        if raw_exposure > 200:
-            quality_cut, quality_reason = True, "too_bright"
-        # Face too dark (underlit, tunnel)
-        elif raw_exposure < 60:
-            quality_cut, quality_reason = True, "too_dark"
-        # Bright + low contrast combo (washed out features)
-        elif raw_exposure > 150 and raw_contrast < 0.20:
-            quality_cut, quality_reason = True, "washed_out"
-        # Low contrast (flat lighting, features indistinguishable)
-        elif raw_contrast < 0.15:
-            quality_cut, quality_reason = True, "low_contrast"
-        # Overexposed highlights
-        elif raw_clipped > 0.1:
-            quality_cut, quality_reason = True, "overexposed"
-        # Underexposed shadows
-        elif raw_crushed > 0.15:
-            quality_cut, quality_reason = True, "underexposed"
-        # Blurry
-        elif raw_blur < 20:
-            quality_cut, quality_reason = True, "blurry"
+        # face.gate (momentscan DAG 기반, 하드코딩 gate 대체)
+        gate_cut = not sig_result.gate_passed
 
         vec = np.array([normalize_signal(signals.get(f, 0.0), f) for f in feature_names]).reshape(1, -1)
         proba = clf.predict_proba(vec)[0]
@@ -178,7 +151,7 @@ def main(argv=None):
         pred = classes[pred_idx]
         conf = float(proba[pred_idx])
 
-        if quality_cut and pred != "cut":
+        if gate_cut and pred != "cut":
             pred = "cut"
             conf = 0.99
 
