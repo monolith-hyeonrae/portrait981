@@ -154,8 +154,11 @@ def main(argv=None):
         if raw_exposure > 200:
             quality_cut, quality_reason = True, "too_bright"
         # Face too dark (underlit, tunnel)
-        elif raw_exposure < 50:
+        elif raw_exposure < 60:
             quality_cut, quality_reason = True, "too_dark"
+        # Bright + low contrast combo (washed out features)
+        elif raw_exposure > 150 and raw_contrast < 0.20:
+            quality_cut, quality_reason = True, "washed_out"
         # Low contrast (flat lighting, features indistinguishable)
         elif raw_contrast < 0.15:
             quality_cut, quality_reason = True, "low_contrast"
