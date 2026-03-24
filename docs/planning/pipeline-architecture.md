@@ -25,38 +25,72 @@ visualpath만으로 동작 가능, visualbind는 선택적 개선, visualgrow는
 ### 범용 프레임워크 (파이프라인)
 
 ```
+visualbase  → 미디어 I/O + IPC 인프라 (카메라, 비디오, 프레임)
 visualpath  → DAG 기반 분석 프레임워크 (frozen model orchestration)
+vpx         → 플러그인 분석 모듈 (face.detect, face.expression, head.pose, ...)
+             → vpx-sdk: Module/Observation 프로토콜
+             → vpx-runner: analyzer 등록 + DAG 실행
+             → vpx plugins: 각 frozen model 래핑 (7개)
 visualbind  → signal 결합 + 학습 기반 판단 (XGBoost)
 visualgrow  → 지속 적응 + 자율 성장 (pseudo-label, embedding)
 ```
 
-도메인에 독립적. 어떤 분석 문제에도 적용 가능한 범용 계층.
+```
+visualbase (미디어 소스)
+    ↓ Frame
+visualpath (DAG 프레임워크) + vpx (플러그인 분석 모듈)
+    ↓ per-frame signals
+visualbind (학습 기반 판단)
+    ↓ decisions
+visualgrow (자율 성장)
+```
+
+도메인에 독립적. 어떤 비전 분석 문제에도 적용 가능한 범용 계층.
+vpx는 visualpath 위에서 실행되는 분석 모듈 생태계.
 
 ### 응용 프로그램 (981파크 특화)
 
 ```
-momentscan  = visualpath + visualbind를 조합한 분석 앱
-momentbank  = 고객 기억 시스템 (member 단위 장기 저장)
-reportrait  = AI 초상화 생성 (ComfyUI bridge)
-portrait981 = 통합 오케스트레이터
+momentscan          = visualpath + vpx + visualbind를 조합한 분석 앱
+momentscan-plugins  = 도메인 특화 분석 플러그인 (face.quality, face.gate, face.classify 등)
+                      → vpx와 같은 Module 프로토콜, momentscan namespace
+momentbank          = 고객 기억 시스템 (member 단위 장기 저장)
+reportrait          = AI 초상화 생성 (ComfyUI bridge)
+portrait981         = 통합 오케스트레이터 (E2E 파이프라인)
+annotator           = 라벨링/리뷰/데이터셋 관리 도구
+```
+
+```
+범용 모듈 (vpx plugins):        도메인 모듈 (momentscan plugins):
+  face.detect (InsightFace)       face.quality (마스크 기반 측정)
+  face.expression (HSEmotion)     face.gate (품질 게이트)
+  face.au (LibreFace)             face.classify (역할 분류)
+  head.pose (6DRepNet)            frame.quality (프레임 품질)
+  face.parse (BiSeNet)            frame.scoring (프레임 점수)
+  body.pose (YOLO-Pose)           portrait.score (CLIP 4축)
+  hand.gesture (MediaPipe)        face.baseline (Welford stats)
 ```
 
 범용 프레임워크 위에 도메인 로직을 얹은 응용.
+vpx plugins는 범용 (어떤 프로젝트에서도 재사용),
+momentscan plugins는 981파크 특화 (portrait 도메인 로직).
 
 ## 3-Layer Pipeline
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Layer 1: visualpath (Signal Production)                 │
+│ Layer 1: visualpath + vpx (Signal Production)            │
 │                                                          │
 │ "각자 한 가지 문제만 푸는 작은 분석기들의 DAG"           │
+│                                                          │
+│ visualbase: 미디어 소스 (카메라, 비디오, 이미지)         │
+│ visualpath: DAG 프레임워크 (의존성 관리, 실행 제어)      │
+│ vpx plugins: 범용 frozen model (face, pose, gesture)     │
+│ momentscan plugins: 도메인 특화 (quality, gate, score)   │
 │                                                          │
 │ frozen models → per-frame signals                       │
 │ 하드코딩 임계값 → 품질 gate                              │
 │ 숙련된 엔지니어가 데이터 기반으로 튜닝                    │
-│                                                          │
-│ 구현: vpx analyzers + momentscan plugins (face.quality,  │
-│       face.gate, frame.quality, face.classify 등)        │
 │                                                          │
 │ 한계: 모델 드리프트, 새 환경에서 재튜닝 필요             │
 │ 가치: 즉시 동작, 추가 학습 불필요                        │
