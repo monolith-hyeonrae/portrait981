@@ -145,18 +145,28 @@ def main(argv=None):
         quality_cut = False
         quality_reason = ""
         raw_exposure = signals.get("face_exposure", 128)
+        raw_contrast = signals.get("face_contrast", 0.5)
         raw_clipped = signals.get("clipped_ratio", 0)
         raw_crushed = signals.get("crushed_ratio", 0)
         raw_blur = signals.get("face_blur", 100)
-        if raw_clipped > 0.3:
-            quality_cut, quality_reason = True, "overexposed"
-        elif raw_crushed > 0.3:
-            quality_cut, quality_reason = True, "underexposed"
-        elif raw_exposure > 230:
+
+        # Face too bright (washed out, features indistinguishable)
+        if raw_exposure > 200:
             quality_cut, quality_reason = True, "too_bright"
-        elif raw_exposure < 30:
+        # Face too dark (underlit, tunnel)
+        elif raw_exposure < 50:
             quality_cut, quality_reason = True, "too_dark"
-        elif raw_blur < 15:
+        # Low contrast (flat lighting, features indistinguishable)
+        elif raw_contrast < 0.15:
+            quality_cut, quality_reason = True, "low_contrast"
+        # Overexposed highlights
+        elif raw_clipped > 0.1:
+            quality_cut, quality_reason = True, "overexposed"
+        # Underexposed shadows
+        elif raw_crushed > 0.15:
+            quality_cut, quality_reason = True, "underexposed"
+        # Blurry
+        elif raw_blur < 20:
             quality_cut, quality_reason = True, "blurry"
 
         vec = np.array([normalize_signal(signals.get(f, 0.0), f) for f in feature_names]).reshape(1, -1)
