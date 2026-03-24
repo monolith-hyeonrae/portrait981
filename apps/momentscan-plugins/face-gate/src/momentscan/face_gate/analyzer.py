@@ -236,27 +236,29 @@ class FaceGateAnalyzer(Module):
             if parsing_coverage > 0 and parsing_coverage < cfg.parsing_coverage_min:
                 fails.append("gate.parsing.coverage")
 
-            # Exposure: prefer local contrast metrics, fallback to absolute brightness
+            # Exposure: multiple independent checks (not mutually exclusive)
             face_contrast = float(getattr(fq, "face_contrast", 0.0)) if fq else 0.0
             clipped_ratio = float(getattr(fq, "clipped_ratio", 0.0)) if fq else 0.0
             crushed_ratio = float(getattr(fq, "crushed_ratio", 0.0)) if fq else 0.0
 
-            if face_contrast > 0:
-                # face.quality mask-based local contrast
-                if face_contrast < cfg.contrast_min:
-                    fails.append("gate.exposure.contrast")
-                if clipped_ratio > cfg.clipped_max:
-                    fails.append("gate.exposure.white")
-                if crushed_ratio > cfg.crushed_max:
-                    fails.append("gate.exposure.black")
-            elif face_exposure > 0:
-                # face.quality absolute brightness fallback
+            # 1. Absolute brightness check (always, when available)
+            if face_exposure > 0:
                 if not (cfg.exposure_min <= face_exposure <= cfg.exposure_max):
                     fails.append("gate.exposure.brightness")
             elif frame_bright > 0:
-                # frame-level absolute brightness fallback
                 if not (cfg.exposure_min <= frame_bright <= cfg.exposure_max):
                     fails.append("gate.exposure.brightness")
+
+            # 2. Local contrast check (when mask-based metrics available)
+            if face_contrast > 0:
+                if face_contrast < cfg.contrast_min:
+                    fails.append("gate.exposure.contrast")
+
+            # 3. Pixel-level clipping check
+            if clipped_ratio > cfg.clipped_max:
+                fails.append("gate.exposure.white")
+            if crushed_ratio > cfg.crushed_max:
+                fails.append("gate.exposure.black")
 
             # Seg-based gates (require successful parsing)
             seg_mouth = float(getattr(fq, "seg_mouth", 0.0)) if fq else 0.0

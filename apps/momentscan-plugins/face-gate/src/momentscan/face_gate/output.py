@@ -16,16 +16,16 @@ class FaceGateConfig:
     face_confidence_min: float = 0.7
     face_blur_min: float = 5.0        # face crop Laplacian variance (224×280 crop 기준)
     frame_blur_min: float = 50.0      # frame-level fallback
-    exposure_min: float = 40.0
-    exposure_max: float = 220.0
+    exposure_min: float = 50.0        # 마스크 기반 face_exposure 최소
+    exposure_max: float = 200.0       # 마스크 기반 face_exposure 최대
 
     # Passenger suitability thresholds (soft scoring, no hard gate)
     passenger_confidence_min: float = 0.5
 
     # Local contrast exposure thresholds (from face.quality mask-based metrics)
-    contrast_min: float = 0.05        # CV < 0.05 = flat/washed out
-    clipped_max: float = 0.3          # >30% overexposed pixels
-    crushed_max: float = 0.3          # >30% underexposed pixels
+    contrast_min: float = 0.10        # CV < 0.10 = flat/washed out (이목구비 구분 안 됨)
+    clipped_max: float = 0.15         # >15% overexposed pixels
+    crushed_max: float = 0.15         # >15% underexposed pixels
 
     # Parsing coverage threshold (from face.quality BiSeNet mask, face bbox 기준)
     parsing_coverage_min: float = 0.50  # BiSeNet coverage < 50% = 노출 불량 proxy
