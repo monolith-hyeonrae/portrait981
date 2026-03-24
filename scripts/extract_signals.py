@@ -54,6 +54,7 @@ def load_analyzers():
     try_load("face_expression", "vpx.face_expression", "ExpressionAnalyzer")
     try_load("head_pose", "vpx.head_pose", "HeadPoseAnalyzer")
     try_load("face_parse", "vpx.face_parse", "FaceParseAnalyzer")
+    try_load("face_quality", "momentscan.face_quality", "FaceQualityAnalyzer")
 
     return loaded
 
@@ -178,30 +179,46 @@ def extract_signals_from_image(img_bgr: np.ndarray, analyzers: dict, frame_id: i
         except Exception as e:
             logger.debug("Face parse failed: %s", e)
 
-    # --- Face Quality (5D) — computed from face crop ---
-    bbox = face.bbox  # normalized (cx, cy, w, h) or (x1, y1, w, h)
-    # Convert to pixel coords
-    if all(0 <= v <= 1.1 for v in bbox):
-        # Normalized coords
-        bx, by, bw, bh = bbox
-        px1 = int((bx - bw/2) * w) if bw < 0.5 else int(bx * w)
-        py1 = int((by - bh/2) * h) if bh < 0.5 else int(by * h)
-        px2 = px1 + int(bw * w)
-        py2 = py1 + int(bh * h)
-    else:
-        px1, py1, px2, py2 = [int(v) for v in bbox]
+    # --- Face Quality (5D) — from FaceQualityAnalyzer (mask-based) or fallback ---
+    face_quality = analyzers.get("face_quality")
+    if face_quality:
+        try:
+            fq_deps = {"face.detect": det_obs}
+            fp = analyzers.get("face_parse")
+            if fp:
+                fq_deps["face.parse"] = fp.analyze(frame, deps={"face.detect": det_obs})
+            fq_obs = face_quality.analyze(frame, deps=fq_deps)
+            if fq_obs and fq_obs.signals:
+                signals["face_blur"] = float(fq_obs.signals.get("face_blur", 0.0))
+                signals["face_exposure"] = float(fq_obs.signals.get("face_exposure", 0.0))
+                signals["face_contrast"] = float(fq_obs.signals.get("face_contrast", 0.0))
+                signals["clipped_ratio"] = float(fq_obs.signals.get("clipped_ratio", 0.0))
+                signals["crushed_ratio"] = float(fq_obs.signals.get("crushed_ratio", 0.0))
+        except Exception as e:
+            logger.debug("FaceQuality failed: %s", e)
 
-    px1, py1 = max(0, px1), max(0, py1)
-    px2, py2 = min(w, px2), min(h, py2)
-    if px2 > px1 and py2 > py1:
-        face_crop = img_bgr[py1:py2, px1:px2]
-        gray_face = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
-        signals["face_blur"] = float(cv2.Laplacian(gray_face, cv2.CV_64F).var())
-        signals["face_exposure"] = float(gray_face.mean())
-        mean_val = gray_face.mean()
-        signals["face_contrast"] = float(gray_face.std() / (mean_val + 1e-6))
-        signals["clipped_ratio"] = float((gray_face > 250).sum() / gray_face.size)
-        signals["crushed_ratio"] = float((gray_face < 5).sum() / gray_face.size)
+    # Fallback: simple crop-based if FaceQualityAnalyzer not available
+    if "face_blur" not in signals:
+        bbox = face.bbox
+        if all(0 <= v <= 1.1 for v in bbox):
+            bx, by, bw, bh = bbox
+            px1 = int((bx - bw/2) * w) if bw < 0.5 else int(bx * w)
+            py1 = int((by - bh/2) * h) if bh < 0.5 else int(by * h)
+            px2 = px1 + int(bw * w)
+            py2 = py1 + int(bh * h)
+        else:
+            px1, py1, px2, py2 = [int(v) for v in bbox]
+        px1, py1 = max(0, px1), max(0, py1)
+        px2, py2 = min(w, px2), min(h, py2)
+        if px2 > px1 and py2 > py1:
+            face_crop = img_bgr[py1:py2, px1:px2]
+            gray_face = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+            signals["face_blur"] = float(cv2.Laplacian(gray_face, cv2.CV_64F).var())
+            signals["face_exposure"] = float(gray_face.mean())
+            mean_val = gray_face.mean()
+            signals["face_contrast"] = float(gray_face.std() / (mean_val + 1e-6))
+            signals["clipped_ratio"] = float((gray_face > 250).sum() / gray_face.size)
+            signals["crushed_ratio"] = float((gray_face < 5).sum() / gray_face.size)
 
     # --- Frame Quality (3D) ---
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
