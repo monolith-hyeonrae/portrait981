@@ -175,19 +175,28 @@ class TreeStrategy:
         Raises:
             FileNotFoundError: If meta.json or model file is missing.
         """
-        load_dir = Path(path)
-        meta_path = load_dir / "meta.json"
-        if not meta_path.exists():
-            raise FileNotFoundError(f"No meta.json in {load_dir}")
+        load_path = Path(path)
 
-        with open(meta_path) as f:
-            meta = json.load(f)
-
-        model_file = meta["model_file"]
-        model_path = load_dir / model_file
-
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {model_path}")
+        # Support both directory (meta.json + model) and direct file (.pkl/.joblib)
+        if load_path.is_file() and load_path.suffix in (".pkl", ".joblib"):
+            model_path = load_path
+            meta_path = load_path.with_suffix(".json")
+            if not meta_path.exists():
+                raise FileNotFoundError(f"No meta JSON found: {meta_path}")
+            with open(meta_path) as f:
+                meta = json.load(f)
+        elif load_path.is_dir():
+            meta_path = load_path / "meta.json"
+            if not meta_path.exists():
+                raise FileNotFoundError(f"No meta.json in {load_path}")
+            with open(meta_path) as f:
+                meta = json.load(f)
+            model_file = meta["model_file"]
+            model_path = load_path / model_file
+            if not model_path.exists():
+                raise FileNotFoundError(f"Model file not found: {model_path}")
+        else:
+            raise FileNotFoundError(f"Model path not found: {load_path}")
 
         # Load model via joblib or pickle
         if model_file.endswith(".joblib"):
