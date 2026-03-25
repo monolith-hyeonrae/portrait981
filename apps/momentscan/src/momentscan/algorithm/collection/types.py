@@ -81,7 +81,12 @@ class CollectionRecord:
     catalog_best: float = 0.0
     catalog_primary: str = ""
     catalog_category: str = ""
-    catalog_scores: Dict[str, float] = field(default_factory=dict)  # per-category similarities
+    catalog_scores: Dict[str, float] = field(default_factory=dict)
+
+    # Bind (visualbind XGBoost)
+    bind_best: float = 0.0
+    bind_primary: str = ""
+    bind_scores: Dict[str, float] = field(default_factory=dict)
 
     person_id: int = 0
 

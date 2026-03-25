@@ -136,9 +136,11 @@ class MomentscanApp(vp.App):
         if self._bind_model:
             from visualbind.strategies.tree import TreeStrategy
             from momentscan.algorithm.batch.extract import set_bind_strategy
+            from momentscan.algorithm.collection.extract import set_bind_strategy as set_collection_bind
             bind_path = Path(self._bind_model)
             strategy = TreeStrategy.load(bind_path)
             set_bind_strategy(strategy)
+            set_collection_bind(strategy)
             logger.info("Loaded visualbind TreeStrategy from %s (%d classes)",
                         bind_path, len(strategy.classes))
 

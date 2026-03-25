@@ -118,6 +118,8 @@ class CollectionEngine:
         """Collect frames for one person using grid selection."""
         cfg = self.config
         use_catalog = bool(self._catalog_profiles)
+        # Check if any record has bind (XGBoost) results
+        use_bind = any(r.bind_primary for r in records if hasattr(r, 'bind_primary'))
 
         # (a) Strict gate → medoid candidates
         strict = [r for r in records if self._pass_strict_gate(r)]
@@ -146,12 +148,18 @@ class CollectionEngine:
             pose_name = classify_pose(r.head_yaw, r.head_pitch, self._poses) or "other"
             pose_fit = self._compute_pose_fit(r, pose_name)
 
-            if use_catalog:
+            if use_bind and hasattr(r, 'bind_primary') and r.bind_primary:
+                # visualbind XGBoost (학습 기반, 최우선)
+                category = r.bind_primary
+                catalog_sim = r.bind_best if hasattr(r, 'bind_best') else 1.0
+            elif use_catalog:
+                # catalog scoring (Fisher centroid)
                 category = r.catalog_primary or "other"
                 catalog_sim = r.catalog_best
             else:
+                # AU-rule fallback (하드코딩)
                 category = classify_expression(r, self._pivots)
-                catalog_sim = 1.0  # fallback: degenerate to quality × pose_fit
+                catalog_sim = 1.0
 
             quality = self._compute_quality(r)
             cell_score = self._compute_cell_score(

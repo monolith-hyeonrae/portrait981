@@ -211,10 +211,12 @@ def run_debug(args):
     if _bind_model:
         from visualbind.strategies.tree import TreeStrategy
         from momentscan.algorithm.batch.extract import set_bind_strategy
+        from momentscan.algorithm.collection.extract import set_bind_strategy as set_collection_bind_strategy
         from pathlib import Path as _Path
 
         strategy = TreeStrategy.load(_Path(_bind_model))
         set_bind_strategy(strategy)
+        set_collection_bind_strategy(strategy)
         print(f"{DIM}Loaded visualbind TreeStrategy from {_bind_model} ({len(strategy.classes)} classes){RESET}")
 
     frame_count = 0

@@ -20,6 +20,9 @@ _ANCHOR_DECAY: float = 0.998
 # Module-level state for signal-profile catalog scoring
 _catalog_profiles: list = []
 
+# Module-level state for visualbind TreeStrategy (trained model)
+_bind_strategy: object = None
+
 
 def set_catalog_profiles(profiles: list) -> None:
     """Set signal-profile catalog for catalog scoring."""
@@ -27,12 +30,19 @@ def set_catalog_profiles(profiles: list) -> None:
     _catalog_profiles = list(profiles)
 
 
+def set_bind_strategy(strategy: object) -> None:
+    """Set trained visualbind TreeStrategy for bind scoring."""
+    global _bind_strategy
+    _bind_strategy = strategy
+
+
 def reset_extract_state() -> None:
     """Reset module-level state for per-video isolation."""
-    global _anchor_embedding, _anchor_confidence, _catalog_profiles
+    global _anchor_embedding, _anchor_confidence, _catalog_profiles, _bind_strategy
     _anchor_embedding = None
     _anchor_confidence = 0.0
     _catalog_profiles = []
+    _bind_strategy = None
 
 
 def extract_collection_record(
@@ -73,6 +83,10 @@ def extract_collection_record(
     # Signal-profile catalog scoring (override mode)
     if _catalog_profiles:
         _apply_catalog_scoring(record)
+
+    # Visualbind TreeStrategy scoring (trained XGBoost model)
+    if _bind_strategy is not None:
+        _apply_bind_scoring(record)
 
     return record
 
@@ -270,3 +284,30 @@ def _apply_catalog_scoring(record: CollectionRecord) -> None:
     """Signal-profile catalog scoring."""
     from momentscan.algorithm.batch.catalog_scoring import compute_catalog_scores
     compute_catalog_scores(record, _catalog_profiles)
+
+
+def _apply_bind_scoring(record: CollectionRecord) -> None:
+    """Visualbind TreeStrategy scoring."""
+    from visualbind.signals import SIGNAL_FIELDS, normalize_signal
+    import numpy as np
+
+    vec = np.zeros(len(SIGNAL_FIELDS), dtype=np.float64)
+    for i, f in enumerate(SIGNAL_FIELDS):
+        if f == "head_yaw_dev":
+            raw = abs(float(getattr(record, "head_yaw", 0.0)))
+        elif hasattr(record, 'composites') and f in record.composites:
+            raw = float(record.composites.get(f, 0.0))
+        elif hasattr(record, 'clip_axes') and f in record.clip_axes:
+            raw = float(record.clip_axes.get(f, 0.0))
+        elif hasattr(record, f):
+            raw = float(getattr(record, f, 0.0))
+        else:
+            raw = 0.0
+        vec[i] = normalize_signal(raw, f)
+
+    scores = _bind_strategy.predict(vec)
+    if scores:
+        record.bind_scores = scores
+        best_name = max(scores, key=scores.get)
+        record.bind_best = scores[best_name]
+        record.bind_primary = best_name
