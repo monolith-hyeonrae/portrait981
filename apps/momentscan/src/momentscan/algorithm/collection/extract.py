@@ -22,6 +22,7 @@ _catalog_profiles: list = []
 
 # Module-level state for visualbind TreeStrategy (trained model)
 _bind_strategy: object = None
+_pose_strategy: object = None
 
 
 def set_catalog_profiles(profiles: list) -> None:
@@ -36,13 +37,20 @@ def set_bind_strategy(strategy: object) -> None:
     _bind_strategy = strategy
 
 
+def set_pose_strategy(strategy: object) -> None:
+    """Set trained visualbind TreeStrategy for pose prediction."""
+    global _pose_strategy
+    _pose_strategy = strategy
+
+
 def reset_extract_state() -> None:
     """Reset module-level state for per-video isolation."""
-    global _anchor_embedding, _anchor_confidence, _catalog_profiles, _bind_strategy
+    global _anchor_embedding, _anchor_confidence, _catalog_profiles, _bind_strategy, _pose_strategy
     _anchor_embedding = None
     _anchor_confidence = 0.0
     _catalog_profiles = []
     _bind_strategy = None
+    _pose_strategy = None
 
 
 def extract_collection_record(
@@ -87,6 +95,10 @@ def extract_collection_record(
     # Visualbind TreeStrategy scoring (trained XGBoost model)
     if _bind_strategy is not None:
         _apply_bind_scoring(record)
+
+    # Visualbind pose prediction
+    if _pose_strategy is not None:
+        _apply_pose_scoring(record)
 
     return record
 
@@ -311,3 +323,25 @@ def _apply_bind_scoring(record: CollectionRecord) -> None:
         best_name = max(scores, key=scores.get)
         record.bind_best = scores[best_name]
         record.bind_primary = best_name
+
+
+def _apply_pose_scoring(record: CollectionRecord) -> None:
+    """Visualbind pose prediction."""
+    from visualbind.signals import SIGNAL_FIELDS, normalize_signal
+    import numpy as np
+
+    vec = np.zeros(len(SIGNAL_FIELDS), dtype=np.float64)
+    for i, f in enumerate(SIGNAL_FIELDS):
+        if f == "head_yaw_dev":
+            raw = abs(float(getattr(record, "head_yaw", 0.0)))
+        elif hasattr(record, 'clip_axes') and f in record.clip_axes:
+            raw = float(record.clip_axes.get(f, 0.0))
+        elif hasattr(record, f):
+            raw = float(getattr(record, f, 0.0))
+        else:
+            raw = 0.0
+        vec[i] = normalize_signal(raw, f)
+
+    scores = _pose_strategy.predict(vec)
+    if scores:
+        record.bind_pose = max(scores, key=scores.get)

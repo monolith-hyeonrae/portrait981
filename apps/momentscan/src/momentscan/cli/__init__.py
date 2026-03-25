@@ -144,9 +144,11 @@ Examples:
     )
     debug_parser.add_argument(
         "--bind-model", type=str, metavar="PATH",
-        help="Path to trained visualbind TreeStrategy model directory. "
-             "When provided, uses the model for additional frame scoring "
-             "alongside catalog scoring."
+        help="Path to trained visualbind TreeStrategy model (.pkl or directory)."
+    )
+    debug_parser.add_argument(
+        "--pose-model", type=str, metavar="PATH",
+        help="Path to trained pose model (.pkl)."
     )
 
     # process command

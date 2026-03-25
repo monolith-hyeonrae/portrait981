@@ -219,6 +219,15 @@ def run_debug(args):
         set_collection_bind_strategy(strategy)
         print(f"{DIM}Loaded visualbind TreeStrategy from {_bind_model} ({len(strategy.classes)} classes){RESET}")
 
+    _pose_model = getattr(args, 'pose_model', None)
+    if _pose_model:
+        from visualbind.strategies.tree import TreeStrategy as _TS
+        from momentscan.algorithm.collection.extract import set_pose_strategy
+        from pathlib import Path as _Path2
+        pose_strategy = _TS.load(_Path2(_pose_model))
+        set_pose_strategy(pose_strategy)
+        print(f"{DIM}Loaded pose model from {_pose_model} ({len(pose_strategy.classes)} classes){RESET}")
+
     frame_count = 0
     frame_records = []
     collection_records = []

@@ -87,6 +87,7 @@ class CollectionRecord:
     bind_best: float = 0.0
     bind_primary: str = ""
     bind_scores: Dict[str, float] = field(default_factory=dict)
+    bind_pose: str = ""  # XGBoost pose prediction (front/angle/side)
 
     person_id: int = 0
 

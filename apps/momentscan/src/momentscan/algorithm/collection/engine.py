@@ -145,7 +145,10 @@ class CollectionEngine:
             if stable < cfg.tau_id:
                 continue
 
-            pose_name = classify_pose(r.head_yaw, r.head_pitch, self._poses) or "other"
+            if use_bind and hasattr(r, 'bind_pose') and r.bind_pose:
+                pose_name = r.bind_pose
+            else:
+                pose_name = classify_pose(r.head_yaw, r.head_pitch, self._poses) or "other"
             pose_fit = self._compute_pose_fit(r, pose_name)
 
             if use_bind and hasattr(r, 'bind_primary') and r.bind_primary:
