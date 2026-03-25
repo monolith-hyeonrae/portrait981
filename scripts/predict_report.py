@@ -23,28 +23,6 @@ import numpy as np
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger("predict_report")
 
-from visualbind.signals import SIGNAL_FIELDS, normalize_signal
-
-
-def extract_frames(video_path: Path, fps: int, max_frames: int):
-    """Extract frames from video."""
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Cannot open: {video_path}")
-    video_fps = cap.get(cv2.CAP_PROP_FPS)
-    interval = max(1, int(video_fps / fps))
-    frames = []
-    idx = 0
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        if idx % interval == 0 and len(frames) < max_frames:
-            frames.append((idx, frame.copy()))
-        idx += 1
-    cap.release()
-    return frames
-
 
 def frame_to_b64(img, max_w=320):
     h, w = img.shape[:2]
@@ -96,83 +74,41 @@ def main(argv=None):
     video_path = video_arg
     output_path = Path(args.output) if args.output else Path(f"report_{video_path.stem}.html")
 
-    # Load models
-    import joblib
-    logger.info("Loading expression model: %s", model_path)
-    clf = joblib.load(model_path)
+    # Load meta for report header
     with open(meta_path) as f:
         meta = json.load(f)
     classes = meta["classes"]
-    feature_names = meta["feature_names"]
-    logger.info("Expression: %d classes %s", len(classes), classes)
 
-    pose_path = Path(args.pose_model)
-    pose_meta_path = pose_path.with_suffix(".json")
-    clf_pose = None
-    pose_classes = []
-    if pose_path.exists():
-        clf_pose = joblib.load(pose_path)
-        with open(pose_meta_path) as f:
-            pose_meta = json.load(f)
-        pose_classes = pose_meta["classes"]
-        logger.info("Pose: %d classes %s", len(pose_classes), pose_classes)
-    else:
-        logger.warning("Pose model not found: %s", pose_path)
+    # MomentscanV2 — 단일 앱으로 분석
+    from momentscan.v2 import MomentscanV2
+    app = MomentscanV2(bind_model=model_path, pose_model=args.pose_model)
+    app.initialize()
 
-    # Load SignalExtractor (momentscan DAG 기반)
-    from momentscan.signals import SignalExtractor
-    extractor = SignalExtractor()
-    extractor.initialize()
+    # Analyze video
+    frame_results = app.analyze_video(video_path, fps=args.fps, max_frames=args.max_frames)
 
-    # Extract frames
-    logger.info("Extracting frames from %s (fps=%d)", video_path, args.fps)
-    frames = extract_frames(video_path, args.fps, args.max_frames)
-    logger.info("Extracted %d frames", len(frames))
-
-    # Extract signals + predict
+    # Convert to report format
     results = []
-    for i, (orig_idx, img) in enumerate(frames):
-        if (i + 1) % 50 == 0:
-            logger.info("Processing %d/%d", i + 1, len(frames))
-
-        sig_result = extractor.extract(img, frame_id=i)
-        if not sig_result.face_detected:
-            results.append({"idx": i, "orig_idx": orig_idx, "pred": "no_face", "conf": 0, "b64": frame_to_b64(img)})
+    for fr in frame_results:
+        if not fr.face_detected:
+            results.append({"idx": fr.frame_idx, "orig_idx": fr.frame_idx, "pred": "no_face", "conf": 0, "b64": frame_to_b64(fr.image)})
             continue
 
-        signals = sig_result.signals
-
-        # face.gate (momentscan DAG 기반, 하드코딩 gate 대체)
-        gate_cut = not sig_result.gate_passed
-
-        vec = np.array([normalize_signal(signals.get(f, 0.0), f) for f in feature_names]).reshape(1, -1)
-        proba = clf.predict_proba(vec)[0]
-        pred_idx = np.argmax(proba)
-        pred = classes[pred_idx]
-        conf = float(proba[pred_idx])
-
-        if gate_cut and pred != "cut":
+        pred = fr.expression or "cut"
+        conf = fr.expression_conf
+        if not fr.gate_passed and pred != "cut":
             pred = "cut"
             conf = 0.99
 
-        # Pose prediction
-        pose_pred = ""
-        pose_conf = 0.0
-        if clf_pose is not None:
-            pose_proba = clf_pose.predict_proba(vec)[0]
-            pose_idx = np.argmax(pose_proba)
-            pose_pred = pose_classes[pose_idx]
-            pose_conf = float(pose_proba[pose_idx])
-
         results.append({
-            "idx": i,
-            "orig_idx": orig_idx,
+            "idx": fr.frame_idx,
+            "orig_idx": fr.frame_idx,
             "pred": pred,
             "conf": conf,
-            "pose": pose_pred,
-            "pose_conf": pose_conf,
-            "proba": {c: float(p) for c, p in zip(classes, proba)},
-            "b64": frame_to_b64(img),
+            "pose": fr.pose,
+            "pose_conf": fr.pose_conf,
+            "proba": {},
+            "b64": frame_to_b64(fr.image),
         })
 
     # Stats
