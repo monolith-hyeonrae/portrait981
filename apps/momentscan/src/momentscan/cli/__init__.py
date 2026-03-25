@@ -328,6 +328,17 @@ Examples:
         help="Enable verbose logging",
     )
 
+    # --- v2 command ---
+    v2_parser = subparsers.add_parser("v2", help="Momentscan v2 — simplified analysis")
+    v2_parser.add_argument("path", help="Path to video file")
+    v2_parser.add_argument("--fps", type=int, default=2, help="Analysis FPS (default: 2)")
+    v2_parser.add_argument("--bind-model", type=str, default="models/bind_v4.pkl",
+                           help="Expression model path")
+    v2_parser.add_argument("--pose-model", type=str, default="models/pose_v2.pkl",
+                           help="Pose model path")
+    v2_parser.add_argument("--top-k", type=int, default=10, help="Top K frames to select")
+    v2_parser.add_argument("-v", "--verbose", action="store_true")
+
     args = parser.parse_args()
 
     from momentscan.cli.utils import suppress_thirdparty_noise, configure_log_levels, StderrFilter
@@ -356,6 +367,33 @@ Examples:
 
     elif args.command == "catalog-build":
         commands.run_catalog_build(args)
+
+    elif args.command == "v2":
+        from momentscan.v2 import MomentscanV2
+        from pathlib import Path as _P
+
+        with MomentscanV2(
+            expression_model=args.bind_model,
+            pose_model=args.pose_model,
+        ) as app:
+            results = app.analyze_video(args.path, fps=args.fps)
+            selected = app.select_frames(results, top_k=args.top_k)
+
+            total = len(results)
+            shoot = sum(1 for r in results if r.is_shoot)
+            gated = sum(1 for r in results if not r.gate_passed and r.face_detected)
+
+            print(f"\n{'='*50}")
+            print(f"Video: {_P(args.path).name}")
+            print(f"Frames: {total} | SHOOT: {shoot} | Gate rejected: {gated}")
+            print(f"{'='*50}")
+
+            if selected:
+                print(f"\nSelected {len(selected)} frames:")
+                for r in selected:
+                    print(f"  #{r.frame_idx:4d}  {r.expression:8s} ({r.expression_conf:.0%})  {r.pose:6s} ({r.pose_conf:.0%})")
+            else:
+                print("\nNo frames selected.")
 
     else:
         parser.print_help()
