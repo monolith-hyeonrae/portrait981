@@ -27,11 +27,17 @@ from typing import Optional
 import numpy as np
 
 from visualbase import VisualBase, FileSource
-from visualpath.core.path import Path as AnalysisPath
+from visualpath.core.path import Path as VisualPath
 from visualbind import VisualBind, HeuristicStrategy, TreeStrategy, bind_observations
 from visualbind.judge import JudgmentResult
 
 logger = logging.getLogger("momentscan.v2")
+
+# momentscan이 사용하는 analyzer 목록
+MOMENTSCAN_MODULES = [
+    "face.detect", "face.au", "face.expression", "head.pose",
+    "face.parse", "face.quality", "frame.quality",
+]
 
 
 @dataclass
@@ -60,27 +66,6 @@ class FrameResult:
     def is_shoot(self): return self.face_detected and self.judgment.is_shoot
 
 
-def _load_modules():
-    """설치된 analyzer 로딩."""
-    modules = []
-    def _try(name, mod_path, cls_name):
-        try:
-            mod = __import__(mod_path, fromlist=[cls_name])
-            modules.append(getattr(mod, cls_name)())
-            logger.info("Loaded: %s", name)
-        except Exception as e:
-            logger.warning("Failed: %s (%s)", name, e)
-
-    _try("face.detect", "vpx.face_detect", "FaceDetectionAnalyzer")
-    _try("face.au", "vpx.face_au", "FaceAUAnalyzer")
-    _try("face.expression", "vpx.face_expression", "ExpressionAnalyzer")
-    _try("head.pose", "vpx.head_pose", "HeadPoseAnalyzer")
-    _try("face.parse", "vpx.face_parse", "FaceParseAnalyzer")
-    _try("face.quality", "momentscan.face_quality", "FaceQualityAnalyzer")
-    _try("frame.quality", "momentscan.frame_quality", "QualityAnalyzer")
-    return modules
-
-
 class MomentscanV2:
     """간결한 momentscan — visualpath DAG + visualbind 결합/판단."""
 
@@ -92,7 +77,7 @@ class MomentscanV2:
 
     def initialize(self):
         """DAG + 모델 로딩."""
-        self.pipeline = AnalysisPath(name="momentscan", modules=_load_modules())
+        self.pipeline = VisualPath.from_plugins(names=MOMENTSCAN_MODULES, name="momentscan")
         self.pipeline.initialize()
 
         self.judge = VisualBind(

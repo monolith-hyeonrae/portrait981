@@ -60,6 +60,64 @@ class Path:
         ...                 handle_trigger(result)
     """
 
+    @classmethod
+    def from_plugins(
+        cls,
+        names: Optional[List[str]] = None,
+        name: str = "default",
+        exclude: Optional[List[str]] = None,
+    ) -> "Path":
+        """Create a Path from registered plugins.
+
+        Uses entry_points discovery to find and instantiate modules.
+
+        Args:
+            names: Module names to load. None = all available.
+                   Supports glob patterns: ["face.*"] loads all face modules.
+            name: Path name.
+            exclude: Module names to exclude.
+
+        Returns:
+            Path instance with discovered modules (not yet initialized).
+
+        Example:
+            >>> path = Path.from_plugins()                      # all
+            >>> path = Path.from_plugins(["face.*", "frame.*"]) # pattern
+            >>> path = Path.from_plugins(exclude=["body.pose"])  # exclude
+        """
+        import fnmatch
+        import logging
+        _logger = logging.getLogger("visualpath.core.path")
+
+        from visualpath.plugin.discovery import discover_modules
+
+        available = discover_modules()
+        exclude_set = set(exclude or [])
+
+        if names is None:
+            selected = [n for n in sorted(available) if n not in exclude_set]
+        else:
+            selected = []
+            for pattern in names:
+                if "*" in pattern or "?" in pattern:
+                    selected.extend(n for n in sorted(available) if fnmatch.fnmatch(n, pattern))
+                else:
+                    if pattern in available:
+                        selected.append(pattern)
+            selected = [n for n in selected if n not in exclude_set]
+
+        modules = []
+        for mod_name in selected:
+            try:
+                ep = available[mod_name]
+                ModuleClass = ep.load()
+                modules.append(ModuleClass())
+                _logger.info("Plugin loaded: %s", mod_name)
+            except Exception as e:
+                _logger.warning("Plugin failed: %s (%s)", mod_name, e)
+
+        return cls(name=name, modules=modules)
+
     def __init__(
         self,
         name: str,
