@@ -47,6 +47,7 @@ class SignalExtractor:
 
     def __init__(self):
         self._analyzers: dict[str, object] = {}
+        self._gate = None
         self._initialized = False
 
     def initialize(self):
@@ -74,8 +75,16 @@ class SignalExtractor:
 
         # momentscan plugins (도메인 특화)
         _try_load("face.quality", "momentscan.face_quality", "FaceQualityAnalyzer")
-        _try_load("face.gate", "momentscan.face_gate", "FaceGateAnalyzer")
         _try_load("frame.quality", "momentscan.frame_quality", "QualityAnalyzer")
+
+        # Quality gate → visualbind HeuristicStrategy
+        try:
+            from visualbind.strategies.heuristic import HeuristicStrategy
+            self._gate = HeuristicStrategy()
+            logger.info("SignalExtractor: HeuristicStrategy gate loaded")
+        except ImportError:
+            self._gate = None
+            logger.warning("SignalExtractor: HeuristicStrategy not available")
 
         self._initialized = True
         logger.info("SignalExtractor initialized: %d analyzers", len(self._analyzers))
@@ -142,9 +151,6 @@ class SignalExtractor:
         # --- face.quality (5D, mask-based) ---
         self._run_face_quality(frame, deps, parse_obs, signals)
 
-        # --- face.gate ---
-        self._run_face_gate(frame, deps, parse_obs, result)
-
         # --- frame.quality (3D) ---
         self._run_frame_quality(frame, signals)
 
@@ -169,6 +175,9 @@ class SignalExtractor:
         signals["duchenne_smile"] = (au6 + au12) / 5.0 * warm
         signals["wild_intensity"] = max(au25, au26) / 3.0 * wild
         signals["chill_score"] = em_neutral * (1.0 - clip_max)
+
+        # --- Quality gate (visualbind HeuristicStrategy, 모든 signal 수집 후) ---
+        self._run_gate(signals, result)
 
         return result
 
@@ -313,37 +322,14 @@ class SignalExtractor:
             signals["clipped_ratio"] = float((gray > 250).sum() / gray.size)
             signals["crushed_ratio"] = float((gray < 5).sum() / gray.size)
 
-    def _run_face_gate(self, frame, deps, parse_obs, result):
-        gate = self._analyzers.get("face.gate")
-        if not gate:
-            result.gate_passed = True  # no gate = pass
+    def _run_gate(self, signals, result):
+        """Quality gate via visualbind HeuristicStrategy."""
+        if not self._gate:
+            result.gate_passed = True
             return
-        try:
-            # face.gate depends on face.detect + face.classify
-            # face.classify depends on face.detect → we skip it for image mode
-            # face.gate has fallback for missing face.classify
-            gate_deps = dict(deps)
-            if parse_obs:
-                gate_deps["face.parse"] = parse_obs
-            # Add face.quality if available
-            fq = self._analyzers.get("face.quality")
-            if fq:
-                fq_deps = dict(deps)
-                if parse_obs:
-                    fq_deps["face.parse"] = parse_obs
-                fq_obs = fq.analyze(frame, deps=fq_deps)
-                if fq_obs:
-                    gate_deps["face.quality"] = fq_obs
-
-            gate_obs = gate.analyze(frame, deps=gate_deps)
-            if gate_obs and gate_obs.data:
-                result.gate_passed = gate_obs.data.main_gate_passed
-                result.gate_reasons = list(gate_obs.data.main_fail_reasons)
-            else:
-                result.gate_passed = True
-        except Exception as e:
-            logger.debug("FaceGate failed: %s", e)
-            result.gate_passed = True  # fail-open
+        fails = self._gate.check_gate_from_signals(signals)
+        result.gate_passed = len(fails) == 0
+        result.gate_reasons = fails
 
     def _run_frame_quality(self, frame, signals):
         fq = self._analyzers.get("frame.quality")
