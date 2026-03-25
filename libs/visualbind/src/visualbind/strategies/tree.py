@@ -199,6 +199,7 @@ class TreeStrategy:
             raise FileNotFoundError(f"Model path not found: {load_path}")
 
         # Load model via joblib or pickle
+        model_file = model_path.name
         if model_file.endswith(".joblib"):
             try:
                 import joblib
