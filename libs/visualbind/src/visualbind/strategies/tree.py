@@ -215,5 +215,5 @@ class TreeStrategy:
         instance._model = model
         instance._classes = meta["classes"]
 
-        logger.info("TreeStrategy loaded from %s (%d classes)", load_dir, len(instance._classes))
+        logger.info("TreeStrategy loaded from %s (%d classes)", load_path, len(instance._classes))
         return instance
