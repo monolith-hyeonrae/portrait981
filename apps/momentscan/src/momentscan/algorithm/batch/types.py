@@ -67,6 +67,11 @@ class FrameRecord:
     seg_mouth: float = 0.0           # mouth (mouth+u_lip+l_lip) pixel ratio
     seg_hair: float = 0.0            # hair pixel ratio
     eye_pixel_ratio: float = 0.0     # = seg_eye (eye_open 교차검증용)
+    # Derived segmentation signals (from class_map, face area 기준)
+    eye_visible_ratio: float = 0.0   # eye pixels / face area
+    mouth_open_ratio: float = 0.0    # mouth_in pixels / face area
+    glasses_ratio: float = 0.0       # glasses pixels / face area
+    backlight_score: float = 0.0     # brightness - face_exposure
 
     # CLIP axis scores (dynamic, from portrait.score → metadata._clip_axes)
     clip_axes: Dict[str, float] = field(default_factory=dict)

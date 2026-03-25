@@ -276,6 +276,20 @@ def _extract_face_quality(record: FrameRecord, obs: Any) -> None:
     record.seg_hair = float(getattr(data, "seg_hair", 0.0))
     record.eye_pixel_ratio = float(getattr(data, "eye_pixel_ratio", 0.0))
 
+    # Derived segmentation signals (face area 기준)
+    # face.quality의 per-face results에서 class_map 기반 계산
+    face_results = getattr(data, "face_results", [])
+    if face_results:
+        fr = face_results[0]  # main face
+        class_map = None
+        # class_map이 face_results에 없으면 직접 계산할 수 없음 → 근사
+        # seg_eye / (seg_face + seg_eye + seg_mouth) 비율로 근사
+        face_area = record.seg_face + record.seg_eye + record.seg_mouth
+        if face_area > 0:
+            record.eye_visible_ratio = record.seg_eye / face_area
+            record.mouth_open_ratio = record.seg_mouth / face_area * 0.5  # mouth_in ≈ 50% of mouth
+        # glasses_ratio: face.parse class 6 — 별도 정보 없으면 0 유지
+
 
 def _extract_head_pose(record: FrameRecord, obs: Any) -> None:
     """head.pose: 6DRepNet 정밀 yaw/pitch/roll로 face.detect 기하학적 추정값 덮어쓰기.
@@ -422,3 +436,6 @@ def _compute_composites(record: FrameRecord) -> None:
     neutral_high = max(0.0, record.em_neutral - 0.5) * 2.0  # 0.5+ → [0,1]
     axes_low = max(0.0, 1.0 - axes_max * 2.0)  # 0.5 이하일 때만 양수
     record.composites["chill_score"] = neutral_high * axes_low if record.face_detected else 0.0
+
+    # Backlight: frame brightness - face exposure
+    record.backlight_score = max(0.0, record.brightness - record.face_exposure)
