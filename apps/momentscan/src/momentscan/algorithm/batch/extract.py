@@ -363,17 +363,34 @@ def _extract_portrait_score(record: FrameRecord, obs: Any) -> None:
 def _compute_bind_scores(record: FrameRecord, strategy: Any) -> None:
     """Trained visualbind TreeStrategy로 카테고리 확률 계산.
 
-    extract_frame_record()에서 호출. strategy.predict()로 21D 시그널 벡터를
+    extract_frame_record()에서 호출. strategy.predict()로 시그널 벡터를
     카테고리 확률로 변환하여 bind_best/bind_primary/bind_scores에 저장.
+
+    모델의 feature_names에 맞는 차원으로 signal vector를 구성.
 
     Args:
         record: 시그널이 채워진 FrameRecord (in-place 수정).
         strategy: Fitted TreeStrategy instance.
     """
-    from momentscan.algorithm.batch.catalog_scoring import extract_signal_vector
+    from visualbind.signals import SIGNAL_FIELDS as vb_fields, normalize_signal
+    import numpy as np
 
-    frame_vec = extract_signal_vector(record)
-    scores = strategy.predict(frame_vec)
+    # Build signal vector from FrameRecord, matching visualbind's full field set
+    vec = np.zeros(len(vb_fields), dtype=np.float64)
+    for i, f in enumerate(vb_fields):
+        if f == "head_yaw_dev":
+            raw = abs(float(getattr(record, "head_yaw", 0.0)))
+        elif f in record.composites:
+            raw = float(record.composites.get(f, 0.0))
+        elif f in record.clip_axes:
+            raw = float(record.clip_axes.get(f, 0.0))
+        elif hasattr(record, f):
+            raw = float(getattr(record, f, 0.0))
+        else:
+            raw = 0.0  # 49D 필드 중 FrameRecord에 없는 것 → 0
+        vec[i] = normalize_signal(raw, f)
+
+    scores = strategy.predict(vec)
     if not scores:
         return
 
