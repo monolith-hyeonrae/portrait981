@@ -23,6 +23,8 @@ from visualbind.strategies.catalog import CatalogStrategy
 from visualbind.strategies.tree import TreeStrategy
 from visualbind.strategies.two_stage import TwoStageStrategy
 from visualbind.strategies.heuristic import HeuristicStrategy, GateConfig
+from visualbind.judge import VisualBind, JudgmentResult
+from visualbind.observer_bind import bind_observations
 from visualbind.selector import select_frames, SelectionResult, SelectedFrame
 
 __all__ = [
@@ -46,6 +48,9 @@ __all__ = [
     "TwoStageStrategy",
     "HeuristicStrategy",
     "GateConfig",
+    "VisualBind",
+    "JudgmentResult",
+    "bind_observations",
     # selector
     "select_frames",
     "SelectionResult",

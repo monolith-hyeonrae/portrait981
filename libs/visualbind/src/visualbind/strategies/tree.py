@@ -102,11 +102,11 @@ class TreeStrategy:
             backend_name = "LogisticRegression" + (" (XGBoost unavailable)" if self._use_xgboost is None else "")
             logger.info("TreeStrategy fitted with %s (%d classes, %d samples)", backend_name, len(self._classes), len(X))
 
-    def predict(self, frame_vec: np.ndarray) -> dict[str, float]:
+    def predict(self, signals) -> dict[str, float]:
         """Predict category probabilities for a single frame.
 
         Args:
-            frame_vec: ``(D,)`` normalized signal vector.
+            signals: raw signals dict or (D,) normalized signal vector.
 
         Returns:
             Dict of category_name -> probability.
@@ -114,8 +114,19 @@ class TreeStrategy:
         if self._model is None or not self._classes:
             return {}
 
-        proba = self._model.predict_proba(frame_vec.reshape(1, -1))[0]
+        if isinstance(signals, dict):
+            vec = self._signals_to_vector(signals)
+        else:
+            vec = signals
+
+        proba = self._model.predict_proba(vec.reshape(1, -1))[0]
         return {name: float(p) for name, p in zip(self._classes, proba)}
+
+    def _signals_to_vector(self, signals: dict) -> np.ndarray:
+        """Raw signals dict → normalized vector (model의 feature_names 순서)."""
+        from visualbind.signals import SIGNAL_FIELDS, normalize_signal
+        fields = self._feature_names if hasattr(self, '_feature_names') and self._feature_names else SIGNAL_FIELDS
+        return np.array([normalize_signal(signals.get(f, 0.0), f) for f in fields])
 
     # ── Persistence ──
 
@@ -214,6 +225,7 @@ class TreeStrategy:
         instance = cls()
         instance._model = model
         instance._classes = meta["classes"]
+        instance._feature_names = meta.get("feature_names")
 
         logger.info("TreeStrategy loaded from %s (%d classes)", load_path, len(instance._classes))
         return instance
