@@ -59,11 +59,11 @@ def run(
     """
     if version == "v2":
         from momentscan.v2 import MomentscanV2
-        with MomentscanV2(
+        app = MomentscanV2(
             expression_model=expression_model,
             pose_model=pose_model,
-        ) as app:
-            return app.analyze_video(video, fps=fps)
+        )
+        return app.run(video, fps=fps)
 
     else:
         # v1 legacy

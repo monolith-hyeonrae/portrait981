@@ -372,12 +372,12 @@ Examples:
         from momentscan.v2 import MomentscanV2
         from pathlib import Path as _P
 
-        with MomentscanV2(
+        app = MomentscanV2(
             expression_model=args.bind_model,
             pose_model=args.pose_model,
-        ) as app:
-            results = app.analyze_video(args.path, fps=args.fps)
-            selected = app.select_frames(results, top_k=args.top_k)
+        )
+        results = app.run(args.path, fps=args.fps)
+        selected = app.select_frames(results, top_k=args.top_k)
 
             total = len(results)
             shoot = sum(1 for r in results if r.is_shoot)
