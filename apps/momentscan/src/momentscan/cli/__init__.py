@@ -30,9 +30,11 @@ Examples:
     )
     run_parser.add_argument("path", help="Path to video file")
     run_parser.add_argument("--fps", type=int, default=2, help="Analysis FPS (default: 2)")
-    run_parser.add_argument("--bind-model", type=str, default="models/bind_v11.pkl",
+    run_parser.add_argument("--quality-model", type=str, default="models/quality_v1.pkl",
+                           help="Quality (shoot/cut) model path")
+    run_parser.add_argument("--bind-model", type=str, default="models/bind_v12.pkl",
                            help="Expression model path")
-    run_parser.add_argument("--pose-model", type=str, default="models/pose_v9.pkl",
+    run_parser.add_argument("--pose-model", type=str, default="models/pose_v10.pkl",
                            help="Pose model path")
     run_parser.add_argument("--top-k", type=int, default=10, help="Top K frames to select")
     run_parser.add_argument("--debug", action="store_true",
@@ -101,6 +103,7 @@ def _run_v2(args):
             print("Error: --output is required when using --no-window")
             sys.exit(1)
         app = DebugV2(
+            quality_model=args.quality_model,
             expression_model=args.bind_model,
             pose_model=args.pose_model,
             show_window=show_window,
@@ -109,6 +112,7 @@ def _run_v2(args):
     else:
         from momentscan.v2 import MomentscanV2
         app = MomentscanV2(
+            quality_model=args.quality_model,
             expression_model=args.bind_model,
             pose_model=args.pose_model,
         )

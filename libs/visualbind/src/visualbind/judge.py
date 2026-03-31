@@ -1,14 +1,15 @@
-"""VisualBind — 다중 전략 조합 판단.
+"""VisualBind — 4단 전략 조합 판단.
 
-gate + expression + pose를 하나의 호출로.
+gate(heuristic) → quality(binary) → expression(5-class) → pose(3-class).
 
 Usage:
     from visualbind import VisualBind, HeuristicStrategy, TreeStrategy
 
     judge = VisualBind(
         gate=HeuristicStrategy(),
-        expression=TreeStrategy.load("models/bind_v4.pkl"),
-        pose=TreeStrategy.load("models/pose_v2.pkl"),
+        quality=TreeStrategy.load("models/quality_v1.pkl"),
+        expression=TreeStrategy.load("models/bind_v12.pkl"),
+        pose=TreeStrategy.load("models/pose_v10.pkl"),
     )
     result = judge(signals)
 """
@@ -24,6 +25,9 @@ class JudgmentResult:
     """판단 결과."""
     gate_passed: bool = True
     gate_reasons: list[str] = field(default_factory=list)
+    quality: str = ""          # "shoot" or "cut"
+    quality_conf: float = 0.0
+    quality_scores: dict[str, float] = field(default_factory=dict)
     expression: str = ""
     expression_conf: float = 0.0
     expression_scores: dict[str, float] = field(default_factory=dict)
@@ -33,20 +37,28 @@ class JudgmentResult:
 
     @property
     def is_shoot(self) -> bool:
-        return self.gate_passed and self.expression != "" and self.expression != "cut"
+        """gate 통과 + quality=shoot (또는 quality 모델 없으면 expression 기반 fallback)."""
+        if not self.gate_passed:
+            return False
+        if self.quality:
+            return self.quality == "shoot"
+        # fallback: quality 모델 없으면 기존 방식
+        return self.expression != "" and self.expression != "cut"
 
 
 class VisualBind:
-    """다중 전략 조합 — gate + expression + pose를 하나의 호출로.
+    """4단 전략 조합 — gate → quality → expression → pose.
 
     Args:
-        gate: 품질 gate 전략 (HeuristicStrategy)
-        expression: 표정 분류 전략 (TreeStrategy)
-        pose: 포즈 분류 전략 (TreeStrategy)
+        gate: 물리적 품질 gate (HeuristicStrategy)
+        quality: shoot/cut 이진 분류 (TreeStrategy)
+        expression: 표정 분류, shoot-only (TreeStrategy)
+        pose: 포즈 분류, shoot-only (TreeStrategy)
     """
 
-    def __init__(self, gate=None, expression=None, pose=None):
+    def __init__(self, gate=None, quality=None, expression=None, pose=None):
         self.gate = gate
+        self.quality_strategy = quality
         self.expression_strategy = expression
         self.pose_strategy = pose
 
@@ -57,21 +69,40 @@ class VisualBind:
     def judge(self, signals: dict[str, float]) -> JudgmentResult:
         """signals dict → 통합 판단 결과.
 
-        gate가 fail이면 expression/pose 건너뜀 (최적화).
+        4단 파이프라인:
+        1. gate (heuristic) — 물리적 품질 실패 → 즉시 cut
+        2. quality (binary) — shoot/cut 이진 분류 → cut이면 expression/pose 건너뜀
+        3. expression (5-class) — shoot 프레임만 표정 분류
+        4. pose (3-class) — shoot 프레임만 포즈 분류
         """
         result = JudgmentResult()
 
-        # Gate
+        # 1. Gate (heuristic)
         if self.gate is not None:
             result.gate_reasons = self.gate.check_gate_from_signals(signals)
             result.gate_passed = len(result.gate_reasons) == 0
 
         if not result.gate_passed:
+            result.quality = "cut"
+            result.quality_conf = 0.99
             result.expression = "cut"
             result.expression_conf = 0.99
             return result
 
-        # Expression
+        # 2. Quality (binary: shoot/cut)
+        if self.quality_strategy is not None:
+            scores = self.quality_strategy.predict(signals)
+            if scores:
+                result.quality_scores = scores
+                result.quality = max(scores, key=scores.get)
+                result.quality_conf = scores[result.quality]
+
+            if result.quality == "cut":
+                result.expression = "cut"
+                result.expression_conf = result.quality_conf
+                return result
+
+        # 3. Expression (5-class, shoot-only)
         if self.expression_strategy is not None:
             scores = self.expression_strategy.predict(signals)
             if scores:
@@ -79,7 +110,7 @@ class VisualBind:
                 result.expression = max(scores, key=scores.get)
                 result.expression_conf = scores[result.expression]
 
-        # Pose
+        # 4. Pose (3-class, shoot-only)
         if self.pose_strategy is not None:
             scores = self.pose_strategy.predict(signals)
             if scores:

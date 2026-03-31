@@ -37,9 +37,9 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-head-pose        (6DRepNet, 6DoF)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
-      → visualbind (observer 출력 결합 — 49D signal, VisualBind judge, XGBoost/Heuristic 전략)
+      → visualbind (observer 출력 결합 — 65D signal, VisualBind 4단 judge, XGBoost/Heuristic 전략)
       → momentscan (분석/수집 앱)
-          → momentscan-plugins (7개 내부 analyzer 플러그인)
+          → momentscan-plugins (8개 내부 analyzer 플러그인)
       → personmemory (저장/관리)
       → reportrait (AI 초상화 생성, ComfyUI 브릿지)
       → annotator (라벨링/리뷰/병합 도구)
@@ -70,11 +70,12 @@ portrait981/                    ← repo root
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
 │   ├── momentscan/             # 얼굴/장면 분석 + 수집 (observer 실행)
-│   ├── momentscan-plugins/     # momentscan 내부 analyzer 플러그인 (7개)
+│   ├── momentscan-plugins/     # momentscan 내부 analyzer 플러그인 (8개)
 │   │   ├── face-classify/      # 역할 분류
 │   │   ├── face-quality/       # 얼굴 품질 (blur/exposure + seg)
 │   │   ├── face-baseline/      # Welford online stats
 │   │   ├── face-gate/          # per-face quality gate
+│   │   ├── face-lighting/      # 얼굴 조명 분석 (DPR + 9-sector skin)
 │   │   ├── frame-quality/      # 프레임 전체 blur/brightness
 │   │   ├── frame-scoring/      # 프레임 스코어링
 │   │   └── portrait-score/     # CLIP 4축 aesthetic scoring
@@ -112,12 +113,13 @@ portrait981/                    ← repo root
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
 | vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
 | vpx-viz | `libs/vpx/viz/` | 시각화 도구 |
-| visualbind | `libs/visualbind/` | Observer 출력 결합 (49D signal → XGBoost/Heuristic 전략, VisualBind 복합 판단기) |
-| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 (v1: BatchHighlightEngine, v2: vp.App + VisualBind) |
+| visualbind | `libs/visualbind/` | Observer 출력 결합 (65D signal → 4단 judge: gate→quality→expression→pose) |
+| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 (v2: vp.App + VisualBind + DPR) |
 | momentscan-face-classify | `apps/momentscan-plugins/face-classify/` | 역할 분류 |
 | momentscan-face-quality | `apps/momentscan-plugins/face-quality/` | 얼굴 품질 (blur/exposure + seg) |
 | momentscan-face-baseline | `apps/momentscan-plugins/face-baseline/` | Welford online stats |
 | momentscan-face-gate | `apps/momentscan-plugins/face-gate/` | per-face quality gate |
+| momentscan-face-lighting | `apps/momentscan-plugins/face-lighting/` | 얼굴 조명 분석 (DPR SH + 9-sector skin) |
 | momentscan-frame-quality | `apps/momentscan-plugins/frame-quality/` | 프레임 전체 blur/brightness |
 | momentscan-frame-scoring | `apps/momentscan-plugins/frame-scoring/` | 프레임 스코어링 |
 | momentscan-portrait-score | `apps/momentscan-plugins/portrait-score/` | CLIP 4축 aesthetic scoring |
@@ -136,9 +138,9 @@ portrait981/                    ← repo root
 **`vpx` namespace** (7개 analyzer + sdk + runner + viz 패키지):
 - 각 `libs/vpx/*/src/vpx/__init__.py`에 `pkgutil.extend_path` 사용
 
-**`momentscan` namespace** (core + 7개 내부 analyzer 플러그인):
+**`momentscan` namespace** (core + 8개 내부 analyzer 플러그인):
 - `apps/momentscan/`: core 패키지
-- `apps/momentscan-plugins/*/`: 7개 analyzer 플러그인 (face-classify, face-quality, face-baseline, face-gate, frame-quality, frame-scoring, portrait-score)
+- `apps/momentscan-plugins/*/`: 8개 analyzer 플러그인 (face-classify, face-quality, face-baseline, face-gate, face-lighting, frame-quality, frame-scoring, portrait-score)
 - 각 플러그인의 `src/momentscan/__init__.py`에 `pkgutil.extend_path` 사용
 
 ## Import 경로
@@ -183,9 +185,10 @@ from visualpath.core import DummyAnalyzer
 cd /home/hyeonrae/repo/monolith/portrait981
 uv sync --all-packages --all-extras   # 전체 workspace 동기화
 uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트
-uv run pytest apps/personmemory/tests/ -v    # personmemory 테스트 (61)
-uv run pytest apps/reportrait/tests/ -v    # reportrait 테스트 (41)
-uv run pytest libs/visualbind/tests/ -v    # visualbind 테스트 (58)
+uv run pytest apps/personmemory/tests/ -v    # personmemory 테스트
+uv run pytest apps/reportrait/tests/ -v    # reportrait 테스트
+uv run pytest apps/portrait981/tests/ -v   # portrait981 테스트 (55)
+uv run pytest libs/visualbind/tests/ -v    # visualbind 테스트 (59)
 
 # 문서 사이트 (mkdocs)
 cd apps/portrait981-docs
@@ -230,7 +233,7 @@ visualbind merge anchors_test3.zip -o data/datasets/portrait-v1
 ## annotator CLI
 
 ```bash
-# 비디오 → 라벨링 HTML (2단계: expression + pose)
+# 비디오 → 라벨링 HTML (3단계: expression + pose + lighting)
 annotator label video.mp4 --fps 2 --output labels.html
 
 # 데이터셋 리뷰 (카테고리별 갤러리 + 라벨 편집)
@@ -245,11 +248,12 @@ annotator merge anchors_test3.zip -o data/datasets/portrait-v1
 ```
 data/datasets/portrait-v1/
 ├── images/         ← 모든 이미지 (gitignore, 로컬만)
-├── labels.csv      ← 다축 라벨 (filename, member_id, expression, pose, source)
+├── labels.csv      ← 다축 라벨 (filename, member_id, expression, pose, lighting, source)
 └── dataset.yaml    ← 메타데이터
 
-Expression: cheese 🧀 / chill 🧊 / edge 🗡️ / hype 🔥 / pass ⏭️
+Expression: cheese 🧀 / chill 🧊 / edge 🗡️ / goofy 🤪 / hype 🔥
 Pose:       front / angle / side
+Lighting:   dramatic 🔦 / natural ☀️ / backlit 🌅
 ```
 
 `vpx new`는 파일 생성 후 root `pyproject.toml`의 workspace members에 자동 등록한다.

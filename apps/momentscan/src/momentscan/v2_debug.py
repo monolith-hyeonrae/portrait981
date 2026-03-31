@@ -145,8 +145,19 @@ def _draw_panel(panel: np.ndarray, result: FrameResult, fps: float, coverage_gri
     x, y = 10, 20
 
     # --- Header ---
-    shoot_text = "SHOOT" if result.is_shoot else ("GATE FAIL" if not result.gate_passed else "CUT(xgb)")
-    shoot_color = _GREEN if result.is_shoot else (_RED if not result.gate_passed else _YELLOW)
+    j = result.judgment
+    if result.is_shoot:
+        shoot_text = "SHOOT"
+        shoot_color = _GREEN
+    elif not result.gate_passed:
+        shoot_text = "GATE FAIL"
+        shoot_color = _RED
+    elif j.quality == "cut":
+        shoot_text = "CUT(quality)"
+        shoot_color = _YELLOW
+    else:
+        shoot_text = "CUT"
+        shoot_color = _YELLOW
     _put(panel, shoot_text, x, y, shoot_color, 0.7, 2)
     _put(panel, f"#{result.frame_idx}", x + 150, y, _GRAY, 0.4)
     y += 10
@@ -157,8 +168,6 @@ def _draw_panel(panel: np.ndarray, result: FrameResult, fps: float, coverage_gri
     if not result.face_detected:
         _put(panel, "No face detected", x, y, _GRAY, 0.45)
         return
-
-    j = result.judgment
 
     # --- Gate ---
     y = _section_title(panel, x, y, "Gate")
@@ -188,6 +197,12 @@ def _draw_panel(panel: np.ndarray, result: FrameResult, fps: float, coverage_gri
         _put(panel, f"{val:.2f}", x + 180, y, _GRAY, 0.3)
         y += 14
     y += 8
+
+    # --- Quality (shoot/cut) ---
+    if j.quality_scores:
+        y = _section_title(panel, x, y, "Quality")
+        y = _draw_prob_bars(panel, x, y, j.quality_scores, j.quality)
+        y += 6
 
     # --- Expression ---
     y = _section_title(panel, x, y, "Expression")
@@ -397,13 +412,12 @@ def _draw_au_face_map(img, ox, oy, sigs: dict):
 
 
 def _draw_lighting_sphere(img, ox, oy, sigs: dict, sh_9: np.ndarray = None):
-    """구면 조명 히트맵 — SfSNet SH 9계수로 정확하게 렌더링.
+    """구면 조명 히트맵 — DPR SH 9계수로 정확하게 렌더링.
 
     sh_9가 있으면 9계수 전체 사용, 없으면 signal의 4값으로 근사.
 
-    ⚠️ 좌표계: SfSNet은 얼굴 기준(거울 반전).
-      구면 렌더링 시 nx=-screen_x, ny=-screen_y로 변환하여
-      이미지 좌표계와 일치시킴.
+    ⚠️ 좌표계: DPR은 이미지 좌표계 (반전 불필요).
+      구면 렌더링 시 nx=screen_x, ny=screen_y로 직접 매핑.
     """
     import math
 
@@ -999,8 +1013,13 @@ def _draw_overlay(image: np.ndarray, result: FrameResult, fps: float = 0.0,
 
     # Video overlay: shoot indicator on top-left
     if result.face_detected:
-        shoot_color = _GREEN if result.is_shoot else (_RED if not result.gate_passed else _YELLOW)
-        cv2.circle(canvas, (20, 20), 8, shoot_color, -1)
+        if result.is_shoot:
+            indicator_color = _GREEN
+        elif not result.gate_passed:
+            indicator_color = _RED
+        else:
+            indicator_color = _YELLOW
+        cv2.circle(canvas, (20, 20), 8, indicator_color, -1)
 
     return canvas
 
@@ -1023,19 +1042,19 @@ class DebugV2(MomentscanV2):
 
     def __init__(
         self,
+        quality_model=None,
         expression_model=None,
         pose_model=None,
         show_window: bool = True,
         output_path: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(expression_model=expression_model, pose_model=pose_model, **kwargs)
+        super().__init__(quality_model=quality_model, expression_model=expression_model, pose_model=pose_model, **kwargs)
         self._show_window = show_window
         self._output_path = output_path
         self._writer = None
         self._last_time = 0.0
         self._fps = 0.0
-        self._sfsnet = None  # SfSNet for debug SH sphere
         self._timeline_history: list[dict] = []
         self._coverage_grid: dict[tuple[str, str], float] = {}
 

@@ -171,7 +171,7 @@ SIGNAL_RANGES: dict[str, tuple[float, float]] = {
     "nose_position_y": (0.0, 1.0),        # 코 y 위치 (0=상단, 0.5=중간, 1=하단)
     # ⚠️ Lighting signals 좌표계: 이미지 좌표 기준으로 통일.
     #   양수 = 이미지 오른쪽이 밝음 (x), 이미지 위쪽이 밝음 (y)
-    #   SfSNet 원본은 얼굴 기준(거울반전) → 변환하여 저장.
+    #   DPR 출력은 이미지 좌표계 (변환 불필요).
     "lighting_ratio": (1.0, 3.0),         # bright_side / dark_side (1=uniform, >1.5=dramatic)
     "face_brightness_std": (0.0, 80.0),   # intra-face brightness variation (skin only)
     "highlight_ratio": (0.0, 0.5),        # fraction of skin pixels above mean+2σ

@@ -69,10 +69,13 @@ def export_v2_report(
             "face": r.face_detected,
             "gate": r.gate_passed,
             "shoot": r.is_shoot,
+            "quality": r.judgment.quality if hasattr(r, "judgment") else "",
+            "quality_conf": r.judgment.quality_conf if hasattr(r, "judgment") else 0.0,
             "expr": r.expression,
             "expr_conf": r.expression_conf,
             "pose": r.pose,
             "pose_conf": r.pose_conf,
+            "z_score": r.z_score,
             "gate_reasons": r.judgment.gate_reasons if hasattr(r, "judgment") else [],
             "expr_scores": r.judgment.expression_scores if hasattr(r, "judgment") and r.gate_passed else {},
             "signals": {k: round(v, 4) for k, v in r.signals.items()},
@@ -85,6 +88,7 @@ def export_v2_report(
     # Build plotly charts
     expr_chart = _build_expression_chart(frames)
     gate_chart = _build_gate_chart(frames)
+    zscore_chart = _build_zscore_chart(frames)
     au_chart = _build_au_heatmap(frames)
     coverage_html = _build_coverage_table(selected)
     dist_html = _build_distribution_section(summary) if summary else ""
@@ -145,6 +149,9 @@ h2 {{ color: #a0a0c0; border-bottom: 1px solid #333; padding-bottom: 4px; }}
 <h2>Gate Severity Timeline</h2>
 <div class="chart" id="gate_chart"></div>
 
+<h2>Quality × Expression × Z-Score</h2>
+<div class="chart" id="zscore_chart"></div>
+
 <h2>Mean Signal Profile</h2>
 <div class="chart" id="radar_chart"></div>
 
@@ -154,6 +161,7 @@ h2 {{ color: #a0a0c0; border-bottom: 1px solid #333; padding-bottom: 4px; }}
 <script>
 {expr_chart}
 {gate_chart}
+{zscore_chart}
 {au_chart}
 {signal_radar}
 </script>
@@ -228,6 +236,44 @@ def _build_gate_chart(frames: list) -> str:
         yaxis: {{title: 'Gate Severity', range: [0, 1], gridcolor: '#333'}},
         margin: {{t: 10}},
         height: 200,
+    }});"""
+
+
+def _build_zscore_chart(frames: list) -> str:
+    """Plotly q×e×z timeline — quality_conf, expression_conf, z_score 3축."""
+    x = []
+    q_vals, e_vals, z_vals, qez_vals = [], [], [], []
+
+    for f in frames:
+        if not f["face"]:
+            continue
+        x.append(f["idx"])
+        q = f.get("quality_conf", 0.0)
+        e = f.get("expr_conf", 0.0)
+        z = f.get("z_score", 0.0)
+        q_vals.append(round(q, 3))
+        e_vals.append(round(e, 3))
+        z_vals.append(round(z, 3))
+        qez = q * e * max(z, 0.1)
+        qez_vals.append(round(qez, 3))
+
+    return f"""Plotly.newPlot('zscore_chart', [
+        {{x: {x}, y: {q_vals}, name: 'quality', type: 'scatter', mode: 'lines',
+          line: {{color: '#4fc3f7', width: 1}}}},
+        {{x: {x}, y: {e_vals}, name: 'expression', type: 'scatter', mode: 'lines',
+          line: {{color: '#ab47bc', width: 1}}}},
+        {{x: {x}, y: {z_vals}, name: 'z_score', type: 'scatter', mode: 'lines',
+          line: {{color: '#ff7043', width: 1}}}},
+        {{x: {x}, y: {qez_vals}, name: 'q×e×z', type: 'scatter', mode: 'lines',
+          line: {{color: '#ffd600', width: 2}}}},
+    ], {{
+        paper_bgcolor: '#1a1a2e', plot_bgcolor: '#16213e',
+        font: {{color: '#e0e0e0'}},
+        xaxis: {{title: 'Frame', gridcolor: '#333'}},
+        yaxis: {{title: 'Score', gridcolor: '#333'}},
+        legend: {{x: 0, y: 1.1, orientation: 'h'}},
+        margin: {{t: 10}},
+        height: 250,
     }});"""
 
 

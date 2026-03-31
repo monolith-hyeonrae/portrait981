@@ -82,7 +82,8 @@ class MomentscanV2(vp.App):
     fps = 2
     backend = "simple"
 
-    def __init__(self, expression_model=None, pose_model=None, **kwargs):
+    def __init__(self, quality_model=None, expression_model=None, pose_model=None, **kwargs):
+        self._quality_model = quality_model
         self._expression_model = expression_model
         self._pose_model = pose_model
         self.judge = None
@@ -91,6 +92,7 @@ class MomentscanV2(vp.App):
     def setup(self):
         self.judge = VisualBind(
             gate=HeuristicStrategy(),
+            quality=TreeStrategy.load(self._quality_model) if self._quality_model else None,
             expression=TreeStrategy.load(self._expression_model) if self._expression_model else None,
             pose=TreeStrategy.load(self._pose_model) if self._pose_model else None,
         )
@@ -212,16 +214,25 @@ class MomentscanV2(vp.App):
             expression_dist=expr_dist, pose_dist=pose_dist, face_embeddings=embeddings,
         )
 
+    @staticmethod
+    def _qez_score(r: FrameResult) -> float:
+        """q×e×z 결합 스코어: 품질 × 표정확신 × 상대적특별함."""
+        q = r.judgment.quality_conf if r.judgment.quality == "shoot" else r.judgment.quality_conf * 0.5
+        e = r.expression_conf
+        z = max(r.z_score, 0.1)  # z_score 0인 경우 (프레임 부족 등) 최소값
+        return q * e * z
+
     def select_frames(self, results, top_k=10):
-        """다양성 기반 프레임 선택 (expression × pose 버킷별 best)."""
+        """다양성 기반 프레임 선택 (expression × pose 버킷별 best q×e×z)."""
         buckets = {}
         for r in results:
             if not r.is_shoot:
                 continue
             key = f"{r.expression}|{r.pose}"
-            if key not in buckets or r.expression_conf > buckets[key].expression_conf:
+            score = self._qez_score(r)
+            if key not in buckets or score > self._qez_score(buckets[key]):
                 buckets[key] = r
-        return sorted(buckets.values(), key=lambda r: -r.expression_conf)[:top_k]
+        return sorted(buckets.values(), key=lambda r: -self._qez_score(r))[:top_k]
 
 
 def _extract_face_embedding(observations: list) -> np.ndarray | None:

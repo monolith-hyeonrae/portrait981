@@ -19,6 +19,7 @@ DEFAULT_BACKEND = "simple"
 def run(
     video: Union[str, Path],
     *,
+    quality_model: Optional[str] = None,
     expression_model: Optional[str] = None,
     pose_model: Optional[str] = None,
     fps: int = DEFAULT_FPS,
@@ -30,6 +31,7 @@ def run(
     """
     from momentscan.v2 import MomentscanV2
     app = MomentscanV2(
+        quality_model=quality_model,
         expression_model=expression_model,
         pose_model=pose_model,
     )

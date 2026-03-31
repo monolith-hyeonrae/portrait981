@@ -3,7 +3,7 @@
 세 가지 분석 방법:
   A. BiSeNet probe — 코/볼/이마 영역별 상대 밝기 분석
   B. Landmarks SH — 3D normals + Spherical Harmonics fitting
-  C. SfSNet — 경량 lighting estimator (Phase 2)
+  C. DPR — Deep Portrait Relighting (Phase 2)
 
 모든 밝기 표현은 상대 contrast 기반 (Michelson contrast):
   contrast = (bright - dark) / (bright + dark + ε)
@@ -151,7 +151,7 @@ class FaceLightingAnalyzer(Module):
         # ── 9분면 분석 + Rembrandt (skin pixel만 사용) ──
         self._compute_sectors(gray, face_mask, seg_map, data)
 
-        # ── Method C: SfSNet SH (preferred) or Method B: geometric SH (fallback) ──
+        # ── Method C: DPR SH (preferred) or Method B: geometric SH (fallback) ──
         #
         # ── Method C: DPR SH (이미지 좌표계, 반전 불필요) ──
         # DPR은 portrait 크기 입력을 기대 → crop_box (확장된 portrait 영역) 사용
