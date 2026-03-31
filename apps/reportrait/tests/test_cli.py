@@ -25,7 +25,7 @@ class TestMainImport:
 class TestGenerateDryRun:
     """Test --dry-run mode: lookup → inject → print JSON."""
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     def test_dry_run_outputs_workflow_json(self, mock_lookup, capsys):
         mock_lookup.return_value = [
             {"path": "/tmp/ref1.jpg", "cell_score": 0.9},
@@ -49,7 +49,7 @@ class TestGenerateDryRun:
         assert "/tmp/ref1.jpg" in injected_paths
         assert "/tmp/ref2.jpg" in injected_paths
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     def test_dry_run_with_prompt(self, mock_lookup, capsys):
         mock_lookup.return_value = [
             {"path": "/tmp/ref1.jpg", "cell_score": 0.9},
@@ -72,7 +72,7 @@ class TestGenerateDryRun:
         assert len(positive_nodes) >= 1
         assert positive_nodes[0]["inputs"]["text"] == "cinematic portrait"
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     def test_dry_run_passes_pose_and_category(self, mock_lookup):
         mock_lookup.return_value = [{"path": "/tmp/ref.jpg", "cell_score": 0.5}]
 
@@ -129,7 +129,7 @@ class TestGenerateWithRef:
         img = tmp_path / "ref.jpg"
         img.write_bytes(b"fake")
 
-        with patch("momentbank.ingest.lookup_frames") as mock_lookup:
+        with patch("personmemory.ingest.lookup_frames") as mock_lookup:
             main(["generate", "--ref", str(img), "--dry-run"])
             mock_lookup.assert_not_called()
 
@@ -178,7 +178,7 @@ class TestGenerateWithRef:
 class TestGenerateNoRefs:
     """Test error when no reference frames found."""
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     def test_no_frames_error(self, mock_lookup, capsys):
         mock_lookup.return_value = []
 
@@ -189,7 +189,7 @@ class TestGenerateNoRefs:
         assert "No frames found" in captured.err
         assert "unknown_member" in captured.err
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     def test_no_frames_with_filters_in_error(self, mock_lookup, capsys):
         mock_lookup.return_value = []
 
@@ -203,7 +203,7 @@ class TestGenerateNoRefs:
 class TestGenerateCall:
     """Test actual generate path (mocked ComfyUI)."""
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     @patch("reportrait.generator.PortraitGenerator")
     def test_generate_success(self, mock_gen_cls, mock_lookup, capsys):
         mock_lookup.return_value = [
@@ -233,7 +233,7 @@ class TestGenerateCall:
         assert request.ref_paths == ["/tmp/ref1.jpg"]
         assert request.style_prompt == "portrait"
 
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("personmemory.ingest.lookup_frames")
     @patch("reportrait.generator.PortraitGenerator")
     def test_generate_failure(self, mock_gen_cls, mock_lookup, capsys):
         mock_lookup.return_value = [

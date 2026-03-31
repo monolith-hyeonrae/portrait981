@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import momentscan as ms
-from momentbank.ingest import lookup_frames
+from personmemory.ingest import lookup_frames
 from reportrait.generator import PortraitGenerator
 from reportrait.types import GenerationConfig, GenerationRequest
 
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class Portrait981Pipeline:
-    """Orchestrates momentscan -> momentbank -> reportrait pipeline.
+    """Orchestrates momentscan -> personmemory -> reportrait pipeline.
 
     Execution strategy:
     - scan: always runs in the calling thread (GPU-bound, needs signal handlers)

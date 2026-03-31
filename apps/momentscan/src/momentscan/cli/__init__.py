@@ -5,45 +5,16 @@ import argparse
 import logging
 
 
-def _add_distributed_args(parser):
-    """Add --distributed, --venv-* args to a parser."""
-    parser.add_argument(
-        "--distributed", action="store_true",
-        help="Enable distributed processing with VenvWorker (requires zmq)"
-    )
-    parser.add_argument(
-        "--venv-face", type=str, metavar="PATH",
-        help="Path to venv for face analyzer (enables VENV isolation)"
-    )
-    parser.add_argument(
-        "--venv-pose", type=str, metavar="PATH",
-        help="Path to venv for pose analyzer (enables VENV isolation)"
-    )
-    parser.add_argument(
-        "--venv-gesture", type=str, metavar="PATH",
-        help="Path to venv for gesture analyzer (enables VENV isolation)"
-    )
-
-
-def _add_trace_args(parser):
-    """Add --trace, --trace-output args to a parser."""
-    parser.add_argument("--trace", choices=["off", "minimal", "normal", "verbose"], default="off")
-    parser.add_argument("--trace-output", type=str, help="Output file for trace records (JSONL)")
-
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description="MomentScan - Portrait highlight capture",
+        description="MomentScan — portrait moment analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  momentscan debug video.mp4                  # All analyzers
-  momentscan debug video.mp4 -e face          # Face only
-  momentscan debug video.mp4 -e face,pose     # Face + Pose
-  momentscan debug video.mp4 -e raw           # Raw video preview (no analysis)
-  momentscan process video.mp4 -o ./clips     # Extract highlight clips
-  momentscan process video.mp4 --distributed  # Distributed mode (venv workers)
+  momentscan run video.mp4                    # Analyze video
+  momentscan run video.mp4 --debug            # With visualization
+  momentscan run video.mp4 --report out.html  # Generate HTML report
+  momentscan info                             # System info
 """,
     )
     parser.add_argument(
@@ -51,293 +22,45 @@ Examples:
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # info command
+    # --- run command ---
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Analyze video",
+        description="Run momentscan analysis on a video file.",
+    )
+    run_parser.add_argument("path", help="Path to video file")
+    run_parser.add_argument("--fps", type=int, default=2, help="Analysis FPS (default: 2)")
+    run_parser.add_argument("--bind-model", type=str, default="models/bind_v11.pkl",
+                           help="Expression model path")
+    run_parser.add_argument("--pose-model", type=str, default="models/pose_v9.pkl",
+                           help="Pose model path")
+    run_parser.add_argument("--top-k", type=int, default=10, help="Top K frames to select")
+    run_parser.add_argument("--debug", action="store_true",
+                           help="Enable debug visualization (cv2 window)")
+    run_parser.add_argument("--no-window", action="store_true",
+                           help="Disable window (use with --output)")
+    run_parser.add_argument("--output", "-o", type=str,
+                           help="Save debug video to file")
+    run_parser.add_argument("--report", type=str,
+                           help="Generate HTML report to file")
+    run_parser.add_argument("--ingest", type=str, metavar="MEMBER_ID",
+                           help="Ingest SHOOT frames into personmemory for this member")
+    run_parser.add_argument("-v", "--verbose", action="store_true")
+
+    # --- info command ---
     info_parser = subparsers.add_parser(
         "info",
         help="Show system info and available components",
-        description="Display analyzers, backends, triggers, and pipeline structure.",
     )
     info_parser.add_argument(
         "-v", "--verbose", action="store_true",
-        help="Show detailed info including device capabilities",
+        help="Show detailed info",
     )
-    info_parser.add_argument(
-        "--deps", action="store_true",
-        help="Show analyzer dependency graph",
-    )
+    info_parser.add_argument("--deps", action="store_true", help="Show dependency graph")
     info_parser.add_argument(
         "--graph", nargs="?", const="ascii", choices=["ascii", "dot"],
-        help="Show pipeline FlowGraph (ascii or dot format, default: ascii)",
+        help="Show pipeline FlowGraph",
     )
-    info_parser.add_argument(
-        "--steps", action="store_true",
-        help="Show internal processing steps of each analyzer",
-    )
-    info_parser.add_argument(
-        "--scoring", action="store_true",
-        help="Show detailed highlight scoring pipeline",
-    )
-
-    # debug command (unified)
-    debug_parser = subparsers.add_parser(
-        "debug",
-        help="Debug analyzers with visualization",
-        description="Run analyzers on video with real-time visualization.",
-    )
-    debug_parser.add_argument("path", help="Path to video file")
-    debug_parser.add_argument("--fps", type=float, default=10.0, help="Analysis FPS (default: 10)")
-    debug_parser.add_argument(
-        "-e", "--analyzer",
-        type=str,
-        default="all",
-        help="Analyzer(s) to run: face, pose, quality, gesture, all, raw (default: all). Use 'raw' for video-only preview without analysis. Comma-separated for multiple.",
-    )
-    debug_parser.add_argument("--no-window", action="store_true", help="Disable interactive window")
-    debug_parser.add_argument("--output", "-o", type=str, help="Save debug video to file")
-    debug_parser.add_argument("--device", type=str, default="cuda:0", help="Device for ML (default: cuda:0)")
-    _add_trace_args(debug_parser)
-    debug_parser.add_argument(
-        "--profile", action="store_true",
-        help="Show per-component timing information (detection, expression)"
-    )
-    _add_distributed_args(debug_parser)
-    debug_parser.add_argument(
-        "--roi", type=str, metavar="X1,Y1,X2,Y2",
-        help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"
-    )
-    debug_parser.add_argument(
-        "--backend", choices=["pathway", "simple"], default=None,
-        help="Execution backend: 'pathway' (Pathway streaming) or 'simple' (sequential). "
-             "Default: inline (same analyzers/fusion as pathway, smooth visualization)"
-    )
-    debug_parser.add_argument(
-        "--batch-size", type=int, default=1, metavar="N",
-        help="Batch size for GPU module processing (default: 1). "
-             "When > 1, modules with BATCHING capability use process_batch() for optimization."
-    )
-    debug_parser.add_argument(
-        "--output-dir", type=str, metavar="DIR",
-        help="Export batch analysis results (timeseries.csv, score_curve.png, peak frames) to directory"
-    )
-    debug_parser.add_argument(
-        "--report", type=str, metavar="PATH",
-        help="Generate HTML debug report after session (e.g. --report report.html)"
-    )
-    debug_parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Enable verbose logging (show all third-party and internal messages)"
-    )
-    debug_parser.add_argument(
-        "--caption", action="store_true",
-        help="Enable CoCa text captioner (shows generated captions in overlay)"
-    )
-    debug_parser.add_argument(
-        "--collection", type=str, metavar="PATH",
-        help="Path to collection/catalog directory (e.g. data/catalogs/portrait-v1). "
-             "Loads signal profiles and pose/pivot definitions. "
-             "Without this flag, uses built-in poses × AU-rule classification."
-    )
-    debug_parser.add_argument(
-        "--member-id", type=str, metavar="ID",
-        help="Member ID for cumulative bank storage. "
-             "Default: video file stem."
-    )
-    debug_parser.add_argument(
-        "--bind-model", type=str, metavar="PATH",
-        help="Path to trained visualbind TreeStrategy model (.pkl or directory)."
-    )
-    debug_parser.add_argument(
-        "--pose-model", type=str, metavar="PATH",
-        help="Path to trained pose model (.pkl)."
-    )
-
-    # process command
-    proc_parser = subparsers.add_parser("process", help="Process video and extract highlight clips")
-    proc_parser.add_argument("path", help="Path to video file")
-    proc_parser.add_argument("--fps", type=int, default=10, help="Analysis FPS (default: 10)")
-    proc_parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory (default: ~/.portrait981/momentscan/output/{video_stem}/)")
-    proc_parser.add_argument("--report", type=str, help="Save processing report to JSON file")
-    _add_trace_args(proc_parser)
-    proc_parser.add_argument(
-        "--backend", choices=["pathway", "simple"], default="simple",
-        help="Execution backend: 'simple' (sequential, default) or 'pathway' (streaming)"
-    )
-    proc_parser.add_argument(
-        "--profile", choices=["lite", "platform"], default=None,
-        help="Execution profile: 'lite' (inline, no observability) or 'platform' (process isolation, observability)"
-    )
-    _add_distributed_args(proc_parser)
-    proc_parser.add_argument(
-        "--batch-size", type=int, default=1, metavar="N",
-        help="Batch size for GPU module processing (default: 1). "
-             "When > 1, modules with BATCHING capability use process_batch() for optimization."
-    )
-    proc_parser.add_argument(
-        "--roi", type=str, metavar="X1,Y1,X2,Y2",
-        help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"
-    )
-    proc_parser.add_argument(
-        "--collection", type=str, metavar="PATH",
-        help="Path to collection/catalog directory (e.g. data/catalogs/portrait-v1). "
-             "Loads signal profiles and pose/pivot definitions. "
-             "Without this flag, uses built-in poses × AU-rule classification."
-    )
-    proc_parser.add_argument(
-        "--member-id", type=str, metavar="ID",
-        help="Member ID for cumulative bank storage. "
-             "Default: video file stem."
-    )
-    proc_parser.add_argument(
-        "--bind-model", type=str, metavar="PATH",
-        help="Path to trained visualbind TreeStrategy model directory. "
-             "When provided, uses the model for additional frame scoring "
-             "alongside catalog scoring."
-    )
-    proc_parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Enable verbose logging (show all third-party and internal messages)"
-    )
-
-    # collect command (alias for process)
-    collect_parser = subparsers.add_parser(
-        "collect",
-        help="Collect portrait frames from video (alias for process)",
-        description="Analyze video and collect portrait frames with pose×expression diversity. "
-                    "This is an alias for 'process' with the same options.",
-    )
-    collect_parser.add_argument("path", help="Path to video file")
-    collect_parser.add_argument("--fps", type=int, default=10, help="Analysis FPS (default: 10)")
-    collect_parser.add_argument("--output-dir", "-o", type=str, default=None, help="Output directory (default: ~/.portrait981/momentscan/output/{video_stem}/)")
-    collect_parser.add_argument("--report", type=str, help="Save processing report to JSON file")
-    _add_trace_args(collect_parser)
-    collect_parser.add_argument(
-        "--backend", choices=["pathway", "simple"], default="simple",
-        help="Execution backend: 'simple' (sequential, default) or 'pathway' (streaming)"
-    )
-    collect_parser.add_argument(
-        "--profile", choices=["lite", "platform"], default=None,
-        help="Execution profile: 'lite' (inline, no observability) or 'platform' (process isolation, observability)"
-    )
-    _add_distributed_args(collect_parser)
-    collect_parser.add_argument(
-        "--batch-size", type=int, default=1, metavar="N",
-        help="Batch size for GPU module processing (default: 1)."
-    )
-    collect_parser.add_argument(
-        "--roi", type=str, metavar="X1,Y1,X2,Y2",
-        help="Face analysis ROI in normalized coords (0-1). Default: 0.1,0.1,0.9,0.9 (center 80%%)"
-    )
-    collect_parser.add_argument(
-        "--collection", type=str, metavar="PATH",
-        help="Path to collection/catalog directory (e.g. data/catalogs/portrait-v1). "
-             "Loads signal profiles and pose/pivot definitions. "
-             "Without this flag, uses built-in poses × AU-rule classification."
-    )
-    collect_parser.add_argument(
-        "--member-id", type=str, metavar="ID",
-        help="Member ID for cumulative bank storage. "
-             "Default: video file stem."
-    )
-    collect_parser.add_argument(
-        "--bind-model", type=str, metavar="PATH",
-        help="Path to trained visualbind TreeStrategy model directory. "
-             "When provided, uses the model for additional frame scoring "
-             "alongside catalog scoring."
-    )
-    collect_parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Enable verbose logging (show all third-party and internal messages)"
-    )
-
-    # bank command (with subcommands)
-    bank_parser = subparsers.add_parser(
-        "bank",
-        help="Browse memory banks",
-        description="Browse and inspect memory banks stored under ~/.portrait981/momentbank/.",
-    )
-    bank_sub = bank_parser.add_subparsers(dest="bank_command")
-
-    # bank list
-    bank_list_parser = bank_sub.add_parser(
-        "list",
-        help="List all members with bank summary",
-    )
-    bank_list_parser.add_argument(
-        "--sort", choices=["id", "nodes", "hits"], default="id",
-        help="Sort order (default: id)",
-    )
-
-    # bank show <member_id_or_path>
-    bank_show_parser = bank_sub.add_parser(
-        "show",
-        help="Show memory bank details for a member or path",
-    )
-    bank_show_parser.add_argument(
-        "target",
-        help="Member ID or path to memory_bank.json / output directory",
-    )
-
-    # bank get <member_id>
-    bank_get_parser = bank_sub.add_parser(
-        "get",
-        help="Get frames from bank by pose/category",
-    )
-    bank_get_parser.add_argument(
-        "member_id",
-        help="Member ID",
-    )
-    bank_get_parser.add_argument(
-        "--pose", type=str, default=None,
-        help="Filter by pose (e.g. left30, frontal)",
-    )
-    bank_get_parser.add_argument(
-        "--category", type=str, default=None,
-        help="Filter by category (e.g. warm_smile, neutral)",
-    )
-    bank_get_parser.add_argument(
-        "--top", type=int, default=1,
-        help="Number of results (default: 1)",
-    )
-    bank_get_parser.add_argument(
-        "--open", action="store_true", default=False,
-        dest="open_image",
-        help="Open the image with default viewer",
-    )
-
-    # catalog-build command
-    catalog_parser = subparsers.add_parser(
-        "catalog-build",
-        help="Build signal profiles from reference image catalog",
-        description="Analyze reference images to generate per-category signal profiles "
-                    "for multi-signal matching.",
-    )
-    catalog_parser.add_argument(
-        "path",
-        help="Path to catalog directory (e.g. data/catalogs/portrait-v1)",
-    )
-    catalog_parser.add_argument(
-        "--no-cache", action="store_true",
-        help="Disable cache — force re-analysis of all reference images",
-    )
-    catalog_parser.add_argument(
-        "--report", type=str, metavar="PATH", nargs="?", const="catalog_report.html",
-        help="Generate HTML separation report (default: catalog_report.html)",
-    )
-    catalog_parser.add_argument(
-        "-v", "--verbose", action="store_true",
-        help="Enable verbose logging",
-    )
-
-    # --- v2 command ---
-    v2_parser = subparsers.add_parser("v2", help="Momentscan v2 — simplified analysis")
-    v2_parser.add_argument("path", help="Path to video file")
-    v2_parser.add_argument("--fps", type=int, default=2, help="Analysis FPS (default: 2)")
-    v2_parser.add_argument("--bind-model", type=str, default="models/bind_v4.pkl",
-                           help="Expression model path")
-    v2_parser.add_argument("--pose-model", type=str, default="models/pose_v2.pkl",
-                           help="Pose model path")
-    v2_parser.add_argument("--top-k", type=int, default=10, help="Top K frames to select")
-    v2_parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
 
@@ -351,53 +74,86 @@ Examples:
         logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
         configure_log_levels()
 
-    from momentscan.cli import commands
-
     if args.command == "info":
+        from momentscan.cli import commands
         commands.run_info(args)
 
-    elif args.command == "debug":
-        commands.run_debug(args)
-
-    elif args.command in ("process", "collect"):
-        commands.run_process(args)
-
-    elif args.command == "bank":
-        commands.run_bank(args)
-
-    elif args.command == "catalog-build":
-        commands.run_catalog_build(args)
-
-    elif args.command == "v2":
-        from momentscan.v2 import MomentscanV2
-        from pathlib import Path as _P
-
-        app = MomentscanV2(
-            expression_model=args.bind_model,
-            pose_model=args.pose_model,
-        )
-        results = app.run(args.path, fps=args.fps)
-        selected = app.select_frames(results, top_k=args.top_k)
-
-            total = len(results)
-            shoot = sum(1 for r in results if r.is_shoot)
-            gated = sum(1 for r in results if not r.gate_passed and r.face_detected)
-
-            print(f"\n{'='*50}")
-            print(f"Video: {_P(args.path).name}")
-            print(f"Frames: {total} | SHOOT: {shoot} | Gate rejected: {gated}")
-            print(f"{'='*50}")
-
-            if selected:
-                print(f"\nSelected {len(selected)} frames:")
-                for r in selected:
-                    print(f"  #{r.frame_idx:4d}  {r.expression:8s} ({r.expression_conf:.0%})  {r.pose:6s} ({r.pose_conf:.0%})")
-            else:
-                print("\nNo frames selected.")
+    elif args.command == "run":
+        _run_v2(args)
 
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def _run_v2(args):
+    """Execute momentscan v2 analysis."""
+    from pathlib import Path as _P
+
+    use_debug = getattr(args, "debug", False)
+    output_path = getattr(args, "output", None)
+    no_window = getattr(args, "no_window", False)
+
+    if use_debug or output_path:
+        from momentscan.v2_debug import DebugV2
+        show_window = not no_window
+        if not show_window and not output_path:
+            print("Error: --output is required when using --no-window")
+            sys.exit(1)
+        app = DebugV2(
+            expression_model=args.bind_model,
+            pose_model=args.pose_model,
+            show_window=show_window,
+            output_path=output_path,
+        )
+    else:
+        from momentscan.v2 import MomentscanV2
+        app = MomentscanV2(
+            expression_model=args.bind_model,
+            pose_model=args.pose_model,
+        )
+
+    results = app.run(args.path, fps=args.fps)
+    selected = app.select_frames(results, top_k=args.top_k)
+
+    total = len(results)
+    shoot = sum(1 for r in results if r.is_shoot)
+    gated = sum(1 for r in results if not r.gate_passed and r.face_detected)
+
+    print(f"\n{'='*50}")
+    print(f"Video: {_P(args.path).name}")
+    print(f"Frames: {total} | SHOOT: {shoot} | Gate rejected: {gated}")
+    print(f"{'='*50}")
+
+    if selected:
+        print(f"\nSelected {len(selected)} frames:")
+        for r in selected:
+            print(f"  #{r.frame_idx:4d}  {r.expression:8s} ({r.expression_conf:.0%})  {r.pose:6s} ({r.pose_conf:.0%})")
+    else:
+        print("\nNo frames selected.")
+
+    # Ingest into personmemory
+    ingest_member = getattr(args, "ingest", None)
+    if ingest_member:
+        shoot_frames = [r for r in results if r.is_shoot]
+        try:
+            from personmemory import PersonMemory
+            mem = PersonMemory(ingest_member)
+            stats = mem.ingest(workflow_id=_P(args.path).stem, frames=shoot_frames)
+            p = mem.profile()
+            print(f"\nIngested into '{ingest_member}': {stats['new_nodes']} new, {stats['updated_nodes']} updated nodes")
+            print(f"  Total: {p.n_nodes} nodes, {p.n_total_frames} frames, {p.n_visits} visits")
+        except ImportError:
+            print("\npersonmemory not installed — skipping ingest")
+
+    # HTML report
+    report_path = getattr(args, "report", None)
+    if report_path:
+        from momentscan.v2_report import export_v2_report
+        summary = app.summary(results)
+        export_v2_report(results, selected, report_path,
+                       video_name=_P(args.path).stem, summary=summary)
+        print(f"\nReport: {report_path}")
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ members = [
     "libs/vpx/runner",
     "libs/vpx/viz",
     "apps/momentscan",
-    "apps/momentbank",
+    "apps/personmemory",
     "apps/reportrait",
     "apps/momentscan-report",
     "apps/portrait981",
@@ -29,7 +29,9 @@ members = [
     "apps/momentscan-plugins/face-baseline",
     "apps/momentscan-plugins/frame-scoring",
     "apps/momentscan-plugins/portrait-score",
+    "apps/momentscan-plugins/face-lighting",
     "apps/annotator",
+    "apps/portrait981-docs",
 ]
 
 # Local development only: block CPU onnxruntime to prevent GPU .so overwrites.
@@ -46,4 +48,4 @@ override-dependencies = [
 
 [tool.uv.sources]
 momentscan = { workspace = true }
-momentbank = { workspace = true }
+personmemory = { workspace = true }

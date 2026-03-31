@@ -169,13 +169,17 @@ class LabelHandler(SimpleHTTPRequestHandler):
             idx = str(body["index"])
             # Handle reset
             if idx == "-1" and body.get("expression") == "__reset__":
-                self.staging = {"labels": {}, "poses": {}, "moments": {}, "video_meta": self.staging.get("video_meta")}
+                self.staging = {"labels": {}, "poses": {}, "lightings": {}, "moments": {}, "video_meta": self.staging.get("video_meta")}
                 self._save_staging()
                 self._send_json({"ok": True})
                 return
             self.staging["labels"][idx] = body.get("expression", "")
             if "pose" in body:
                 self.staging["poses"][idx] = body["pose"]
+            if "lighting" in body:
+                if "lightings" not in self.staging:
+                    self.staging["lightings"] = {}
+                self.staging["lightings"][idx] = body["lighting"]
             if "moment" in body:
                 self.staging["moments"][idx] = body["moment"]
             self._save_staging()

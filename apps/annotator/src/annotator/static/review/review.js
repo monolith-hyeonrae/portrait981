@@ -407,6 +407,7 @@ function renderCard(idx) {
     let tags = `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
     if (r.expression) tags += `<span class="tag" style="background:${getColor(r.expression)}">${r.expression}</span>`;
     if (r.pose) tags += `<span class="tag" style="background:${getColor(r.pose)}">${r.pose}</span>`;
+    if (r.lighting) tags += `<span class="tag" style="background:${getColor(r.lighting)}">${r.lighting}</span>`;
     if (r.moment === 'yes') tags += `<span class="tag" style="background:${getColor('moment')}">moment</span>`;
 
     if (selectMode) {
@@ -428,6 +429,11 @@ function renderCard(idx) {
         POSES.forEach(p => {
             const sel = r.pose===p;
             editPanel += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(p)+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'pose','${p}')">${p}</button>`;
+        });
+        editPanel += '</div><div class="edit-btns" style="padding:4px;background:#f0f0f0;border-radius:4px">';
+        ['dramatic','natural','backlit'].forEach(lt => {
+            const sel = r.lighting===lt;
+            editPanel += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(lt)+';color:#fff':''}" onclick="event.stopPropagation();updateLabel(${idx},'lighting','${lt}')">${lt}</button>`;
         });
         if (vid.scene==='duo') {
             editPanel += '&nbsp;';
@@ -561,6 +567,7 @@ function renderLightbox() {
     let tags = `<span class="tag" style="background:${srcColor};font-size:9px">${srcLabel}</span>`;
     if (r.expression) tags += `<span class="tag" style="background:${getColor(r.expression)}">${r.expression}</span>`;
     if (r.pose) tags += `<span class="tag" style="background:${getColor(r.pose)}">${r.pose}</span>`;
+    if (r.lighting) tags += `<span class="tag" style="background:${getColor(r.lighting)}">${r.lighting}</span>`;
     if (r.moment === 'yes') tags += `<span class="tag" style="background:${getColor('moment')}">moment</span>`;
     document.getElementById('lbTags').innerHTML = tags;
 
@@ -572,12 +579,21 @@ function renderLightbox() {
     });
     edit += `<button class="edit-btn${r.expression==='cut'?' active':''}" style="${r.expression==='cut'?'background:#d32f2f;color:#fff':''}" onclick="lbUpdate('expression','cut')">cut</button>`;
 
-    // Edit: pose + moment + delete row
+    // Edit: pose row
     edit += '</div><div class="edit-btns" style="margin-top:2px">';
     POSES.forEach(p => {
         const sel = r.pose===p;
         edit += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(p)+';color:#fff':''}" onclick="lbUpdate('pose','${p}')">${p}</button>`;
     });
+
+    // Edit: lighting row
+    edit += '</div><div class="edit-btns" style="margin-top:2px">';
+    LIGHTINGS.forEach(lt => {
+        const sel = r.lighting===lt;
+        edit += `<button class="edit-btn${sel?' active':''}" style="${sel?'background:'+getColor(lt)+';color:#fff':''}" onclick="lbUpdate('lighting','${lt}')">${lt}</button>`;
+    });
+
+    // Edit: moment + delete row
     if (vid.scene==='duo') {
         edit += '&nbsp;';
         const mSel = r.moment==='yes';

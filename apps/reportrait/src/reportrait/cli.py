@@ -28,12 +28,12 @@ def _cmd_generate(args: argparse.Namespace) -> int:
                 return 1
             ref_paths.append(str(path.resolve()))
     else:
-        # Lookup from momentbank
+        # Lookup from personmemory
         if not args.member_id:
             print("Error: member_id or --ref required", file=sys.stderr)
             return 1
 
-        from momentbank.ingest import lookup_frames
+        from personmemory.ingest import lookup_frames
 
         frames = lookup_frames(
             args.member_id,

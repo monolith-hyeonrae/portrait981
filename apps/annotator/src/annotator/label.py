@@ -1,6 +1,6 @@
 """Anchor Set labeling tool -- interactive HTML interface for ground-truth annotation.
 
-2-stage labeling: expression (1=cheese, 2=chill, 3=edge, 4=hype, 5=pass) + pose (q=front, w=angle, e=side).
+3-stage labeling: expression + pose + lighting.
 JSZip export with images/ + labels.csv structure.
 
 Usage (CLI):
@@ -46,6 +46,7 @@ def _generate_html(frames_info: list[dict], categories: list[str], video_name: s
         "front": "#00BCD4", "angle": "#FF9800", "side": "#795548",
         "solo": "#607D8B", "duo": "#E91E63",
         "moment": "#FFD700",
+        "dramatic": "#FF6F00", "natural": "#43A047", "backlit": "#5C6BC0",
     }
     cat_list_json = json.dumps(categories)
     cat_colors_json = json.dumps(cat_colors)
@@ -425,7 +426,8 @@ function renderFocus() {{
     const isDuo = scene === 'duo';
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
     const displayLabel = label === '__shoot__' ? 'SHOOT ⏳' : label;
-    const parts = [displayLabel, pose, mom === 'yes' ? 'moment' : null].filter(x => x && x !== '__shoot__');
+    const lighting = lightings[f.index];
+    const parts = [displayLabel, pose, lighting, mom === 'yes' ? 'moment' : null].filter(x => x && x !== '__shoot__');
     const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : label === 'occluded' ? '#795548' : '#4CAF50';
     const labelHtml = parts.length > 0
         ? `<div class="focus-label" style="color:${{labelColor}}">${{parts.join(' + ')}}</div>`
@@ -445,6 +447,9 @@ function renderFocus() {{
         'front': '정면 — 카메라를 바라보는 앵글',
         'angle': '3/4 앵글 — 약간 돌린 자연스러운 각도',
         'side': '측면 — 프로필 샷',
+        'dramatic': '강한 방향광 — 좌우 대비 큼, Rembrandt, 직사광',
+        'natural': '자연광 — 부드러운 빛, 약간의 방향성~균일, 그늘/흐린 날',
+        'backlit': '역광 — 얼굴 어두움, 배경 밝음',
     }};
     const descHtml = (val) => val && DESC[val] ? `<div style="font-size:11px;color:#888;margin-top:2px;text-align:center">${{DESC[val]}}</div>` : '';
     let btnsHtml = '';
@@ -481,6 +486,17 @@ function renderFocus() {{
     btnsHtml += '</div>';
     btnsHtml += descHtml(pose);
 
+    // Step 3: LIGHTING
+    const lighting = lightings[f.index];
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${{step === 3 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}}">`;
+    for (const [lt, key] of [['dramatic','Q'],['natural','W'],['backlit','E']]) {{
+        const sel = lighting === lt;
+        const bg = sel ? `background:${{getColor(lt)}};color:#fff;` : '';
+        btnsHtml += `<button class="cat-btn${{sel ? ' selected' : ''}}" style="${{bg}}" onclick="setLighting(${{f.index}},'${{lt}}')">${{lt}} ${{K}}${{key}}</span></button>`;
+    }}
+    btnsHtml += '</div>';
+    btnsHtml += descHtml(lighting);
+
     // Moment toggle (duo only, optional/non-blocking)
     if (isDuo) {{
         const mSel = mom === 'yes';
@@ -489,11 +505,11 @@ function renderFocus() {{
         btnsHtml += '</div>';
     }}
 
-    if (step === 3) {{
+    if (step === 4) {{
         btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">✓ Complete</div>';
     }}
 
-    const stepHint = 'shoot→expression→pose';
+    const stepHint = 'shoot→expression→pose→lighting';
 
     panel.innerHTML = `
         <img class="focus-img" src="data:image/jpeg;base64,${{IMAGES[f.index]}}">
@@ -525,6 +541,7 @@ function go(delta) {{
 }}
 
 let poses = JSON.parse(localStorage.getItem(STORAGE_KEY + '_pose') || '{{}}');
+let lightings = JSON.parse(localStorage.getItem(STORAGE_KEY + '_lighting') || '{{}}');
 let moments = JSON.parse(localStorage.getItem(STORAGE_KEY + '_moment') || '{{}}');
 
 function setLabel(index, label) {{
@@ -554,6 +571,18 @@ function setPose(index, pose) {{
     renderStrip();
 }}
 
+function setLighting(index, lighting) {{
+    if (lightings[index] === lighting) {{
+        delete lightings[index];
+    }} else {{
+        lightings[index] = lighting;
+    }}
+    localStorage.setItem(STORAGE_KEY + '_lighting', JSON.stringify(lightings));
+    checkAutoAdvance(index);
+    renderFocus();
+    renderStrip();
+}}
+
 function setMoment(index) {{
     if (moments[index] === 'yes') {{
         delete moments[index];
@@ -569,14 +598,15 @@ function checkAutoAdvance(index) {{
     // 모든 라벨이 완성되었으면 0.4초 후 다음 프레임으로 자동 이동
     const lbl = labels[index];
     const p = poses[index];
-    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p;
+    const lt = lightings[index];
+    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p && lt;
     if (isComplete) {{
         setTimeout(() => {{ go(1); }}, 400);
     }}
 }}
 
 function focusBucket(axis, value) {{
-    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : moments;
+    const axisData = axis === 'expression' ? labels : axis === 'pose' ? poses : axis === 'lighting' ? lightings : moments;
     const target = filteredList.find((f, pos) => {{
         if (value === '(none)' || value === '') {{
             return axisData[f.index] === undefined;
@@ -676,10 +706,11 @@ async function exportLabels() {{
         const zip = new JSZip();
         const videoBase = "{video_name}".replace(/\\.[^.]+$/, '');
 
-        const csvRows = ['filename,workflow_id,expression,pose,moment,source'];
+        const csvRows = ['filename,workflow_id,expression,pose,lighting,moment,source'];
         for (const f of labeled) {{
             const expr = labels[f.index];
             const pose = poses[f.index] || '';
+            const lt = lightings[f.index] || '';
             const mom = moments[f.index] || '';
             const fname = `${{videoBase}}_${{String(f.index).padStart(4, '0')}}.jpg`;
             const b64 = IMAGES[f.index];
@@ -687,7 +718,7 @@ async function exportLabels() {{
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             zip.file(`images/${{fname}}`, bytes);
-            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{mom}},operational`);
+            csvRows.push(`${{fname}},${{videoBase}},${{expr}},${{pose}},${{lt}},${{mom}},operational`);
         }}
         zip.file('labels.csv', csvRows.join('\\n') + '\\n');
 
@@ -729,17 +760,20 @@ const STEP_OPTIONS = {{
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
     '1': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '2': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '3': [['dramatic','setLighting'], ['natural','setLighting'], ['backlit','setLighting']],
 }};
 
 function getStep(idx) {{
     const lbl = labels[idx];
     const p = poses[idx];
+    const lt = lightings[idx];
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
     if (!lbl) return 0;                          // shoot/cut
     if (lbl === 'cut') return -1;                // cut done
     if (lbl === '__shoot__' || !isAccepted) return 1;  // expression
     if (!p) return 2;                            // pose
-    return 3;                                    // complete
+    if (!lt) return 3;                           // lighting
+    return 4;                                    // complete
 }}
 
 function isModalOpen() {{
@@ -804,7 +838,7 @@ document.addEventListener('keydown', e => {{
     if (e.key === 'm') {{ const isDuo = videoMeta && videoMeta.scene === 'duo'; if (isDuo) setMoment(idx); return; }}
 
     // j/k = step focus down/up
-    const maxStep = 2;
+    const maxStep = 3;
     const minStep = -1;
     if (e.key === 'j') {{
         if (manualStep === null) manualStep = step;

@@ -99,7 +99,7 @@ class PortraitGenerator:
         Returns:
             GenerationResult.
         """
-        from momentbank import load_bank, RefQuery
+        from personmemory import load_bank, RefQuery
 
         bank = load_bank(bank_path)
         ref_query = RefQuery(target_buckets=query or {})
@@ -132,7 +132,7 @@ class PortraitGenerator:
     ) -> GenerationResult:
         """Generate from lookup_frames() query.
 
-        Uses momentbank.lookup_frames to find reference images by pose/category,
+        Uses personmemory.lookup_frames to find reference images by pose/category,
         then generates via ComfyUI.
 
         Args:
@@ -146,7 +146,7 @@ class PortraitGenerator:
         Returns:
             GenerationResult.
         """
-        from momentbank.ingest import lookup_frames
+        from personmemory.ingest import lookup_frames
 
         frames = lookup_frames(member_id, pose=pose, category=category, top_k=top_k)
 

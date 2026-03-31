@@ -6,10 +6,11 @@ Usage:
     from momentscan.v2 import MomentscanV2
 
     app = MomentscanV2(
-        expression_model="models/bind_v4.pkl",
-        pose_model="models/pose_v2.pkl",
+        expression_model="models/bind_v11.pkl",
+        pose_model="models/pose_v9.pkl",
     )
     results = app.run("video.mp4", fps=2)
+    summary = app.summary()
     selected = app.select_frames(results)
 """
 
@@ -24,13 +25,14 @@ import visualpath as vp
 
 from visualbind import VisualBind, HeuristicStrategy, TreeStrategy, bind_observations
 from visualbind.judge import JudgmentResult
+from visualbind.signals import SIGNAL_FIELDS
 
 logger = logging.getLogger("momentscan.v2")
 
 # momentscan이 사용하는 analyzer 목록
 MOMENTSCAN_MODULES = [
     "face.detect", "face.au", "face.expression", "head.pose",
-    "face.parse", "face.quality", "frame.quality",
+    "face.parse", "face.quality", "face.lighting", "frame.quality",
 ]
 
 
@@ -44,6 +46,8 @@ class FrameResult:
     judgment: JudgmentResult = field(default_factory=JudgmentResult)
     face_detected: bool = False
     face_count: int = 0
+    face_embedding: Optional[np.ndarray] = field(default=None, repr=False)
+    z_score: float = 0.0  # 비디오 내 상대적 특별함 (expression signal 기준)
 
     @property
     def gate_passed(self): return self.judgment.gate_passed
@@ -59,12 +63,20 @@ class FrameResult:
     def is_shoot(self): return self.face_detected and self.judgment.is_shoot
 
 
-class MomentscanV2(vp.App):
-    """간결한 momentscan — vp.App 상속 + visualbind 판단.
+@dataclass
+class SignalSummary:
+    """Signal 분포 요약 — personmemory 전달용."""
+    mean: np.ndarray
+    cov: np.ndarray
+    n_frames: int = 0
+    n_shoot: int = 0
+    expression_dist: dict = field(default_factory=dict)
+    pose_dist: dict = field(default_factory=dict)
+    face_embeddings: list = field(default_factory=list)
 
-    vp.App이 FlowGraph 구성 + 비디오 실행을 담당.
-    MomentscanV2는 on_frame에서 visualbind 판단만 추가.
-    """
+
+class MomentscanV2(vp.App):
+    """간결한 momentscan — vp.App 상속 + visualbind 판단."""
 
     modules = MOMENTSCAN_MODULES
     fps = 2
@@ -77,7 +89,6 @@ class MomentscanV2(vp.App):
         self._results: list[FrameResult] = []
 
     def setup(self):
-        """vp.App hook: visualbind 모델 로딩."""
         self.judge = VisualBind(
             gate=HeuristicStrategy(),
             expression=TreeStrategy.load(self._expression_model) if self._expression_model else None,
@@ -87,7 +98,6 @@ class MomentscanV2(vp.App):
         logger.info("MomentscanV2 ready")
 
     def on_frame(self, frame, terminal_results):
-        """vp.App hook: 프레임마다 visualbind 판단."""
         observations = []
         for flow_data in terminal_results:
             observations.extend(getattr(flow_data, "observations", []))
@@ -95,6 +105,8 @@ class MomentscanV2(vp.App):
         signals = bind_observations(observations)
         face_detected = signals.get("face_confidence", 0.0) > 0
         judgment = self.judge(signals) if face_detected else JudgmentResult()
+
+        face_embedding = _extract_face_embedding(observations) if face_detected else None
 
         self._results.append(FrameResult(
             frame_idx=getattr(frame, "frame_id", 0),
@@ -106,19 +118,99 @@ class MomentscanV2(vp.App):
             face_count=sum(1 for obs in observations
                           if getattr(obs, "source", "") == "face.detect"
                           and obs.signals.get("face_count", 0) > 0),
+            face_embedding=face_embedding,
         ))
         return True
 
+    # Expression signal fields (AU + Emotion) — z_score 계산에 사용
+    _EXPR_FIELDS = [f for f in SIGNAL_FIELDS if f.startswith("au") or f.startswith("em_")]
+
     def after_run(self, result):
-        """vp.App hook: 결과 반환."""
+        """vp.App hook: temporal smoothing + Fast-Slow z_score.
+
+        1. Temporal smoothing: 전체 65D signal에 이동평균 적용
+        2. Fast-Slow z_score: expression signal (20D)만으로 계산
+        """
+        fields = list(SIGNAL_FIELDS)
+        face_indices = [i for i, r in enumerate(self._results) if r.face_detected]
+
+        # 1. Temporal smoothing (moving average, window=3)
+        if len(face_indices) > 2:
+            window = 3
+            half = window // 2
+            vectors = np.array([
+                [self._results[i].signals.get(f, 0.0) for f in fields]
+                for i in face_indices
+            ])
+            smoothed = np.copy(vectors)
+            for j in range(len(face_indices)):
+                start = max(0, j - half)
+                end = min(len(face_indices), j + half + 1)
+                smoothed[j] = vectors[start:end].mean(axis=0)
+
+            for j, idx in enumerate(face_indices):
+                for k, f in enumerate(fields):
+                    self._results[idx].signals[f] = float(smoothed[j, k])
+
+        # 2. Fast-Slow z_score (expression signal only, 20D)
+        expr_fields = self._EXPR_FIELDS
+        face_results = [self._results[i] for i in face_indices]
+
+        if len(face_results) > 2 and expr_fields:
+            expr_vectors = np.array([
+                [r.signals.get(f, 0.0) for f in expr_fields]
+                for r in face_results
+            ])
+            mu = expr_vectors.mean(axis=0)
+            var = expr_vectors.var(axis=0)
+            var = np.maximum(var, 1e-8)
+
+            for r in face_results:
+                sig = np.array([r.signals.get(f, 0.0) for f in expr_fields])
+                z = (sig - mu) / np.sqrt(var)
+                r.z_score = float(np.sqrt(np.mean(z ** 2)))
+
         logger.info("Analyzed %d frames, %d SHOOT",
                     len(self._results),
                     sum(1 for r in self._results if r.is_shoot))
         return self._results
 
     def teardown(self):
-        """vp.App hook: 정리."""
         pass
+
+    def summary(self, results: list[FrameResult] | None = None) -> SignalSummary:
+        """SHOOT 프레임의 signal 분포 요약."""
+        results = results or self._results
+        shoot_results = [r for r in results if r.is_shoot]
+
+        if not shoot_results:
+            ndim = len(SIGNAL_FIELDS)
+            return SignalSummary(mean=np.zeros(ndim), cov=np.zeros((ndim, ndim)))
+
+        fields = list(SIGNAL_FIELDS)
+        vectors = np.array([[r.signals.get(f, 0.0) for f in fields] for r in shoot_results])
+        mean = vectors.mean(axis=0)
+        cov = np.cov(vectors, rowvar=False) if len(vectors) > 1 else np.zeros((len(fields), len(fields)))
+
+        expr_counts: dict[str, int] = {}
+        for r in shoot_results:
+            expr_counts[r.expression] = expr_counts.get(r.expression, 0) + 1
+        total_expr = sum(expr_counts.values())
+        expr_dist = {k: v / total_expr for k, v in expr_counts.items()} if total_expr > 0 else {}
+
+        pose_counts: dict[str, int] = {}
+        for r in shoot_results:
+            if r.pose:
+                pose_counts[r.pose] = pose_counts.get(r.pose, 0) + 1
+        total_pose = sum(pose_counts.values())
+        pose_dist = {k: v / total_pose for k, v in pose_counts.items()} if total_pose > 0 else {}
+
+        embeddings = [r.face_embedding for r in shoot_results if r.face_embedding is not None]
+
+        return SignalSummary(
+            mean=mean, cov=cov, n_frames=len(shoot_results), n_shoot=len(shoot_results),
+            expression_dist=expr_dist, pose_dist=pose_dist, face_embeddings=embeddings,
+        )
 
     def select_frames(self, results, top_k=10):
         """다양성 기반 프레임 선택 (expression × pose 버킷별 best)."""
@@ -130,3 +222,20 @@ class MomentscanV2(vp.App):
             if key not in buckets or r.expression_conf > buckets[key].expression_conf:
                 buckets[key] = r
         return sorted(buckets.values(), key=lambda r: -r.expression_conf)[:top_k]
+
+
+def _extract_face_embedding(observations: list) -> np.ndarray | None:
+    for obs in observations:
+        if getattr(obs, "source", "") != "face.detect":
+            continue
+        data = getattr(obs, "data", None)
+        if data is None:
+            continue
+        faces = getattr(data, "faces", [])
+        if not faces:
+            continue
+        face = max(faces, key=lambda f: getattr(f, "area_ratio", 0.0))
+        embedding = getattr(face, "embedding", None)
+        if embedding is not None:
+            return np.array(embedding, dtype=np.float32)
+    return None

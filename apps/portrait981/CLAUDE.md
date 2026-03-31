@@ -1,6 +1,6 @@
 # Portrait981
 
-통합 오케스트레이터 앱. momentscan → momentbank → reportrait 파이프라인을 단일 호출로 자동화.
+통합 오케스트레이터 앱. momentscan → personmemory → reportrait 파이프라인을 단일 호출로 자동화.
 
 ## 디렉토리 구조
 
@@ -35,7 +35,7 @@ p981 status test_3
 ## 의존성
 
 - `momentscan` — ms.run() 분석
-- `momentbank` — lookup_frames() 프레임 조회
+- `personmemory` — lookup_frames() 프레임 조회
 - `reportrait` — PortraitGenerator 생성
 
 ## 테스트

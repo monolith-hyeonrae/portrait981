@@ -1,11 +1,11 @@
 """reportrait - AI portrait generation bridge for portrait981.
 
-Connects momentbank reference images to ComfyUI diffusion workflows.
+Connects personmemory reference images to ComfyUI diffusion workflows.
 
 Quick Start:
     >>> from reportrait import PortraitGenerator, GenerationConfig
     >>> gen = PortraitGenerator(GenerationConfig(comfy_url="http://localhost:8188"))
-    >>> result = gen.generate_from_bank(Path("output/momentbank/person_0/memory_bank.json"))
+    >>> result = gen.generate_from_bank(Path("output/personmemory/person_0/memory_bank.json"))
 """
 
 from reportrait.types import GenerationConfig, GenerationRequest, GenerationResult

@@ -94,7 +94,7 @@ class TestGenerate:
 class TestGenerateFromBank:
     def test_end_to_end(self, templates_dir, mock_comfy_client, tmp_path):
         # Create a fake memory bank
-        from momentbank import MemoryBank, save_bank
+        from personmemory import MemoryBank, save_bank
 
         bank = MemoryBank(person_id=0)
         emb = np.random.RandomState(42).randn(512).astype(np.float32)
@@ -131,7 +131,7 @@ class TestGenerateFromBank:
         assert len(result.output_paths) == 1
 
     def test_empty_bank(self, templates_dir, tmp_path):
-        from momentbank import MemoryBank, save_bank
+        from personmemory import MemoryBank, save_bank
 
         bank = MemoryBank(person_id=0)
         bank_path = tmp_path / "bank" / "memory_bank.json"

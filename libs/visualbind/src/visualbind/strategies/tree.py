@@ -192,10 +192,10 @@ class TreeStrategy:
         if load_path.is_file() and load_path.suffix in (".pkl", ".joblib"):
             model_path = load_path
             meta_path = load_path.with_suffix(".json")
-            if not meta_path.exists():
-                raise FileNotFoundError(f"No meta JSON found: {meta_path}")
-            with open(meta_path) as f:
-                meta = json.load(f)
+            meta = None
+            if meta_path.exists():
+                with open(meta_path) as f:
+                    meta = json.load(f)
         elif load_path.is_dir():
             meta_path = load_path / "meta.json"
             if not meta_path.exists():
@@ -212,15 +212,28 @@ class TreeStrategy:
         # Load model — try joblib first, fallback to pickle
         try:
             import joblib
-            model = joblib.load(model_path)
+            loaded = joblib.load(model_path)
         except ImportError:
             import pickle
             with open(model_path, "rb") as f:
-                model = pickle.load(f)
+                loaded = pickle.load(f)
+
+        # Support bundled format: {"model": ..., "meta": {...}}
+        if isinstance(loaded, dict) and "model" in loaded and "meta" in loaded:
+            model = loaded["model"]
+            if meta is None:
+                meta = loaded["meta"]
+        else:
+            model = loaded
+            if meta is None:
+                raise FileNotFoundError(
+                    f"No meta found: need {load_path.with_suffix('.json')} "
+                    f"or bundled {{model, meta}} in pkl"
+                )
 
         instance = cls()
         instance._model = model
-        instance._classes = meta["classes"]
+        instance._classes = [str(c) for c in meta["classes"]]
         instance._feature_names = meta.get("feature_names")
 
         logger.info("TreeStrategy loaded from %s (%d classes)", load_path, len(instance._classes))

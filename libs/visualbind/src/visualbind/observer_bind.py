@@ -73,6 +73,13 @@ def bind_observations(observations: list[Any]) -> dict[str, float]:
             _bind_face_parse(signals, obs_data)
         elif src == "face.quality":
             _bind_face_quality(signals, obs_signals)
+        elif src == "face.lighting":
+            _bind_direct(signals, obs_signals, [
+                "lighting_ratio", "face_brightness_std", "highlight_ratio", "shadow_ratio",
+                "light_direction_x", "light_direction_y", "rembrandt_score", "light_hardness",
+                "sh_dir_x", "sh_dir_y", "sh_dir_strength",
+                "sh_0", "sh_1", "sh_2", "sh_3", "sh_4", "sh_5", "sh_6", "sh_7", "sh_8",
+            ])
         elif src == "frame.quality":
             _bind_direct(signals, obs_signals, ["blur_score", "brightness", "contrast"])
 
@@ -96,6 +103,11 @@ def _bind_face_detect(signals: dict, data: Any) -> None:
     signals["head_yaw_dev"] = abs(float(getattr(face, "yaw", 0.0)))
     signals["head_pitch"] = float(getattr(face, "pitch", 0.0))
     signals["head_roll"] = float(getattr(face, "roll", 0.0))
+    # bbox aspect ratio: width/height — frontal ≈ 0.7~0.85, profile ≈ 0.4~0.6
+    bbox = getattr(face, "bbox", None)
+    if bbox is not None and len(bbox) == 4:
+        _, _, bw, bh = bbox
+        signals["face_aspect_ratio"] = float(bw / bh) if bh > 0 else 0.0
 
 
 def _bind_mapped_signals(signals: dict, obs_signals: dict, key_map: dict) -> None:
@@ -157,6 +169,15 @@ def _bind_face_parse(signals: dict, data: Any) -> None:
     signals["mouth_open_ratio"] = float(mouth_in_px / face_area)
     signals["glasses_ratio"] = float(glasses_px / face_area)
 
+    # 코 위치 비율 (crop_box 내에서의 상대 위치 → head pose 보조 signal)
+    # nose_position_x: 0.5=정면, <0.5=좌측 돌림, >0.5=우측 돌림
+    nose_mask = np.isin(class_map, _SEG_CLASSES["nose"])
+    if nose_mask.sum() > 5:
+        seg_h, seg_w = class_map.shape[:2]
+        nose_coords = np.where(nose_mask)
+        signals["nose_position_x"] = float(nose_coords[1].mean() / max(seg_w - 1, 1))
+        signals["nose_position_y"] = float(nose_coords[0].mean() / max(seg_h - 1, 1))
+
 
 def _bind_direct(signals: dict, obs_signals: dict, keys: list[str]) -> None:
     """직접 매핑 (이름 변환 없음)."""
@@ -171,17 +192,3 @@ def _compute_derived(signals: dict) -> None:
     signals["backlight_score"] = max(0.0,
         signals.get("brightness", 0.0) - signals.get("face_exposure", 0.0))
 
-    # CLIP placeholders
-    for axis in ("warm_smile", "cool_gaze", "playful_face", "wild_energy"):
-        signals.setdefault(axis, 0.0)
-
-    # Composites
-    au6 = signals.get("au6_cheek_raiser", 0.0)
-    au12 = signals.get("au12_lip_corner", 0.0)
-    signals["duchenne_smile"] = (au6 + au12) / 5.0 * signals.get("warm_smile", 0.0)
-    signals["wild_intensity"] = max(
-        signals.get("au25_lips_part", 0.0),
-        signals.get("au26_jaw_drop", 0.0)) / 3.0 * signals.get("wild_energy", 0.0)
-    clip_max = max(signals.get(a, 0.0) for a in
-                   ("warm_smile", "cool_gaze", "playful_face", "wild_energy"))
-    signals["chill_score"] = signals.get("em_neutral", 0.0) * (1.0 - clip_max)

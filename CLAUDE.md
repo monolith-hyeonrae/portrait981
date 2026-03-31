@@ -15,7 +15,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │  981파크 특화 레이어                                     │
 │  ┌─────────────┐  ┌──────────────────┐  ┌───────────┐  │
-│  │ momentscan  │→ │ momentbank │→ │ reportrait│  │
+│  │ momentscan  │→ │ personmemory │→ │ reportrait│  │
 │  │ (분석 앱)   │  │ (저장)           │  │ (AI 변환) │  │
 │  └─────────────┘  └──────────────────┘  └───────────┘  │
 │                              │                          │
@@ -37,10 +37,10 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-head-pose        (6DRepNet, 6DoF)
           → vpx-body-pose        (YOLO-Pose, ultralytics)
           → vpx-hand-gesture     (MediaPipe Hands)
-      → visualbind (observer 출력 결합 — XGBoost/Catalog/TwoStage 전략)
+      → visualbind (observer 출력 결합 — 49D signal, VisualBind judge, XGBoost/Heuristic 전략)
       → momentscan (분석/수집 앱)
           → momentscan-plugins (7개 내부 analyzer 플러그인)
-      → momentbank (저장/관리)
+      → personmemory (저장/관리)
       → reportrait (AI 초상화 생성, ComfyUI 브릿지)
       → annotator (라벨링/리뷰/병합 도구)
 ```
@@ -79,18 +79,16 @@ portrait981/                    ← repo root
 │   │   ├── frame-scoring/      # 프레임 스코어링
 │   │   └── portrait-score/     # CLIP 4축 aesthetic scoring
 │   ├── annotator/              # 라벨링/리뷰/병합 도구 (CLI: annotator)
-│   ├── momentbank/             # Identity memory bank + 프레임 저장
+│   ├── personmemory/             # Identity memory bank + 프레임 저장
 │   ├── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
 │   ├── momentscan-report/      # HTML 리포트 생성 (Plotly)
-│   └── portrait981-serve/      # 서빙 레이어 (REST API + S3 + 노드풀)
+│   ├── portrait981-serve/      # 서빙 레이어 (REST API + S3 + 노드풀)
+│   └── portrait981-docs/       # 문서 사이트 (mkdocs, readthedocs 테마)
 ├── data/
 │   ├── datasets/portrait-v1/   # 통합 데이터셋 (images/ + labels.csv)
 │   └── catalogs/portrait-v1/   # CatalogStrategy 산출물 (_profile.json)
 ├── models/                     # 학습 산출물 (XGBoost .pkl/.json)
 ├── scripts/                    # Day 0 분석, 비교, Video-LLM 테스트
-├── docs/
-│   ├── ROADMAP.md
-│   └── planning/
 ├── pyproject.toml              # workspace root
 └── CLAUDE.md
 ```
@@ -114,8 +112,8 @@ portrait981/                    ← repo root
 | vpx-sdk | `libs/vpx/sdk/` | 모듈 SDK |
 | vpx-runner | `libs/vpx/runner/` | Analyzer 러너 |
 | vpx-viz | `libs/vpx/viz/` | 시각화 도구 |
-| visualbind | `libs/visualbind/` | Observer 출력 결합 (45D signal → XGBoost/Catalog/TwoStage 전략) |
-| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 (observer 실행) |
+| visualbind | `libs/visualbind/` | Observer 출력 결합 (49D signal → XGBoost/Heuristic 전략, VisualBind 복합 판단기) |
+| momentscan | `apps/momentscan/` | 얼굴/장면 분석 + 수집 (v1: BatchHighlightEngine, v2: vp.App + VisualBind) |
 | momentscan-face-classify | `apps/momentscan-plugins/face-classify/` | 역할 분류 |
 | momentscan-face-quality | `apps/momentscan-plugins/face-quality/` | 얼굴 품질 (blur/exposure + seg) |
 | momentscan-face-baseline | `apps/momentscan-plugins/face-baseline/` | Welford online stats |
@@ -123,11 +121,12 @@ portrait981/                    ← repo root
 | momentscan-frame-quality | `apps/momentscan-plugins/frame-quality/` | 프레임 전체 blur/brightness |
 | momentscan-frame-scoring | `apps/momentscan-plugins/frame-scoring/` | 프레임 스코어링 |
 | momentscan-portrait-score | `apps/momentscan-plugins/portrait-score/` | CLIP 4축 aesthetic scoring |
-| momentbank | `apps/momentbank/` | Identity memory bank + 프레임 저장 |
+| personmemory | `apps/personmemory/` | Identity memory bank + 프레임 저장 |
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 | momentscan-report | `apps/momentscan-report/` | HTML 리포트 생성 (Plotly) |
 | portrait981 | `apps/portrait981/` | 통합 오케스트레이터 (E2E 파이프라인) |
 | portrait981-serve | `apps/portrait981-serve/` | 서빙 레이어 (REST API + S3 + 노드풀) |
+| portrait981-docs | `apps/portrait981-docs/` | 문서 사이트 (mkdocs, 아키텍처/연구/앱 설계/비즈니스) |
 | annotator | `apps/annotator/` | 라벨링/리뷰/병합 도구 (CLI: `annotator label/review/merge`) |
 
 ## Namespace Package 패턴
@@ -166,9 +165,13 @@ from momentscan.face_classify.output import FaceClassifierOutput
 from momentscan.face_quality import FaceQualityAnalyzer
 from momentscan.frame_quality import QualityAnalyzer
 
-# visualbind (observer 출력 결합)
-from visualbind import CatalogStrategy, TreeStrategy, TwoStageStrategy, select_frames
+# visualbind (observer 출력 결합 + 판단)
+from visualbind import VisualBind, HeuristicStrategy, TreeStrategy, bind_observations
+from visualbind.judge import JudgmentResult
 from visualbind.signals import SIGNAL_FIELDS, normalize_signal
+
+# momentscan v2
+from momentscan.v2 import MomentscanV2, FrameResult
 
 # DummyAnalyzer (visualpath core, 테스트 전용)
 from visualpath.core import DummyAnalyzer
@@ -180,9 +183,13 @@ from visualpath.core import DummyAnalyzer
 cd /home/hyeonrae/repo/monolith/portrait981
 uv sync --all-packages --all-extras   # 전체 workspace 동기화
 uv run pytest apps/momentscan/tests/ -v    # momentscan 테스트
-uv run pytest apps/momentbank/tests/ -v    # momentbank 테스트 (61)
+uv run pytest apps/personmemory/tests/ -v    # personmemory 테스트 (61)
 uv run pytest apps/reportrait/tests/ -v    # reportrait 테스트 (41)
 uv run pytest libs/visualbind/tests/ -v    # visualbind 테스트 (58)
+
+# 문서 사이트 (mkdocs)
+cd apps/portrait981-docs
+uv run --package portrait981-docs --extra serve mkdocs serve
 ```
 
 ## vpx CLI

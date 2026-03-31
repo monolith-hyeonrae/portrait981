@@ -1,0 +1,60 @@
+site_name: Portrait981
+site_description: 981파크 고객 경험 AI — 아키텍처, 연구, 앱 설계
+repo_url: https://github.com/981park/portrait981
+
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+
+  - 아키텍처:
+    - 개요: architecture/overview.md
+    - 파이프라인 3-Layer: architecture/pipeline-architecture.md
+    - visual* 생태계 리뷰: architecture/visual-ecosystem-review.md
+    - 데이터 아키텍처: architecture/data-architecture.md
+    - VisualPath:
+      - 왜 VisualPath인가: architecture/why-visualpath.md
+      - 설계와 구현: architecture/how-visualpath.md
+    - VisualBind:
+      - 왜 VisualBind인가: architecture/why-visualbind.md
+      - 설계와 구현: architecture/how-visualbind.md
+
+  - 연구:
+    - Person-Conditioned Distribution: research/person-conditioned-distribution.md
+    - Face State Embedding: research/vision-face-state-embedding.md
+    - VisualBind 연구:
+      - Reframe (Round 4): research/visualbind-reframe.md
+      - 전문가 리뷰: research/visualbind-expert-review-unified.md
+      - Projected Crowds: research/projected-crowds.md
+    - VisualGrow: research/how-visualgrow.md
+    - Moment Embedding: research/vision-moment-embedding.md
+
+  - 앱 설계:
+    - MomentScan v2: apps/momentscan-v2.md
+    - PersonMemory: apps/personmemory.md
+    - Reportrait: apps/reportrait.md
+    - Portrait981 통합앱: apps/portrait981-serve.md
+
+  - 비즈니스:
+    - 프랜차이즈와 데이터 해자: business/data-moat.md
+
+  - 레거시:
+    - MomentScan v1: legacy/momentscan-v1.md
+    - 공유 계약 (초기): legacy/shared-contracts.md
+    - 알고리즘 (v1): legacy/algorithms.md
+    - 로드맵: legacy/roadmap.md
+    - 아키텍처 (초기): legacy/architecture.md
+    - 스트림 동기화: legacy/stream-synchronization.md
+    - 격리: legacy/isolation.md
+
+markdown_extensions:
+  - tables
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true

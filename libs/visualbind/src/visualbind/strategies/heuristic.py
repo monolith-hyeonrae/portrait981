@@ -41,6 +41,16 @@ class GateConfig:
     # Detection confidence
     confidence_min: float = 0.7
 
+    # Head pose limits (signal reliability boundary)
+    yaw_max: float = 55.0       # |yaw| > 55° → AU/expression unreliable
+    pitch_max: float = 35.0     # |pitch| > 35° → looking up/down too much (6DRepNet saturates)
+    roll_max: float = 35.0      # |roll| > 35° → head tilted too much
+    pose_combined_max: float = 55.0  # sqrt(yaw² + pitch² + roll²) — catches multi-axis degradation
+
+    # Signal validity (catches pose estimator failures)
+    seg_face_min: float = 0.01   # BiSeNet face segmentation ratio — 0 means face not visible
+    au_sum_min: float = 0.05     # sum of all 12 AUs — near 0 means AU estimation failed
+
 
 class HeuristicStrategy:
     """Threshold-based binding strategy (face.gate equivalent).
@@ -114,6 +124,17 @@ class HeuristicStrategy:
         if confidence > 0 and confidence < cfg.confidence_min:
             fails.append("gate.confidence")
 
+        # Head pose validity
+        yaw = raw.get("head_yaw_dev", 0.0)
+        pitch = raw.get("head_pitch", 0.0)
+        roll = raw.get("head_roll", 0.0)
+        if abs(yaw) > cfg.yaw_max:
+            fails.append("gate.pose.extreme_yaw")
+        if abs(pitch) > cfg.pitch_max:
+            fails.append("gate.pose.extreme_pitch")
+        if abs(roll) > cfg.roll_max:
+            fails.append("gate.pose.extreme_roll")
+
         return fails
 
     def check_gate_from_signals(self, signals: dict[str, float]) -> list[str]:
@@ -144,6 +165,36 @@ class HeuristicStrategy:
         confidence = signals.get("face_confidence", 0.0)
         if confidence > 0 and confidence < cfg.confidence_min:
             fails.append("gate.confidence")
+
+        # Signal validity — catches pose estimator failures on extreme profiles
+        seg_face = signals.get("seg_face", -1.0)
+        if seg_face >= 0 and seg_face < cfg.seg_face_min:
+            fails.append("gate.signal.no_face_seg")
+
+        au_keys = [k for k in signals if k.startswith("au")]
+        if au_keys:
+            au_sum = sum(signals[k] for k in au_keys)
+            if au_sum < cfg.au_sum_min:
+                fails.append("gate.signal.no_au_activity")
+
+        # Head pose validity — extreme angles make AU/expression unreliable
+        yaw = signals.get("head_yaw_dev", 0.0)
+        pitch = signals.get("head_pitch", 0.0)
+        roll = signals.get("head_roll", 0.0)
+        if abs(yaw) > cfg.yaw_max:
+            fails.append("gate.pose.extreme_yaw")
+        if abs(pitch) > cfg.pitch_max:
+            fails.append("gate.pose.extreme_pitch")
+        if abs(roll) > cfg.roll_max:
+            fails.append("gate.pose.extreme_roll")
+
+        # Combined magnitude — catches multi-axis degradation
+        # (individual axes below threshold but combination is unreliable)
+        import math
+        combined = math.sqrt(yaw**2 + pitch**2 + roll**2)
+        if combined > cfg.pose_combined_max:
+            if not any("pose" in f for f in fails):  # avoid duplicate if already caught
+                fails.append("gate.pose.combined")
 
         return fails
 

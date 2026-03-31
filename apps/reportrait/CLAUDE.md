@@ -1,7 +1,7 @@
 # Reportrait
 
 AI 초상화 생성 앱. ComfyUI 워크플로우 기반 이미지/비디오 생성 브릿지.
-momentbank의 `lookup_frames()`로 참조 이미지를 조회하거나, 직접 이미지를 주입하여 생성.
+personmemory의 `lookup_frames()`로 참조 이미지를 조회하거나, 직접 이미지를 주입하여 생성.
 
 ## 디렉토리 구조
 
@@ -86,7 +86,7 @@ urllib 기반 ComfyUI REST API 클라이언트. 외부 HTTP 의존성 없음.
 
 ## 의존성
 
-- `momentbank` — lookup_frames(), load_bank() 등
+- `personmemory` — lookup_frames(), load_bank() 등
 - 외부: 없음 (urllib만 사용)
 - 선택: ComfyUI 서버 (로컬 또는 RunPod)
 

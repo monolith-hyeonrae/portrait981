@@ -98,6 +98,7 @@ def generate_review_html(
     from collections import Counter
     expr_c = Counter(r.get("expression", "") for r in rows if r.get("expression"))
     pose_c = Counter(r.get("pose", "") for r in rows if r.get("pose"))
+    light_c = Counter(r.get("lighting", "") for r in rows if r.get("lighting"))
     chem_c = Counter(r.get("moment", "") for r in rows if r.get("moment"))
 
     html = f"""<!DOCTYPE html>
@@ -141,6 +142,7 @@ h2:hover {{ opacity: 0.8; }}
     <div class="filter-group">
         <button class="filter-btn active" onclick="setView('expression')">Expression</button>
         <button class="filter-btn" onclick="setView('pose')">Pose</button>
+        <button class="filter-btn" onclick="setView('lighting')">Lighting</button>
         <button class="filter-btn" onclick="setView('moment')">Moment</button>
         <button class="filter-btn" onclick="setView('cut')">Cut</button>
         <button class="filter-btn" onclick="setView('all')">All</button>
@@ -153,6 +155,7 @@ h2:hover {{ opacity: 0.8; }}
     <b>Total:</b> {len(rows)} |
     <b>Expression:</b> {', '.join(f'{k}={v}' for k, v in expr_c.most_common())} |
     <b>Pose:</b> {', '.join(f'{k}={v}' for k, v in pose_c.most_common())} |
+    <b>Lighting:</b> {', '.join(f'{k}={v}' for k, v in light_c.most_common()) or 'none'} |
     <b>Moment:</b> {', '.join(f'{k}={v}' for k, v in chem_c.most_common()) or 'none'} |
     <b>Videos:</b> {len(videos)}
     {f'| <b style="color:#FF9800">New:</b> {new_count}' if new_count > 0 else ''}
@@ -168,6 +171,7 @@ const VIDEOS = {videos_json};
 const COLORS = {{
     cheese: '#4CAF50', goofy: '#E91E63', chill: '#2196F3', edge: '#FF5722', hype: '#9C27B0',
     cut: '#d32f2f', occluded: '#795548', front: '#00BCD4', angle: '#FF9800', side: '#795548',
+    dramatic: '#FF6F00', natural: '#43A047', backlit: '#5C6BC0',
     moment: '#FFD700', solo: '#607D8B', duo: '#E91E63',
 }};
 const DESC = {{
@@ -179,6 +183,7 @@ const DESC = {{
     cut: '촬영 가치 없음',
     occluded: '얼굴 가려짐 — 마스크/선글라스/목도리',
     front: '정면', angle: '3/4 앵글', side: '측면',
+    dramatic: '강한 방향광', natural: '자연광/균일', backlit: '역광',
 }};
 const EXPRESSIONS = ['cheese', 'goofy', 'chill', 'edge', 'hype', 'occluded'];
 const POSES = ['front', 'angle', 'side'];
@@ -209,7 +214,7 @@ function updateSaveBtn() {{
 
 function downloadCSV() {{
     // labels.csv (삭제된 항목 제외)
-    const header = 'filename,workflow_id,expression,pose,moment,source';
+    const header = 'filename,workflow_id,expression,pose,lighting,moment,source';
     const lines = [header];
     const deletedFiles = [];
     ROWS.forEach((r, i) => {{
@@ -217,7 +222,7 @@ function downloadCSV() {{
             deletedFiles.push(r.filename);
             return;
         }}
-        lines.push([r.filename, r.workflow_id||'', r.expression||'', r.pose||'', r.moment||'', r.source||''].join(','));
+        lines.push([r.filename, r.workflow_id||'', r.expression||'', r.pose||'', r.lighting||'', r.moment||'', r.source||''].join(','));
     }});
 
     if (deletedFiles.length > 0) {{
@@ -319,6 +324,7 @@ function renderCard(idx, row) {{
     if (!b64) return '';
     const expr = row.expression || '';
     const pose = row.pose || '';
+    const lighting = row.lighting || '';
     const mom = row.moment || '';
     const vid = VIDEOS[row.workflow_id] || {{}};
     const isModified = changes[idx] ? ' modified' : '';
@@ -336,6 +342,7 @@ function renderCard(idx, row) {{
     let tags = '';
     if (expr) tags += `<span class="tag" style="background:${{getColor(expr)}}">${{expr}}</span>`;
     if (pose) tags += `<span class="tag" style="background:${{getColor(pose)}}">${{pose}}</span>`;
+    if (lighting) tags += `<span class="tag" style="background:${{getColor(lighting)}}">${{lighting}}</span>`;
     if (mom === 'yes') tags += `<span class="tag" style="background:${{getColor('moment')}}">moment</span>`;
     if (vid.scene) tags += `<span class="tag" style="background:${{getColor(vid.scene)}}">${{vid.scene}}</span>`;
     if (vid.main_gender) tags += `<span class="tag" style="background:#444">${{vid.main_gender}}</span>`;
@@ -355,6 +362,11 @@ function renderCard(idx, row) {{
     for (const p of POSES) {{
         const act = pose === p;
         editHtml += `<button class="edit-btn${{act?' active':''}}" style="${{act?'background:'+getColor(p):''}}" onclick="setField(${{idx}},'pose','${{p}}')">${{p}}</button>`;
+    }}
+    editHtml += '</div><div class="edit-btns">';
+    for (const lt of ['dramatic', 'natural', 'backlit']) {{
+        const act = lighting === lt;
+        editHtml += `<button class="edit-btn${{act?' active':''}}" style="${{act?'background:'+getColor(lt):''}}" onclick="setField(${{idx}},'lighting','${{lt}}')">${{lt}}</button>`;
     }}
     if (vid.scene === 'duo') {{
         editHtml += '&nbsp;';
@@ -407,6 +419,18 @@ function renderAll() {{
         }});
         for (const p of [...POSES, '(none)']) {{
             if (groups[p]) html += renderGroup('pose:' + p, getColor(p), groups[p]);
+        }}
+    }}
+
+    if (currentView === 'lighting' || currentView === 'all') {{
+        const groups = {{}};
+        ROWS.forEach((r, i) => {{
+            const lt = r.lighting || '(none)';
+            if (!groups[lt]) groups[lt] = [];
+            groups[lt].push({{row: r, idx: i}});
+        }});
+        for (const lt of ['dramatic', 'natural', 'backlit', '(none)']) {{
+            if (groups[lt]) html += renderGroup('lighting:' + lt, getColor(lt), groups[lt]);
         }}
     }}
 

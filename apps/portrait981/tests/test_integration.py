@@ -1,8 +1,8 @@
-"""Integration tests — real momentbank I/O, mocked scan/generate.
+"""Integration tests — real personmemory I/O, mocked scan/generate.
 
 Tests the full portrait981 orchestration with:
 - ms.run(): mocked (no GPU needed)
-- momentbank: real file I/O (tmp_path isolation via PORTRAIT981_HOME)
+- personmemory: real file I/O (tmp_path isolation via PORTRAIT981_HOME)
 - PortraitGenerator: mocked (no ComfyUI needed)
 """
 
@@ -69,7 +69,7 @@ def bank_home(tmp_path, monkeypatch):
 
 def _seed_bank(bank_home: Path, member_id: str, entries: List[dict]) -> Path:
     """Directly write a frames manifest to simulate ingested frames."""
-    from momentbank.paths import get_bank_dir
+    from personmemory.paths import get_bank_dir
 
     frames_dir = get_bank_dir(member_id) / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -90,7 +90,7 @@ def _seed_bank(bank_home: Path, member_id: str, entries: List[dict]) -> Path:
 
 
 class TestScanThenGenerate:
-    """Full pipeline with real momentbank I/O."""
+    """Full pipeline with real personmemory I/O."""
 
     def test_scan_seeds_bank_then_generate_uses_it(self, bank_home):
         """ms.run saves to bank → pipeline lookup finds refs → generate called."""
@@ -396,7 +396,7 @@ class TestBatchWithBank:
         assert all(r.ref_count == 1 for r in results)
 
         # Verify each member's bank is independently queryable
-        from momentbank.ingest import lookup_frames
+        from personmemory.ingest import lookup_frames
         frames_a = lookup_frames("member_a")
         frames_b = lookup_frames("member_b")
         assert len(frames_a) == 1

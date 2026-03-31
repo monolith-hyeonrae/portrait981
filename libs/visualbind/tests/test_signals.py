@@ -12,12 +12,11 @@ from visualbind.signals import (
     SIGNAL_RANGES,
     _AU_FIELDS,
     _DETECTION_FIELDS,
-    _DEFAULT_CLIP_AXIS_NAMES,
+    _DERIVED_SEG_FIELDS,
     _EMOTION_FIELDS,
     _FACE_QUALITY_FIELDS,
     _FRAME_QUALITY_FIELDS,
     _SEGMENTATION_FIELDS,
-    _COMPOSITE_FIELDS,
     _NDIM,
     _POSE_FIELDS,
     extract_signal_vector_from_dict,
@@ -28,31 +27,30 @@ from visualbind.signals import (
 
 class TestSignalFields:
     def test_extended_dimensions(self):
-        """49D: AU12 + Emotion8 + Pose3 + Det3 + FaceQ5 + FrameQ3 + Seg4 + Comp3 + CLIP4."""
-        assert len(SIGNAL_FIELDS_EXTENDED) == 45
+        """43D: AU12 + Emotion8 + Pose3 + Det4 + FaceQ5 + FrameQ3 + Seg4 + DerivedSeg4."""
+        assert len(SIGNAL_FIELDS_EXTENDED) == 65
         assert SIGNAL_FIELDS is SIGNAL_FIELDS_EXTENDED
 
     def test_legacy_dimensions(self):
-        """21D legacy: AU10 + Emotion4 + Pose3 + CLIP4."""
-        assert len(SIGNAL_FIELDS_LEGACY) == 21
+        """17D legacy: AU10 + Emotion4 + Pose3."""
+        assert len(SIGNAL_FIELDS_LEGACY) == 17
 
     def test_field_groups(self):
         assert len(_AU_FIELDS) == 12
         assert len(_EMOTION_FIELDS) == 8
         assert len(_POSE_FIELDS) == 3
-        assert len(_DETECTION_FIELDS) == 3
+        assert len(_DETECTION_FIELDS) == 4
         assert len(_FACE_QUALITY_FIELDS) == 5
         assert len(_FRAME_QUALITY_FIELDS) == 3
         assert len(_SEGMENTATION_FIELDS) == 4
-        assert len(_COMPOSITE_FIELDS) == 3
-        assert len(_DEFAULT_CLIP_AXIS_NAMES) == 4
 
     def test_signal_fields_composition(self):
+        from visualbind.signals import _LIGHTING_FIELDS
         expected = (
             _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
             + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
             + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
-            + _COMPOSITE_FIELDS + _DEFAULT_CLIP_AXIS_NAMES
+            + _DERIVED_SEG_FIELDS + _LIGHTING_FIELDS
         )
         assert SIGNAL_FIELDS_EXTENDED == expected
 
@@ -61,11 +59,12 @@ class TestSignalFields:
         assert len(SIGNAL_FIELDS_LEGACY) == len(set(SIGNAL_FIELDS_LEGACY))
 
     def test_all_fixed_fields_have_ranges(self):
+        from visualbind.signals import _LIGHTING_FIELDS
         fixed = (
             _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
             + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
             + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
-            + _COMPOSITE_FIELDS
+            + _DERIVED_SEG_FIELDS + _LIGHTING_FIELDS
         )
         for f in fixed:
             assert f in SIGNAL_RANGES, f"Missing range for {f}"
@@ -74,16 +73,11 @@ class TestSignalFields:
 class TestGetSignalFields:
     def test_default_extended(self):
         fields = get_signal_fields()
-        assert len(fields) == 45
+        assert len(fields) == 65
 
     def test_default_legacy(self):
         fields = get_signal_fields(extended=False)
-        assert len(fields) == 21
-
-    def test_custom_clip_axes(self):
-        fields = get_signal_fields(clip_axis_names=["axis_a", "axis_b"])
-        # 45 base (without CLIP) + 2 custom
-        assert fields[-2:] == ("axis_a", "axis_b")
+        assert len(fields) == 17
 
 
 class TestNormalizeSignal:
@@ -123,7 +117,7 @@ class TestExtractSignalVectorFromDict:
         vec = extract_signal_vector_from_dict({})
         assert vec.shape == (_NDIM,)
         # Some fields normalize 0 to non-zero (e.g. head_pitch range -30~30 → 0 maps to 0.5)
-        assert vec.shape[0] == 45
+        assert vec.shape[0] == 65
 
     def test_partial_dict(self):
         vec = extract_signal_vector_from_dict({"em_happy": 0.5})

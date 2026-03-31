@@ -253,7 +253,7 @@ def _handle_generate(args: argparse.Namespace) -> None:
 
 
 def _handle_status(args: argparse.Namespace) -> None:
-    from momentbank.ingest import lookup_frames
+    from personmemory.ingest import lookup_frames
 
     frames = lookup_frames(args.member_id)
     if not frames:

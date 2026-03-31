@@ -125,7 +125,7 @@ class TestCLIExecution:
             inst.shutdown.assert_called_once()
 
     def test_status_invokes_lookup(self):
-        with patch("momentbank.ingest.lookup_frames") as m:
+        with patch("personmemory.ingest.lookup_frames") as m:
             m.return_value = [
                 {"pose_name": "frontal", "category": "smile"},
                 {"pose_name": "frontal", "category": "smile"},

@@ -40,9 +40,9 @@ _POSE_FIELDS: tuple[str, ...] = (
     "head_yaw_dev", "head_pitch", "head_roll",
 )
 
-# Detection fields -- 3
+# Detection fields -- 4
 _DETECTION_FIELDS: tuple[str, ...] = (
-    "face_confidence", "face_area_ratio", "face_center_distance",
+    "face_confidence", "face_area_ratio", "face_center_distance", "face_aspect_ratio",
 )
 
 # Face quality fields -- 5
@@ -60,32 +60,39 @@ _SEGMENTATION_FIELDS: tuple[str, ...] = (
     "seg_face", "seg_eye", "seg_mouth", "seg_hair",
 )
 
-# Derived segmentation fields -- 4
+# Derived segmentation fields -- 6
 _DERIVED_SEG_FIELDS: tuple[str, ...] = (
     "eye_visible_ratio", "mouth_open_ratio", "glasses_ratio", "backlight_score",
+    "nose_position_x", "nose_position_y",
 )
 
-# Composite fields -- 3
-_COMPOSITE_FIELDS: tuple[str, ...] = (
-    "duchenne_smile", "wild_intensity", "chill_score",
-)
-
-# Default CLIP axis names (match catalog categories)
-_DEFAULT_CLIP_AXIS_NAMES: tuple[str, ...] = (
-    "warm_smile", "cool_gaze", "playful_face", "wild_energy",
+# Lighting fields -- 15
+# Lighting fields -- 19
+_LIGHTING_FIELDS: tuple[str, ...] = (
+    # 9분면 기반 (skin only)
+    "lighting_ratio", "face_brightness_std", "highlight_ratio", "shadow_ratio",
+    "light_direction_x", "light_direction_y", "rembrandt_score", "light_hardness",
+    # DPR SH summary
+    "sh_dir_x", "sh_dir_y", "sh_dir_strength",
+    # DPR SH 9계수 raw (XGBoost가 패턴 자동 학습)
+    "sh_0", "sh_1", "sh_2", "sh_3", "sh_4", "sh_5", "sh_6", "sh_7", "sh_8",
 )
 
 # ---------------------------------------------------------------------------
 # Signal field sets
 # ---------------------------------------------------------------------------
 
-# Extended: all available fields (45D base + 4D derived + 4D CLIP = 53D)
+# Legacy compat (v1 catalog_scoring references these)
+_DEFAULT_CLIP_AXIS_NAMES: tuple[str, ...] = ()
+_DEFAULT_CLIP_RANGE: tuple[float, float] = (0.0, 1.0)
+_COMPOSITE_FIELDS: tuple[str, ...] = ()
+
+# 47D: all frozen model outputs + derived signals + lighting
 SIGNAL_FIELDS_EXTENDED: tuple[str, ...] = (
     _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
     + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
     + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
-    + _DERIVED_SEG_FIELDS
-    + _COMPOSITE_FIELDS + _DEFAULT_CLIP_AXIS_NAMES
+    + _DERIVED_SEG_FIELDS + _LIGHTING_FIELDS
 )
 
 # Legacy 21D (backward compatibility with existing catalogs)
@@ -98,7 +105,7 @@ _EMOTION_FIELDS_LEGACY: tuple[str, ...] = (
     "em_happy", "em_neutral", "em_surprise", "em_angry",
 )
 SIGNAL_FIELDS_LEGACY: tuple[str, ...] = (
-    _AU_FIELDS_LEGACY + _EMOTION_FIELDS_LEGACY + _POSE_FIELDS + _DEFAULT_CLIP_AXIS_NAMES
+    _AU_FIELDS_LEGACY + _EMOTION_FIELDS_LEGACY + _POSE_FIELDS
 )
 
 # Default: extended
@@ -139,6 +146,7 @@ SIGNAL_RANGES: dict[str, tuple[float, float]] = {
     "face_confidence": (0.0, 1.0),
     "face_area_ratio": (0.0, 1.0),
     "face_center_distance": (0.0, 1.0),
+    "face_aspect_ratio": (0.0, 2.0),    # bbox w/h — frontal ~0.75, profile ~0.5
     # Face quality
     "face_blur": (0.0, 500.0),        # Laplacian variance
     "face_exposure": (0.0, 255.0),     # mean brightness
@@ -159,13 +167,36 @@ SIGNAL_RANGES: dict[str, tuple[float, float]] = {
     "mouth_open_ratio": (0.0, 0.15),      # mouth_in pixels / face area
     "glasses_ratio": (0.0, 0.5),          # glasses pixels / face area
     "backlight_score": (0.0, 100.0),      # brightness - face_exposure
-    # Composites (0-1)
-    "duchenne_smile": (0.0, 1.0),
-    "wild_intensity": (0.0, 1.0),
-    "chill_score": (0.0, 1.0),
+    "nose_position_x": (0.0, 1.0),        # 코 x 위치 (0=좌측, 0.5=정면, 1=우측)
+    "nose_position_y": (0.0, 1.0),        # 코 y 위치 (0=상단, 0.5=중간, 1=하단)
+    # ⚠️ Lighting signals 좌표계: 이미지 좌표 기준으로 통일.
+    #   양수 = 이미지 오른쪽이 밝음 (x), 이미지 위쪽이 밝음 (y)
+    #   SfSNet 원본은 얼굴 기준(거울반전) → 변환하여 저장.
+    "lighting_ratio": (1.0, 3.0),         # bright_side / dark_side (1=uniform, >1.5=dramatic)
+    "face_brightness_std": (0.0, 80.0),   # intra-face brightness variation (skin only)
+    "highlight_ratio": (0.0, 0.5),        # fraction of skin pixels above mean+2σ
+    "shadow_ratio": (0.0, 0.5),           # fraction of skin pixels below mean-1.5σ
+    "light_direction_x": (-1.0, 1.0),     # 4분면 Michelson (양수=이미지 우측 밝음, skin only)
+    "light_direction_y": (-1.0, 1.0),     # 4분면 Michelson (양수=이미지 상단 밝음, skin only)
+    "rembrandt_score": (0.0, 1.0),        # Rembrandt triangle detected (skin only)
+    "light_hardness": (0.0, 1.0),         # 0=soft(overcast), 1=hard(direct sun)
+    # DPR SH (이미지 좌표계, 반전 불필요)
+    #   sh_dir_x > 0 = 이미지 우측 밝음, < 0 = 좌측 밝음
+    #   sh_dir_y > 0 = 이미지 상단 밝음
+    "sh_dir_x": (-1.0, 1.0),
+    "sh_dir_y": (-1.0, 1.0),
+    "sh_dir_strength": (0.0, 1.0),
+    # DPR SH 9계수 raw [amb, Y, Z, X, YX, YZ, 3Z²-1, XZ, X²-Y²]
+    "sh_0": (0.0, 2.0),                   # ambient
+    "sh_1": (-1.0, 1.0),                  # Y (depth)
+    "sh_2": (-1.0, 1.0),                  # Z (상하)
+    "sh_3": (-1.0, 1.0),                  # X (좌우)
+    "sh_4": (-1.0, 1.0),                  # YX (2nd order)
+    "sh_5": (-1.0, 1.0),                  # YZ
+    "sh_6": (-1.0, 1.0),                  # 3Z²-1
+    "sh_7": (-1.0, 1.0),                  # XZ
+    "sh_8": (-1.0, 1.0),                  # X²-Y²
 }
-
-# CLIP axes: default range is (0.0, 1.0), added dynamically
 _DEFAULT_CLIP_RANGE: tuple[float, float] = (0.0, 1.0)
 
 _NDIM = len(SIGNAL_FIELDS)
@@ -176,28 +207,19 @@ _NDIM = len(SIGNAL_FIELDS)
 # ---------------------------------------------------------------------------
 
 def get_signal_fields(
-    clip_axis_names: Optional[list[str]] = None,
     extended: bool = True,
 ) -> tuple[str, ...]:
     """Return signal field tuple.
 
     Args:
-        clip_axis_names: CLIP axis name list. ``None`` uses the default 4 axes.
-        extended: If True, return extended 45D+. If False, return legacy 21D.
+        extended: If True, return 43D. If False, return legacy 17D.
 
     Returns:
         Signal field tuple.
     """
-    axes = tuple(clip_axis_names) if clip_axis_names else _DEFAULT_CLIP_AXIS_NAMES
     if extended:
-        return (
-            _AU_FIELDS + _EMOTION_FIELDS + _POSE_FIELDS
-            + _DETECTION_FIELDS + _FACE_QUALITY_FIELDS
-            + _FRAME_QUALITY_FIELDS + _SEGMENTATION_FIELDS
-            + _DERIVED_SEG_FIELDS
-            + _COMPOSITE_FIELDS + axes
-        )
-    return _AU_FIELDS_LEGACY + _EMOTION_FIELDS_LEGACY + _POSE_FIELDS + axes
+        return SIGNAL_FIELDS_EXTENDED
+    return SIGNAL_FIELDS_LEGACY
 
 
 def normalize_signal(value: float, field: str) -> float:

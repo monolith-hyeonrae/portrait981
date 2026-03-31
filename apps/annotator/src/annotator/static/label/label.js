@@ -8,6 +8,7 @@ let videoCacheBust = 0;
 
 let labels = {};
 let poses = {};
+let lightings = {};
 let moments = {};
 let videoMeta = null;
 
@@ -24,6 +25,7 @@ async function loadStaging() {
     const data = await (await fetch('/api/staging')).json();
     labels = data.labels || {};
     poses = data.poses || {};
+    lightings = data.lightings || {};
     moments = data.moments || {};
     videoMeta = data.video_meta || null;
     buildFilteredList();
@@ -68,6 +70,7 @@ async function switchVideo(filename) {
             const data = await (await fetch('/api/staging')).json();
             labels = data.labels || {};
             poses = data.poses || {};
+    lightings = data.lightings || {};
             moments = data.moments || {};
             videoMeta = data.video_meta || null;
             buildFilteredList();
@@ -94,6 +97,7 @@ async function saveToServer(index) {
                 index: index,
                 expression: labels[index] || '',
                 pose: poses[index] || '',
+                lighting: lightings[index] || '',
                 moment: moments[index] || '',
             }),
         });
@@ -165,7 +169,8 @@ function renderFocus() {
     const isDuo = scene === 'duo';
     const isAccepted = label && label !== 'cut' && label !== '__shoot__';
     const displayLabel = label === '__shoot__' ? 'SHOOT' : label;
-    const parts = [displayLabel, pose, mom === 'yes' ? 'moment' : null].filter(x => x && x !== '__shoot__');
+    const lighting = lightings[idx];
+    const parts = [displayLabel, pose, lighting, mom === 'yes' ? 'moment' : null].filter(x => x && x !== '__shoot__');
     const labelColor = label === 'cut' ? '#d32f2f' : label === '__shoot__' ? '#FF9800' : label === 'occluded' ? '#795548' : '#4CAF50';
     const labelHtml = parts.length > 0
         ? `<div class="focus-label" style="color:${labelColor}">${parts.join(' + ')}</div>`
@@ -213,9 +218,18 @@ function renderFocus() {
     btnsHtml += '</div>';
     btnsHtml += descHtml(pose);
 
-    if (step === 4) btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">Complete</div>';
+    // Step 4: LIGHTING
+    btnsHtml += `<div class="buttons" style="margin-top:6px;${step === 4 ? FOCUS + 'padding:4px;border-radius:8px;' : ''}">`;
+    for (const [lt, key] of [['dramatic','Q'],['natural','W'],['backlit','E']]) {
+        const sel = lighting === lt;
+        btnsHtml += `<button class="cat-btn${sel ? ' selected' : ''}" style="${sel ? 'background:'+getColor(lt)+';color:#fff;' : ''}" onclick="setLighting(${idx},'${lt}')">${lt} ${K}${key}</span></button>`;
+    }
+    btnsHtml += '</div>';
+    btnsHtml += descHtml(lighting);
 
-    const stepHint = isDuo ? 'shoot\u2192moment\u2192expression\u2192pose' : 'shoot\u2192expression\u2192pose';
+    if (step === 5) btnsHtml += '<div style="color:#4CAF50;font-size:13px;margin-top:8px;text-align:center">Complete</div>';
+
+    const stepHint = isDuo ? 'shoot\u2192moment\u2192expression\u2192pose\u2192lighting' : 'shoot\u2192expression\u2192pose\u2192lighting';
     panel.innerHTML = `
         <img class="focus-img" src="${frameUrl(idx)}">
         <div class="focus-meta">Frame #${idx} &nbsp; ${currentPos + 1} / ${filteredList.length}</div>
@@ -266,13 +280,15 @@ function getStep(idx) {
     const lbl = labels[idx];
     const m = moments[idx];
     const p = poses[idx];
+    const lt = lightings[idx];
     const isDuo = videoMeta && videoMeta.scene === 'duo';
     const isAccepted = lbl && lbl !== 'cut' && lbl !== '__shoot__';
     if (!lbl) return 0;                          // shoot/cut
     if (lbl === 'cut') return -1;                // cut done
     if (lbl === '__shoot__' || !isAccepted) return 2;  // expression
     if (!p) return 3;                            // pose
-    return 4;                                    // complete
+    if (!lt) return 4;                           // lighting
+    return 5;                                    // complete
 }
 
 function setLabel(idx, value) {
@@ -291,6 +307,14 @@ function setPose(idx, value) {
     renderAll();
 }
 
+function setLighting(idx, value) {
+    if (lightings[idx] === value) delete lightings[idx];
+    else lightings[idx] = value;
+    saveToServer(idx);
+    checkAutoAdvance(idx);
+    renderAll();
+}
+
 function setMoment(idx) {
     if (moments[idx] === 'yes') delete moments[idx];
     else moments[idx] = 'yes';
@@ -301,7 +325,8 @@ function setMoment(idx) {
 function checkAutoAdvance(idx) {
     const lbl = labels[idx];
     const p = poses[idx];
-    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p;
+    const lt = lightings[idx];
+    const isComplete = lbl && lbl !== '__shoot__' && lbl !== 'cut' && p && lt;
     if (isComplete) setTimeout(() => go(1), 400);
 }
 
@@ -474,6 +499,7 @@ async function afterMerge() {
     const data = await (await fetch('/api/staging')).json();
     labels = data.labels || {};
     poses = data.poses || {};
+    lightings = data.lightings || {};
     moments = data.moments || {};
     videoMeta = data.video_meta || null;
     buildFilteredList();
@@ -523,6 +549,7 @@ const STEP_OPTIONS = {
     '0': [['__shoot__','setLabel'], ['cut','setLabel']],
     '2': [['cheese','setLabel'], ['goofy','setLabel'], ['chill','setLabel'], ['edge','setLabel'], ['hype','setLabel'], ['occluded','setLabel']],
     '3': [['front','setPose'], ['angle','setPose'], ['side','setPose']],
+    '4': [['dramatic','setLighting'], ['natural','setLighting'], ['backlit','setLighting']],
 };
 
 function isModalOpen() {
@@ -541,7 +568,7 @@ document.addEventListener('keydown', e => {
     const step = (manualStep !== null) ? manualStep : autoStep;
     if (e.key === 'h') { go(-1); return; }
     if (e.key === 'l') { go(1); return; }
-    if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(3, manualStep + 1); renderAll(); return; }
+    if (e.key === 'j') { if (manualStep === null) manualStep = step; manualStep = Math.min(4, manualStep + 1); renderAll(); return; }
     if (e.key === 'k') { if (manualStep === null) manualStep = step; manualStep = Math.max(-1, manualStep - 1); renderAll(); return; }
     if (e.key === 'm') { const isDuo = videoMeta && videoMeta.scene === 'duo'; if (isDuo) setMoment(idx); return; }
 
