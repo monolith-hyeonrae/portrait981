@@ -389,9 +389,11 @@ class Portrait981Pipeline:
 
         with self._member_locks[handle.job.member_id]:
             scanner = self._get_scanner()
+            ingest_id = handle.job.member_id if handle.job.ingest else None
             scan_result = scanner.scan(
                 handle.job.video_path,
                 fps=self._config.scan_fps,
+                ingest=ingest_id,
             )
 
         timing.scan_sec = time.monotonic() - scan_start

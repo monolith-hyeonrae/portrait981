@@ -24,6 +24,7 @@ class JobSpec:
     top_k: int = 3
     scan_only: bool = False
     generate_only: bool = False
+    ingest: bool = False
 
 
 class JobStatus(str, Enum):

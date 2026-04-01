@@ -50,6 +50,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     batch_p.add_argument("--workers", type=int, default=1, help="Scan workers")
     batch_p.add_argument("--scan-only", action="store_true", help="Skip generation")
+    batch_p.add_argument("--ingest", action="store_true",
+                        help="Ingest SHOOT frames into personmemory (member_id from filename/parent)")
     _add_common_args(batch_p)
 
     # p981 scan
@@ -177,6 +179,7 @@ def _handle_batch(args: argparse.Namespace) -> None:
             collection_path=args.collection,
             output_dir=args.output,
             scan_only=args.scan_only,
+            ingest=args.ingest,
         )
         for v in videos
     ]
@@ -283,8 +286,11 @@ def _print_result(result) -> None:
 
     if result.scan_result:
         sr = result.scan_result
-        highlights = getattr(sr, "highlights", [])
-        print(f"  Scan: {getattr(sr, 'frame_count', '?')} frames, {len(highlights)} highlights")
+        if isinstance(sr, list):
+            shoot = sum(1 for r in sr if getattr(r, "is_shoot", False))
+            print(f"  Scan: {len(sr)} frames, {shoot} shoot")
+        else:
+            print(f"  Scan: {getattr(sr, 'frame_count', '?')} frames")
 
     if result.ref_count:
         print(f"  Refs: {result.ref_count} reference images")
