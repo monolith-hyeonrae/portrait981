@@ -1,6 +1,6 @@
 """이미지 폴더에서 signal 추출 → parquet 저장.
 
-MomentscanV2의 SignalExtractor를 사용.
+ms.extract_signals()로 FlowGraph 정상 경로 사용 (65D).
 
 Usage:
     uv run python scripts/extract_signals.py data/datasets/portrait-v1
@@ -43,9 +43,7 @@ def main():
         image_files = image_files[:args.limit]
     logger.info("Found %d images in %s", len(image_files), images_dir)
 
-    from momentscan.signals import SignalExtractor
-    extractor = SignalExtractor()
-    extractor.initialize()
+    import momentscan as ms
 
     import pandas as pd
     rows = []
@@ -56,7 +54,7 @@ def main():
         img = cv2.imread(str(img_path))
         if img is None:
             continue
-        result = extractor.extract(img, frame_id=i)
+        result = ms.extract_signals(img)
         if not result.face_detected:
             no_face += 1
             continue

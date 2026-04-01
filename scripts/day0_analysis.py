@@ -1,7 +1,7 @@
 """Day 0: VisualBind Go/No-Go 분석.
 
-테스트 비디오에서 momentscan을 실행하고,
-21D signal을 추출하여 N_eff와 상관행렬을 분석한다.
+테스트 비디오에서 momentscan v2를 실행하고,
+65D signal을 추출하여 N_eff와 상관행렬을 분석한다.
 
 Usage:
     uv run python scripts/day0_analysis.py ~/Videos/reaction_test/test_0.mp4
@@ -25,56 +25,6 @@ logging.basicConfig(
 logger = logging.getLogger("day0")
 
 
-def extract_signals_from_records(frame_records, signal_fields):
-    """FrameRecord 리스트에서 signal vector 행렬을 추출.
-
-    signal_fields의 각 필드를 FrameRecord attribute / composites / clip_axes에서 검색.
-    """
-    from visualbind.signals import normalize_signal
-
-    vectors = []
-    for record in frame_records:
-        vec = np.zeros(len(signal_fields), dtype=np.float64)
-        for i, f in enumerate(signal_fields):
-            # head_yaw_dev → abs(head_yaw)
-            if f == "head_yaw_dev":
-                raw = abs(float(getattr(record, "head_yaw", 0.0)))
-            # composites dict
-            elif f in ("duchenne_smile", "wild_intensity", "chill_score"):
-                raw = float(record.composites.get(f, 0.0))
-            # CLIP axes dict
-            elif f in record.clip_axes:
-                raw = float(record.clip_axes.get(f, 0.0))
-            # direct FrameRecord attribute
-            elif hasattr(record, f):
-                raw = float(getattr(record, f, 0.0))
-            else:
-                raw = 0.0
-            vec[i] = normalize_signal(raw, f)
-        vectors.append(vec)
-
-    if not vectors:
-        return np.empty((0, len(signal_fields)))
-    return np.stack(vectors)
-
-
-def run_momentscan(video_path: str, fps: int = 5) -> list:
-    """momentscan으로 비디오 처리 → FrameRecord 리스트 반환."""
-    from momentscan.algorithm.batch.extract import extract_frame_record
-
-    collected = []
-
-    def on_frame(frame, results):
-        record = extract_frame_record(frame, results)
-        if record is not None:
-            collected.append(record)
-        return True
-
-    import momentscan as ms
-    ms.run(video_path, fps=fps, backend="simple", on_frame=on_frame)
-    return collected
-
-
 def main():
     parser = argparse.ArgumentParser(description="Day 0: VisualBind Go/No-Go")
     parser.add_argument("videos", nargs="+", help="mp4 video paths")
@@ -82,11 +32,12 @@ def main():
     parser.add_argument("--output", "-o", type=str, default=None, help="parquet output path")
     args = parser.parse_args()
 
-    # Signal fields — extended (45D+) or legacy (21D)
-    from visualbind.signals import SIGNAL_FIELDS_EXTENDED, SIGNAL_FIELDS_LEGACY
+    from visualbind.signals import SIGNAL_FIELDS_EXTENDED, normalize_signal
     SIGNAL_FIELDS = SIGNAL_FIELDS_EXTENDED
 
-    all_records = []
+    import momentscan as ms
+
+    all_signals = []
 
     for video_path in args.videos:
         video = Path(video_path)
@@ -96,21 +47,24 @@ def main():
 
         logger.info("Processing: %s (fps=%d)", video.name, args.fps)
         try:
-            records = run_momentscan(str(video), fps=args.fps)
-            logger.info("  → %d frame records", len(records))
-            all_records.extend(records)
+            results = ms.run(str(video), fps=args.fps)
+            face_results = [r for r in results if r.face_detected]
+            logger.info("  → %d frames (%d face detected)", len(results), len(face_results))
+            for r in face_results:
+                vec = np.array([
+                    normalize_signal(r.signals.get(f, 0.0), f)
+                    for f in SIGNAL_FIELDS
+                ], dtype=np.float64)
+                all_signals.append(vec)
         except Exception as e:
             logger.error("  → Failed: %s", e)
             continue
 
-    if not all_records:
-        logger.error("No frame records collected. Exiting.")
+    if not all_signals:
+        logger.error("No signals collected. Exiting.")
         sys.exit(1)
 
-    logger.info("Total frame records: %d", len(all_records))
-
-    # Extract 21D signal vectors
-    vectors = extract_signals_from_records(all_records, SIGNAL_FIELDS)
+    vectors = np.stack(all_signals)
     logger.info("Signal matrix shape: %s", vectors.shape)
 
     # Save to parquet (optional)
@@ -144,22 +98,6 @@ def main():
         print(f"  N_eff = {neff:.2f} (2~3) → ⚠️ 합의 기준 상향 + 진행")
     else:
         print(f"  N_eff = {neff:.2f} < 2 → ❌ 근본적 재고 필요")
-
-    # Top correlated pairs
-    print("\n### 상관 상위 5쌍 ###")
-    n_fields = len(SIGNAL_FIELDS)
-    pairs = []
-    for i in range(n_fields):
-        for j in range(i + 1, n_fields):
-            pairs.append((abs(corr[i, j]), SIGNAL_FIELDS[i], SIGNAL_FIELDS[j]))
-    pairs.sort(reverse=True)
-    for score, f1, f2 in pairs[:5]:
-        print(f"  {f1} ↔ {f2}: {score:.3f}")
-
-    # Lowest correlated pairs (most independent)
-    print("\n### 가장 독립적인 5쌍 ###")
-    for score, f1, f2 in pairs[-5:]:
-        print(f"  {f1} ↔ {f2}: {score:.3f}")
 
 
 if __name__ == "__main__":
