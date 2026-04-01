@@ -2,14 +2,9 @@
 
 Shows available analyzers, backends, and pipeline structure.
 Dynamic introspection via discover_modules(), Module.capabilities,
-get_processing_steps(), and HighlightConfig.
+and get_processing_steps().
 """
 
-from momentscan.algorithm.batch.field_mapping import (
-    PIPELINE_FIELD_MAPPINGS,
-    PIPELINE_DELTA_SPECS,
-    PIPELINE_DERIVED_FIELDS,
-)
 from momentscan.cli.utils import BOLD, DIM, ITALIC, RESET
 
 
@@ -21,14 +16,11 @@ def run_info(args):
         _print_flow_graph(args.graph)
     elif getattr(args, 'steps', False):
         _print_processing_steps()
-    elif getattr(args, 'scoring', False):
-        _print_scoring_detail()
     else:
         print(f"{BOLD}MomentScan - System Information{RESET}")
         print("=" * 60)
         _print_version_info()
         _print_modules_section(args.verbose)
-        _print_scoring_section()
         if args.verbose:
             _print_device_info()
 
@@ -138,103 +130,6 @@ def _print_modules_section(verbose):
         caps_str = "  ".join(caps_parts) if caps_parts else "-"
 
         print(f"  {name:<18s}{origin:<7s}depends: {deps_str:<20s}{caps_str}")
-
-
-# ── New: scoring summary (basic view) ──
-
-def _print_scoring_section():
-    """Print highlight scoring summary from HighlightConfig defaults."""
-    from momentscan.algorithm.batch.types import HighlightConfig
-
-    cfg = HighlightConfig()
-
-    print(f"\n{BOLD}[Highlight Scoring]{RESET}")
-    print(f"  Quality gate    face_conf >= {cfg.gate_face_confidence:.2f}  "
-          f"face_area >= {cfg.gate_face_area_ratio:.2f}  "
-          f"blur >= {cfg.gate_blur_min:.0f}  "
-          f"bright \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}]")
-    print(f"  Quality score   face_blur: {cfg.quality_face_blur_weight:.2f}  "
-          f"face_size: {cfg.quality_face_size_weight:.2f}  "
-          f"face_identity: {cfg.quality_face_identity_weight:.2f}  "
-          f"bg_sep: {cfg.quality_scene_bg_sep_weight:.2f}  "
-          f"{DIM}(fallback frontalness: {cfg.quality_frontalness_weight:.2f}){RESET}")
-    print(f"  Impact score    top-{cfg.impact_top_k}: "
-          f"smile: {cfg.impact_smile_intensity_weight:.2f}  "
-          f"yaw: {cfg.impact_head_yaw_delta_weight:.2f}")
-    print(f"  Temporal        EMA smooth \u03b1={cfg.smoothing_alpha:.2f}  "
-          f"\u2192  peaks: dist\u2265{cfg.peak_min_distance_sec:.1f}s, "
-          f"prominence\u2265p{cfg.peak_prominence_percentile:.0f}")
-    print(f"  Window          peak \u00b1 {cfg.window_half_sec:.1f}s  "
-          f"top {cfg.best_frame_count} frames")
-
-
-# ── New: --scoring detail ──
-
-def _print_scoring_detail():
-    """Print detailed highlight scoring pipeline."""
-    from collections import defaultdict
-    from momentscan.algorithm.batch.types import HighlightConfig
-
-    cfg = HighlightConfig()
-    fps = cfg.fps
-
-    # Feature Sources — from registry
-    sources: dict[str, list[str]] = defaultdict(list)
-    for fm in PIPELINE_FIELD_MAPPINGS:
-        sources[fm.source].append(fm.record_field)
-
-    total_fields = sum(len(v) for v in sources.values())
-    print(f"{BOLD}[Feature Sources]{RESET}  {total_fields} fields from {len(sources)} analyzers")
-    for source, fields in sources.items():
-        print(f"  {source:<16s}\u2192 {', '.join(fields)}")
-
-    # Temporal Delta — from registry
-    delta_fields = [spec.record_field for spec in PIPELINE_DELTA_SPECS]
-    print(f"\n{BOLD}[Temporal Delta]{RESET}  EMA \u03b1={cfg.delta_alpha:.2f}")
-    print(f"  {', '.join(delta_fields)}")
-
-    # Normalization
-    print(f"\n{BOLD}[Normalization]{RESET}  MAD z-score per video")
-    print(f"  z = (x - median) / MAD")
-
-    # Quality Gate
-    print(f"\n{BOLD}[Quality Gate]{RESET}  fail \u2192 score=0")
-    print(f"  face_detected     == True")
-    print(f"  face_confidence   >= {cfg.gate_face_confidence:.2f}")
-    print(f"  face_area_ratio   >= {cfg.gate_face_area_ratio:.2f}")
-    print(f"  blur_score        >= {cfg.gate_blur_min:.1f}    "
-          f"{DIM}(0=unmeasured \u2192 pass){RESET}")
-    print(f"  brightness        \u2208 [{cfg.gate_exposure_min:.0f}, {cfg.gate_exposure_max:.0f}] "
-          f"{DIM}(0=unmeasured \u2192 pass){RESET}")
-
-    # Quality Score
-    print(f"\n{BOLD}[Quality Score]{RESET}  = \u03a3(weight \u00d7 feature)")
-    print(f"  {cfg.quality_face_blur_weight:.2f}  face_blur_norm    {DIM}(portrait crop sharpness){RESET}")
-    print(f"  {cfg.quality_face_size_weight:.2f}  face_size_norm    {DIM}(min-max){RESET}")
-    print(f"  {cfg.quality_face_identity_weight:.2f}  face_identity     "
-          f"{DIM}(ArcFace anchor cosine sim){RESET}")
-    print(f"  {cfg.quality_scene_bg_sep_weight:.2f}  bg_separation     "
-          f"{DIM}(face_blur/scene_blur ratio — bokeh proxy){RESET}")
-    print(f"  {cfg.quality_scene_composition_weight:.2f}  composition       "
-          f"{DIM}(rule-of-thirds framing){RESET}")
-    print(f"  {cfg.quality_frontalness_weight:.2f}  frontalness       "
-          f"{DIM}(fallback: 1 - |yaw|/{cfg.frontalness_max_yaw:.0f}, clamped){RESET}")
-
-    # Impact Score
-    print(f"\n{BOLD}[Impact Score]{RESET}  = mean(top-{cfg.impact_top_k} of weight \u00d7 ReLU(z-score))")
-    print(f"  {cfg.impact_smile_intensity_weight:.2f}  smile_intensity")
-    print(f"  {cfg.impact_head_yaw_delta_weight:.2f}  head_yaw          {DIM}(EMA 기준선 이탈){RESET}")
-
-    # Final
-    dist_frames = int(cfg.peak_min_distance_sec * fps)
-    half_frames = int(cfg.window_half_sec * fps)
-    print(f"\n{BOLD}[Final]{RESET}  quality_score \u00d7 impact_score  {DIM}(gated){RESET}")
-    print(f"  \u2192 EMA smooth \u03b1={cfg.smoothing_alpha:.2f}")
-    print(f"  \u2192 find_peaks: dist\u2265{dist_frames}f "
-          f"({cfg.peak_min_distance_sec:.1f}s@{fps:.0f}fps), "
-          f"prominence\u2265p{cfg.peak_prominence_percentile:.0f}")
-    print(f"  \u2192 window: peak \u00b1 {half_frames}f ({cfg.window_half_sec:.1f}s), "
-          f"top {cfg.best_frame_count} frames")
 
 
 # ── Rewritten: --deps ──

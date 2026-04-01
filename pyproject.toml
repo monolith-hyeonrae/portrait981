@@ -19,7 +19,6 @@ members = [
     "apps/momentscan",
     "apps/personmemory",
     "apps/reportrait",
-    "apps/momentscan-report",
     "apps/portrait981",
     "apps/portrait981-serve",
     "apps/momentscan-plugins/frame-quality",

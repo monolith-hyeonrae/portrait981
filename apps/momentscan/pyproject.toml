@@ -15,7 +15,6 @@ dependencies = [
     "momentscan-face-baseline",
     "momentscan-frame-scoring",
     "momentscan-portrait-score",
-    "momentscan-report",
     "numpy>=1.24.0",
     "opencv-python>=4.8.0",
     "scipy>=1.10.0",
@@ -100,4 +99,3 @@ momentscan-face-gate = { workspace = true }
 momentscan-face-baseline = { workspace = true }
 momentscan-frame-scoring = { workspace = true }
 momentscan-portrait-score = { workspace = true }
-momentscan-report = { workspace = true }
