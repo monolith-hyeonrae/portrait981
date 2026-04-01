@@ -9,6 +9,6 @@ __path__ = pkgutil.extend_path(__path__, __name__)
     >>> result = ms.extract_signals(image_bgr)
 """
 
-from momentscan.main import DEFAULT_FPS, DEFAULT_BACKEND, run, extract_signals
+from momentscan.main import run, extract_signals
 
-__all__ = ["DEFAULT_FPS", "DEFAULT_BACKEND", "run", "extract_signals"]
+__all__ = ["run", "extract_signals"]
