@@ -1,13 +1,14 @@
-"""Momentscan v2 — visualpath App + visualbind 판단.
+"""Momentscan App — visualpath App + visualbind 판단.
 
 visualbase(I/O) → visualpath(App/FlowGraph) → vpx+plugins(측정) → visualbind(결합+판단)
 
 Usage:
-    from momentscan.v2 import MomentscanV2
+    from momentscan.app import Momentscan
 
-    app = MomentscanV2(
-        expression_model="models/bind_v11.pkl",
-        pose_model="models/pose_v9.pkl",
+    app = Momentscan(
+        quality_model="models/quality_v1.pkl",
+        expression_model="models/bind_v12.pkl",
+        pose_model="models/pose_v10.pkl",
     )
     results = app.run("video.mp4", fps=2)
     summary = app.summary()
@@ -27,7 +28,7 @@ from visualbind import VisualBind, HeuristicStrategy, TreeStrategy, bind_observa
 from visualbind.judge import JudgmentResult
 from visualbind.signals import SIGNAL_FIELDS
 
-logger = logging.getLogger("momentscan.v2")
+logger = logging.getLogger("momentscan.app")
 
 # momentscan이 사용하는 analyzer 목록
 MOMENTSCAN_MODULES = [
@@ -75,7 +76,7 @@ class SignalSummary:
     face_embeddings: list = field(default_factory=list)
 
 
-class MomentscanV2(vp.App):
+class Momentscan(vp.App):
     """간결한 momentscan — vp.App 상속 + visualbind 판단."""
 
     modules = MOMENTSCAN_MODULES
@@ -97,7 +98,7 @@ class MomentscanV2(vp.App):
             pose=TreeStrategy.load(self._pose_model) if self._pose_model else None,
         )
         self._results = []
-        logger.info("MomentscanV2 ready")
+        logger.info("Momentscan ready")
 
     def on_frame(self, frame, terminal_results):
         observations = []

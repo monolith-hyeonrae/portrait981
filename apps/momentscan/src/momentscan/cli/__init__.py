@@ -97,12 +97,12 @@ def _run_v2(args):
     no_window = getattr(args, "no_window", False)
 
     if use_debug or output_path:
-        from momentscan.v2_debug import DebugV2
+        from momentscan.app.debug import MomentscanDebug
         show_window = not no_window
         if not show_window and not output_path:
             print("Error: --output is required when using --no-window")
             sys.exit(1)
-        app = DebugV2(
+        app = MomentscanDebug(
             quality_model=args.quality_model,
             expression_model=args.bind_model,
             pose_model=args.pose_model,
@@ -110,8 +110,8 @@ def _run_v2(args):
             output_path=output_path,
         )
     else:
-        from momentscan.v2 import MomentscanV2
-        app = MomentscanV2(
+        from momentscan.app import Momentscan
+        app = Momentscan(
             quality_model=args.quality_model,
             expression_model=args.bind_model,
             pose_model=args.pose_model,
@@ -153,9 +153,9 @@ def _run_v2(args):
     # HTML report
     report_path = getattr(args, "report", None)
     if report_path:
-        from momentscan.v2_report import export_v2_report
+        from momentscan.app.report import export_report
         summary = app.summary(results)
-        export_v2_report(results, selected, report_path,
+        export_report(results, selected, report_path,
                        video_name=_P(args.path).stem, summary=summary)
         print(f"\nReport: {report_path}")
 

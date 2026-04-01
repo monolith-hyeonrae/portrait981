@@ -1,13 +1,13 @@
-"""MomentscanV2 HTML report — single-file interactive analysis report.
+"""Momentscan HTML report — single-file interactive analysis report.
 
 Plotly 기반 인터랙티브 차트. 단일 HTML 파일로 자체 완결.
 
 Usage:
-    from momentscan.v2_report import export_v2_report
+    from momentscan.app.report import export_report
 
     results = app.run("video.mp4")
     selected = app.select_frames(results)
-    export_v2_report(results, selected, "report.html", video_name="test_0")
+    export_report(results, selected, "report.html", video_name="test_0")
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
-logger = logging.getLogger("momentscan.v2_report")
+logger = logging.getLogger("momentscan.app.report")
 
 # Expression colors (match v2_debug)
 EXPR_COLORS = {
@@ -37,7 +37,7 @@ THUMB_WIDTH = 240
 JPEG_QUALITY = 70
 
 
-def export_v2_report(
+def export_report(
     results: list,
     selected: list,
     output_path: str | Path,
@@ -47,11 +47,11 @@ def export_v2_report(
     """Generate v2 HTML report.
 
     Args:
-        results: list[FrameResult] from MomentscanV2.run()
+        results: list[FrameResult] from Momentscan.run()
         selected: list[FrameResult] from select_frames()
         output_path: output HTML path
         video_name: video identifier for title
-        summary: SignalSummary from MomentscanV2.summary()
+        summary: SignalSummary from Momentscan.summary()
     """
     output_path = Path(output_path)
 
@@ -98,7 +98,7 @@ def export_v2_report(
 <html>
 <head>
 <meta charset="utf-8">
-<title>MomentscanV2 Report — {video_name}</title>
+<title>Momentscan Report — {video_name}</title>
 <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 <style>
 body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -125,7 +125,7 @@ h2 {{ color: #a0a0c0; border-bottom: 1px solid #333; padding-bottom: 4px; }}
 </style>
 </head>
 <body>
-<h1>MomentscanV2 — {video_name}</h1>
+<h1>Momentscan — {video_name}</h1>
 
 <div class="stats">
   <div class="stat"><div class="stat-value">{total}</div><div class="stat-label">Total Frames</div></div>

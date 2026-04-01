@@ -1,4 +1,4 @@
-"""MomentscanV2 debug visualization — per-frame judgment overlay.
+"""Momentscan debug visualization — per-frame judgment overlay.
 
 Video frame + right-side panel showing judgment basis:
   - Gate: pass/fail + reasons
@@ -7,9 +7,9 @@ Video frame + right-side panel showing judgment basis:
   - Key signals: AU, quality, segmentation values
 
 Usage:
-    from momentscan.v2_debug import DebugV2
+    from momentscan.app.debug import MomentscanDebug
 
-    app = DebugV2(expression_model="models/bind_v11.pkl")
+    app = MomentscanDebug(expression_model="models/bind_v12.pkl")
     results = app.run("video.mp4", fps=2)
 """
 
@@ -22,9 +22,9 @@ from typing import Optional
 import cv2
 import numpy as np
 
-from momentscan.v2 import MomentscanV2, FrameResult, MOMENTSCAN_MODULES
+from momentscan.app.core import Momentscan, FrameResult, MOMENTSCAN_MODULES
 
-logger = logging.getLogger("momentscan.v2_debug")
+logger = logging.getLogger("momentscan.app.debug")
 
 # Colors (BGR)
 _GREEN = (0, 200, 0)
@@ -1034,10 +1034,10 @@ def _extract_faces(observations):
     return []
 
 
-class DebugV2(MomentscanV2):
-    """MomentscanV2 with debug visualization.
+class MomentscanDebug(Momentscan):
+    """Momentscan with debug visualization.
 
-    Inherits MomentscanV2 and adds cv2 window overlay in on_frame().
+    Inherits Momentscan and adds cv2 window overlay in on_frame().
     """
 
     def __init__(
@@ -1064,16 +1064,16 @@ class DebugV2(MomentscanV2):
         self._fps = 0.0
         self._timeline_history = []
         self._coverage_grid = {}
-        logger.info("DebugV2: window=%s, output=%s", self._show_window, self._output_path)
+        logger.info("MomentscanDebug: window=%s, output=%s", self._show_window, self._output_path)
         # DPR for debug SH sphere (9계수 전체 렌더링)
         try:
             from momentscan.face_lighting.dpr import DPRLighting
             self._dpr_debug = DPRLighting()
             self._dpr_debug.initialize()
-            logger.info("DebugV2: DPR loaded for SH sphere")
+            logger.info("MomentscanDebug: DPR loaded for SH sphere")
         except Exception as e:
             self._dpr_debug = None
-            logger.debug("DebugV2: DPR unavailable (%s)", e)
+            logger.debug("MomentscanDebug: DPR unavailable (%s)", e)
 
     def on_frame(self, frame, terminal_results):
         # Collect observations before super() consumes them
@@ -1166,7 +1166,7 @@ class DebugV2(MomentscanV2):
             self._writer.write(debug_image)
 
         if self._show_window:
-            cv2.imshow("MomentscanV2 Debug", debug_image)
+            cv2.imshow("Momentscan Debug", debug_image)
             # Wait at least 30ms so frames are visible; space=pause, q=quit
             key = cv2.waitKey(30) & 0xFF
             if key == ord("q"):

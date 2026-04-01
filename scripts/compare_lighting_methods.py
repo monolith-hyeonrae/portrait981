@@ -307,9 +307,9 @@ def main():
     video_path = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser(
         "~/Videos/reaction_test/251227002408802.mp4")
 
-    from momentscan.v2 import MomentscanV2
+    from momentscan.app import Momentscan
 
-    app = MomentscanV2(expression_model="models/bind_v9.pkl", pose_model="models/pose_v7.pkl")
+    app = Momentscan(expression_model="models/bind_v12.pkl", pose_model="models/pose_v10.pkl")
     results = app.run(video_path, fps=2)
 
     shoot = sorted([r for r in results if r.is_shoot],

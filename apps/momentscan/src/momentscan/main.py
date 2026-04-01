@@ -32,8 +32,8 @@ def run(
     Returns:
         list[FrameResult]
     """
-    from momentscan.v2 import MomentscanV2
-    app = MomentscanV2(
+    from momentscan.app import Momentscan
+    app = Momentscan(
         quality_model=quality_model,
         expression_model=expression_model,
         pose_model=pose_model,
@@ -58,8 +58,8 @@ def extract_signals(
     Returns:
         FrameResult with signals, judgment, face_detected, etc.
     """
-    from momentscan.v2 import MomentscanV2
-    app = MomentscanV2(
+    from momentscan.app import Momentscan
+    app = Momentscan(
         quality_model=quality_model,
         expression_model=expression_model,
         pose_model=pose_model,
