@@ -77,7 +77,16 @@ class SignalSummary:
 
 
 class Momentscan(vp.App):
-    """간결한 momentscan — vp.App 상속 + visualbind 판단."""
+    """momentscan — vp.App 상속 + visualbind 4단 judge.
+
+    Lifecycle:
+        initialize() — 모델 로딩 (1회, 무거움)
+        scan(video)  — 비디오 분석 (반복 호출 가능, 가벼움)
+        shutdown()   — 리소스 해제
+
+    배치 실행 시 initialize()를 1회 호출하면 모델을 재사용합니다.
+    scan()을 호출하지 않고 run()을 직접 호출해도 동작합니다 (setup에서 lazy init).
+    """
 
     modules = MOMENTSCAN_MODULES
     fps = 2
@@ -88,17 +97,45 @@ class Momentscan(vp.App):
         self._expression_model = expression_model
         self._pose_model = pose_model
         self.judge = None
+        self._initialized = False
         self._results: list[FrameResult] = []
 
-    def setup(self):
+    def initialize(self):
+        """모델 로딩 — 1회. 배치에서 재사용."""
+        if self._initialized:
+            return
         self.judge = VisualBind(
             gate=HeuristicStrategy(),
             quality=TreeStrategy.load(self._quality_model) if self._quality_model else None,
             expression=TreeStrategy.load(self._expression_model) if self._expression_model else None,
             pose=TreeStrategy.load(self._pose_model) if self._pose_model else None,
         )
+        self._initialized = True
+        logger.info("Momentscan initialized (models loaded)")
+
+    def setup(self):
+        """per-run 상태 리셋 — vp.App lifecycle hook."""
+        if not self._initialized:
+            self.initialize()
         self._results = []
-        logger.info("Momentscan ready")
+
+    def scan(self, video, *, fps=None, **kwargs):
+        """단일 비디오 분석. initialize() 후 반복 호출 가능.
+
+        Args:
+            video: 비디오 파일 경로.
+            fps: 분석 FPS. None이면 클래스 기본값(2).
+
+        Returns:
+            list[FrameResult]
+        """
+        return self.run(video, fps=fps or self.fps, **kwargs)
+
+    def shutdown(self):
+        """리소스 해제."""
+        self.judge = None
+        self._initialized = False
+        logger.info("Momentscan shutdown")
 
     def on_frame(self, frame, terminal_results):
         observations = []

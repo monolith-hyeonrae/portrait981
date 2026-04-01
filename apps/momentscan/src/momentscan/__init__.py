@@ -34,11 +34,15 @@ def run(
     Returns:
         list[FrameResult]
     """
-    return Momentscan(
+    app = Momentscan(
         quality_model=quality_model,
         expression_model=expression_model,
         pose_model=pose_model,
-    ).run(video, fps=fps)
+    )
+    try:
+        return app.scan(video, fps=fps)
+    finally:
+        app.shutdown()
 
 
 def extract_signals(

@@ -81,15 +81,15 @@ Examples:
         commands.run_info(args)
 
     elif args.command == "run":
-        _run_v2(args)
+        _run_scan(args)
 
     else:
         parser.print_help()
         sys.exit(1)
 
 
-def _run_v2(args):
-    """Execute momentscan v2 analysis."""
+def _run_scan(args):
+    """Execute momentscan analysis — CLI thin wrapper."""
     from pathlib import Path as _P
 
     use_debug = getattr(args, "debug", False)
@@ -117,9 +117,10 @@ def _run_v2(args):
             pose_model=args.pose_model,
         )
 
-    results = app.run(args.path, fps=args.fps)
+    results = app.scan(args.path, fps=args.fps)
     selected = app.select_frames(results, top_k=args.top_k)
 
+    # 결과 출력
     total = len(results)
     shoot = sum(1 for r in results if r.is_shoot)
     gated = sum(1 for r in results if not r.gate_passed and r.face_detected)
@@ -136,7 +137,7 @@ def _run_v2(args):
     else:
         print("\nNo frames selected.")
 
-    # Ingest into personmemory
+    # Ingest
     ingest_member = getattr(args, "ingest", None)
     if ingest_member:
         shoot_frames = [r for r in results if r.is_shoot]
@@ -150,7 +151,7 @@ def _run_v2(args):
         except ImportError:
             print("\npersonmemory not installed — skipping ingest")
 
-    # HTML report
+    # Report
     report_path = getattr(args, "report", None)
     if report_path:
         from momentscan.app.report import export_report
@@ -158,6 +159,8 @@ def _run_v2(args):
         export_report(results, selected, report_path,
                        video_name=_P(args.path).stem, summary=summary)
         print(f"\nReport: {report_path}")
+
+    app.shutdown()
 
 
 if __name__ == "__main__":
