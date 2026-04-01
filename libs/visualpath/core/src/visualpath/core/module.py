@@ -202,12 +202,23 @@ class Module(ABC):
         pass
 
     def cleanup(self) -> None:
-        """Release module resources.
+        """Reset state + release resources.
 
-        Called when processing ends. Override to:
-        - Unload models
+        Default: calls reset() then release().
+        대부분의 경우 cleanup()을 override하지 말고 reset()과 release()를 각각 override.
+        """
+        self.reset()
+        self.release()
+
+    def release(self) -> None:
+        """Release heavy resources (models, GPU memory, handles).
+
+        Called once at shutdown. Override to:
+        - Unload ML models
         - Release GPU memory
-        - Close handles
+        - Close file handles
+
+        Warm executor에서는 scan 사이에 호출되지 않음 — shutdown 시에만.
         """
         pass
 
@@ -259,10 +270,11 @@ class Module(ABC):
         return [self.process(f, d) for f, d in zip(frames, deps_list)]
 
     def reset(self) -> None:
-        """Reset module state.
+        """Reset per-run state (models are preserved).
 
-        Called when starting a new video or after discontinuity.
-        Override for stateful modules (triggers with cooldown, etc.).
+        Called between videos in warm executor mode.
+        Override for stateful modules: tracking IDs, baselines, counters 등.
+        모델/GPU 리소스는 release()에서 해제.
         """
         pass
 

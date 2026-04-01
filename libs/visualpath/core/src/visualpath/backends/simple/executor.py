@@ -52,12 +52,14 @@ class GraphExecutor:
         batch_size: int = 1,
         debug: bool = False,
         debug_hook: Optional[DebugHook] = None,
+        keep_warm: bool = False,
     ):
         self._graph = graph
         self._interpreter = SimpleInterpreter(debug=debug, debug_hook=debug_hook)
         self._initialized = False
         self._debug = debug
         self._batch_size = max(1, batch_size)
+        self._keep_warm = keep_warm
 
         if on_trigger is not None:
             self._graph.on_trigger(on_trigger)
@@ -79,18 +81,29 @@ class GraphExecutor:
         self._initialized = True
 
     def cleanup(self) -> None:
+        """Full cleanup: reset + release all resources."""
         if not self._initialized:
             return
         self._graph.cleanup()
         self._interpreter.reset()
         self._initialized = False
 
+    def soft_reset(self) -> None:
+        """Reset per-run state only (models preserved). Warm mode용."""
+        if not self._initialized:
+            return
+        self._graph.reset()
+        self._interpreter.reset()
+
     def __enter__(self) -> "GraphExecutor":
         self.initialize()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self.cleanup()
+        if self._keep_warm:
+            self.soft_reset()
+        else:
+            self.cleanup()
 
     def process(self, frame: "Frame") -> List[FlowData]:
         """Process a frame through the flow graph.

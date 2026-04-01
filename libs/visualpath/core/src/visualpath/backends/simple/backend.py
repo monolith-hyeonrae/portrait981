@@ -48,65 +48,62 @@ class SimpleBackend(ExecutionBackend):
         graph: "FlowGraph",
         *,
         on_frame: Optional[Callable[["Frame", List["FlowData"]], bool]] = None,
+        executor: Optional["GraphExecutor"] = None,
     ) -> PipelineResult:
         """Execute a FlowGraph-based pipeline.
-
-        Processing flow:
-        1. Initialize all graph nodes
-        2. Process each frame through GraphExecutor
-        3. Call on_frame callback if provided (stop on False)
-        4. Collect triggers from FlowData results
-        5. Clean up all graph nodes
 
         Args:
             frames: Iterator of Frame objects (not materialized to list).
             graph: FlowGraph defining the pipeline.
             on_frame: Optional per-frame callback. See ExecutionBackend.execute().
+            executor: Optional pre-initialized GraphExecutor for warm reuse.
+                      If provided, skips initialize/cleanup (caller manages lifecycle).
 
         Returns:
             PipelineResult with triggers and frame count.
         """
-        from visualpath.backends.simple.executor import GraphExecutor
+        from visualpath.backends.simple.executor import GraphExecutor as _GE
 
         triggers: list = []
         frame_count = 0
 
-        executor = GraphExecutor(graph, batch_size=self._batch_size)
+        if executor is not None:
+            # Warm mode: caller manages executor lifecycle
+            executor.soft_reset()
+            return self._run_frames(executor, frames, on_frame)
 
-        with executor:
-            if self._batch_size <= 1:
-                # Frame-by-frame (original path)
-                for frame in frames:
-                    frame_count += 1
-                    terminal_results = executor.process(frame)
-                    self._collect_triggers(terminal_results, triggers)
-                    if on_frame is not None:
-                        if not on_frame(frame, terminal_results):
-                            break
-            else:
-                # Batch collection
-                batch: list = []
-                stopped = False
-                for frame in frames:
-                    frame_count += 1
-                    batch.append(frame)
+        exc = _GE(graph, batch_size=self._batch_size)
+        with exc:
+            return self._run_frames(exc, frames, on_frame)
 
-                    if len(batch) >= self._batch_size:
-                        stopped = self._flush_batch(
-                            executor, batch, triggers, on_frame
-                        )
-                        batch = []
-                        if stopped:
-                            break
+    def _run_frames(self, executor, frames, on_frame) -> PipelineResult:
+        """Process frames through executor. Shared by cold/warm paths."""
+        triggers: list = []
+        frame_count = 0
 
-                # Flush remaining frames
-                if batch and not stopped:
-                    self._flush_batch(executor, batch, triggers, on_frame)
+        if self._batch_size <= 1:
+            for frame in frames:
+                frame_count += 1
+                terminal_results = executor.process(frame)
+                self._collect_triggers(terminal_results, triggers)
+                if on_frame is not None:
+                    if not on_frame(frame, terminal_results):
+                        break
+        else:
+            batch: list = []
+            stopped = False
+            for frame in frames:
+                frame_count += 1
+                batch.append(frame)
+                if len(batch) >= self._batch_size:
+                    stopped = self._flush_batch(executor, batch, triggers, on_frame)
+                    batch = []
+                    if stopped:
+                        break
+            if batch and not stopped:
+                self._flush_batch(executor, batch, triggers, on_frame)
 
-        return PipelineResult(
-            triggers=triggers,
-            frame_count=frame_count,
-        )
+        return PipelineResult(triggers=triggers, frame_count=frame_count)
 
     @staticmethod
     def _collect_triggers(

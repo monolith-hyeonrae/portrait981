@@ -503,8 +503,14 @@ class FlowGraph:
         for node in self._nodes.values():
             node.initialize()
 
+    def reset(self) -> None:
+        """Reset per-run state only (models preserved). Warm mode에서 사용."""
+        for node in self._nodes.values():
+            if hasattr(node, 'reset'):
+                node.reset()
+
     def cleanup(self) -> None:
-        """Clean up all nodes."""
+        """Clean up all nodes (reset + release)."""
         for node in self._nodes.values():
             node.cleanup()
 

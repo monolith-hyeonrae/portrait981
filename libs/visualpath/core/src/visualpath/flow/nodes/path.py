@@ -87,8 +87,12 @@ class PathNode(FlowNode):
             if hasattr(module, 'warmup'):
                 module.warmup()
 
-    def cleanup(self) -> None:
-        """Cleanup all modules."""
+    def reset(self) -> None:
+        """Reset per-run state only (models preserved). Warm mode에서 사용."""
         for module in self._modules:
-            if hasattr(module, 'cleanup'):
-                module.cleanup()
+            module.reset()
+
+    def cleanup(self) -> None:
+        """Reset + release all modules (cold mode)."""
+        for module in self._modules:
+            module.cleanup()

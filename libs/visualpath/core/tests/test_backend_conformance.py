@@ -589,10 +589,15 @@ class TestStatefulConformance:
         graph = FlowGraph.from_modules([mod])
         frames = make_frames(5)
 
-        backend.execute(iter(frames), graph)
+        collected = []
+        def _on_frame(frame, results):
+            collected.append(frame.frame_id)
+            return True
+
+        backend.execute(iter(frames), graph, on_frame=_on_frame)
 
         # Frame order should match input order: 0, 1, 2, 3, 4
-        assert mod.frame_order == [0, 1, 2, 3, 4]
+        assert collected == [0, 1, 2, 3, 4]
 
     def test_stateful_counter_increments(self, backend):
         """stateful module's internal counter reflects processing order."""
@@ -600,10 +605,21 @@ class TestStatefulConformance:
         graph = FlowGraph.from_modules([mod])
         frames = make_frames(3)
 
-        backend.execute(iter(frames), graph)
+        counters = []
+        def _on_frame(frame, results):
+            for data in results:
+                for obs in getattr(data, "results", []):
+                    if obs.source == "sf":
+                        counters.append(obs.signals.get("counter", 0))
+                # FlowData.observations 도 확인
+                for obs in getattr(data, "observations", []):
+                    if obs.source == "sf":
+                        counters.append(obs.signals.get("counter", 0))
+            return True
 
-        assert mod._counter == 3
-        assert mod.frame_order == [0, 1, 2]
+        backend.execute(iter(frames), graph, on_frame=_on_frame)
+
+        assert counters == [1, 2, 3]
 
 
 # =============================================================================
