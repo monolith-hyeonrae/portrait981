@@ -447,5 +447,3 @@ class FaceLightingAnalyzer(Module):
 
         return seg_map[sy1:sy2, sx1:sx2]
 
-    def cleanup(self):
-        pass

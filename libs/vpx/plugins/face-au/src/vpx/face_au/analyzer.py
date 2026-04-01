@@ -80,10 +80,12 @@ class FaceAUAnalyzer(Module):
 
         self._initialized = True
 
-    def cleanup(self) -> None:
+    def release(self) -> None:
+        """Release backend model resources."""
         if self._au_backend is not None:
             self._au_backend.cleanup()
-        logger.info("FaceAUAnalyzer cleaned up")
+        self._initialized = False
+        logger.info("FaceAUAnalyzer released")
 
     @processing_step(
         name="au_detection",

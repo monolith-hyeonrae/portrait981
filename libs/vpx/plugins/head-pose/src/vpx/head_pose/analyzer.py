@@ -81,10 +81,12 @@ class HeadPoseAnalyzer(Module):
 
         self._initialized = True
 
-    def cleanup(self) -> None:
+    def release(self) -> None:
+        """Release backend model resources."""
         if self._pose_backend is not None:
             self._pose_backend.cleanup()
-        logger.info("HeadPoseAnalyzer cleaned up")
+        self._initialized = False
+        logger.info("HeadPoseAnalyzer released")
 
     @processing_step(
         name="head_pose",

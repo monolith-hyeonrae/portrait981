@@ -113,10 +113,12 @@ class ExpressionAnalyzer(Module):
 
         self._initialized = True
 
-    def cleanup(self) -> None:
+    def release(self) -> None:
+        """Release backend model resources."""
         if self._expression_backend is not None:
             self._expression_backend.cleanup()
-        logger.info("ExpressionAnalyzer cleaned up")
+        self._initialized = False
+        logger.info("ExpressionAnalyzer released")
 
     # ========== Processing Steps (decorated methods) ==========
 

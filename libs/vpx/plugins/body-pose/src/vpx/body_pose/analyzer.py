@@ -118,13 +118,17 @@ class PoseAnalyzer(Module):
         self._initialized = True
         logger.info("PoseAnalyzer initialized")
 
-    def cleanup(self) -> None:
-        """Release backend resources."""
+    def reset(self) -> None:
+        """Per-run state reset (wrist tracking history)."""
+        self._wrist_history.clear()
+        self._last_fps_estimate = 30.0
+
+    def release(self) -> None:
+        """Release backend model resources."""
         if self._pose_backend is not None:
             self._pose_backend.cleanup()
-
-        self._wrist_history.clear()
-        logger.info("PoseAnalyzer cleaned up")
+        self._initialized = False
+        logger.info("PoseAnalyzer released")
 
     # ========== Processing Steps (decorated methods) ==========
 

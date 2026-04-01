@@ -87,11 +87,12 @@ class FaceParseAnalyzer(Module):
 
         self._initialized = True
 
-    def cleanup(self) -> None:
+    def release(self) -> None:
+        """Release backend model resources."""
         if self._parse_backend is not None:
             self._parse_backend.cleanup()
         self._initialized = False
-        logger.info("FaceParseAnalyzer cleaned up")
+        logger.info("FaceParseAnalyzer released")
 
     @processing_step(
         name="face_parse",

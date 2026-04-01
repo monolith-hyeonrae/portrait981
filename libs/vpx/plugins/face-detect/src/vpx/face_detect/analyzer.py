@@ -100,12 +100,17 @@ class FaceDetectionAnalyzer(Module):
         self._initialized = True
         logger.info("FaceDetectionAnalyzer initialized")
 
-    def cleanup(self) -> None:
-        if self._face_backend is not None:
-            self._face_backend.cleanup()
+    def reset(self) -> None:
+        """Per-run state reset (tracking IDs, previous faces)."""
         self._next_face_id = 0
         self._prev_faces = []
-        logger.info("FaceDetectionAnalyzer cleaned up")
+
+    def release(self) -> None:
+        """Release backend model resources."""
+        if self._face_backend is not None:
+            self._face_backend.cleanup()
+            self._initialized = False
+        logger.info("FaceDetectionAnalyzer released")
 
     # ========== Processing Steps (decorated methods) ==========
 

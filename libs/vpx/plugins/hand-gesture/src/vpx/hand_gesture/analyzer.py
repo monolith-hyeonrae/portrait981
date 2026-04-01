@@ -107,13 +107,12 @@ class GestureAnalyzer(Module):
         self._initialized = True
         logger.info("GestureAnalyzer initialized")
 
-    def cleanup(self) -> None:
-        """Release backend resources."""
+    def release(self) -> None:
+        """Release backend model resources."""
         if self._hand_backend is not None:
             self._hand_backend.cleanup()
-
         self._initialized = False
-        logger.info("GestureAnalyzer cleaned up")
+        logger.info("GestureAnalyzer released")
 
     # ========== Processing Steps (decorated methods) ==========
 

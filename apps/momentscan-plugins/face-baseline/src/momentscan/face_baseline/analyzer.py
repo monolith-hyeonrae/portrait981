@@ -55,11 +55,11 @@ class FaceBaselineAnalyzer(Module):
         self._frame_counter = 0
         logger.info("FaceBaselineAnalyzer initialized")
 
-    def cleanup(self) -> None:
+    def reset(self) -> None:
         if self._accumulators:
             for fid, acc in self._accumulators.items():
                 logger.debug(
-                    "face.baseline cleanup: face_id=%d n=%d area_mean=%.4f",
+                    "face.baseline reset: face_id=%d n=%d area_mean=%.4f",
                     fid, acc["n"], acc["area_mean"],
                 )
         self._accumulators.clear()

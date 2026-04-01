@@ -74,9 +74,6 @@ class QualityAnalyzer(Module):
     def initialize(self):
         pass
 
-    def cleanup(self):
-        pass
-
     @property
     def processing_steps(self) -> List[ProcessingStep]:
         """Get the list of internal processing steps (auto-extracted from decorators)."""

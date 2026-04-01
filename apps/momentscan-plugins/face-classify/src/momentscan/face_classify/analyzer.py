@@ -109,12 +109,11 @@ class FaceClassifierAnalyzer(Module):
         self._locked_main_frames = 0
         logger.info("FaceClassifierAnalyzer initialized")
 
-    def cleanup(self) -> None:
+    def reset(self) -> None:
         self._track_history.clear()
         self._track_stats.clear()
         self._locked_main_id = None
         self._locked_main_frames = 0
-        logger.info("FaceClassifierAnalyzer cleaned up")
 
     # ========== Processing Steps (decorated methods) ==========
 

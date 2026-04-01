@@ -85,7 +85,7 @@ class FaceGateAnalyzer(Module):
         self._stats_fail = 0
         self._stats_reasons = {}
 
-    def cleanup(self) -> None:
+    def reset(self) -> None:
         if self._stats_total > 0:
             pass_count = self._stats_total - self._stats_fail
             logger.info(
@@ -94,6 +94,9 @@ class FaceGateAnalyzer(Module):
                 100.0 * pass_count / self._stats_total,
                 dict(self._stats_reasons) if self._stats_reasons else "none",
             )
+        self._stats_total = 0
+        self._stats_fail = 0
+        self._stats_reasons = {}
 
     def process(
         self,

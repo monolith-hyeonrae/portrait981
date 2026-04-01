@@ -117,20 +117,18 @@ class PortraitScoreAnalyzer(Module):
         self._initialized = True
         logger.info("PortraitScoreAnalyzer initialized")
 
-    def cleanup(self) -> None:
-        if self._aesthetic is not None:
-            self._aesthetic.cleanup()
-            self._aesthetic = None
-        self._head_smoother.reset()
-        self._initialized = False
-        logger.info("PortraitScoreAnalyzer cleaned up")
-
     def reset(self) -> None:
         self._head_smoother.reset()
         self._clip_frame_counter = 0
         self._clip_cache_score = 0.0
         if self._aesthetic is not None:
             self._aesthetic._embed_ema = None
+
+    def release(self) -> None:
+        if self._aesthetic is not None:
+            self._aesthetic.cleanup()
+            self._aesthetic = None
+        self._initialized = False
 
     @processing_step(
         name="portrait_score",

@@ -43,9 +43,6 @@ class FrameScoringAnalyzer(Module):
     def initialize(self):
         pass
 
-    def cleanup(self):
-        pass
-
     def annotate(self, obs):
         """Return LabelMark with total score at bottom-left corner."""
         if obs is None or obs.data is None:

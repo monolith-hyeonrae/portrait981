@@ -415,13 +415,11 @@ class FaceQualityAnalyzer(Module):
         self._initialized = True
         logger.info("FaceQualityAnalyzer initialized")
 
-    def cleanup(self) -> None:
-        self._bbox_smoother.reset()
-        self._initialized = False
-        logger.info("FaceQualityAnalyzer cleaned up")
-
     def reset(self) -> None:
         self._bbox_smoother.reset()
+
+    def release(self) -> None:
+        self._initialized = False
 
     @processing_step(
         name="face_quality",
