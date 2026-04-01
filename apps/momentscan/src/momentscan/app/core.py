@@ -101,7 +101,10 @@ class Momentscan(vp.App):
         self._results: list[FrameResult] = []
 
     def initialize(self):
-        """모델 로딩 — 1회. 배치에서 재사용."""
+        """모델 로딩 — 1회. 배치에서 재사용.
+
+        judge 모델 + analyzer 모듈을 캐싱하여 scan() 반복 호출 시 재사용.
+        """
         if self._initialized:
             return
         self.judge = VisualBind(
@@ -110,8 +113,17 @@ class Momentscan(vp.App):
             expression=TreeStrategy.load(self._expression_model) if self._expression_model else None,
             pose=TreeStrategy.load(self._pose_model) if self._pose_model else None,
         )
+        # analyzer 모듈 캐싱 (entry_point 탐색 + 인스턴스화 1회)
+        self._resolved_modules = self.configure_modules(list(self.modules))
         self._initialized = True
-        logger.info("Momentscan initialized (models loaded)")
+        logger.info("Momentscan initialized (%d analyzers, judge ready)",
+                    len(self._resolved_modules))
+
+    def configure_modules(self, modules):
+        """Hook: 캐싱된 모듈 반환 (initialize 이후)."""
+        if self._initialized and hasattr(self, '_resolved_modules'):
+            return self._resolved_modules
+        return super().configure_modules(modules)
 
     def setup(self):
         """per-run 상태 리셋 — vp.App lifecycle hook."""
@@ -134,6 +146,7 @@ class Momentscan(vp.App):
     def shutdown(self):
         """리소스 해제."""
         self.judge = None
+        self._resolved_modules = None
         self._initialized = False
         logger.info("Momentscan shutdown")
 
