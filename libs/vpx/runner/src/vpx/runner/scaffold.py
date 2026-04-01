@@ -181,8 +181,12 @@ class {names["class_name"]}(Module):
         """Load models and resources."""
         pass
 
-    def cleanup(self) -> None:
-        """Release resources."""
+    def reset(self) -> None:
+        """Reset per-run state (called between videos in warm mode)."""
+        pass
+
+    def release(self) -> None:
+        """Release models and GPU resources (called at shutdown)."""
         pass
 
     def process(self, frame, deps=None) -> Optional[Observation]:
@@ -272,7 +276,7 @@ class Test{names["class_name"]}:
         self.analyzer.initialize()
 
     def teardown_method(self):
-        self.analyzer.cleanup()
+        self.analyzer.release()
 
     def test_harness(self):
         harness = PluginTestHarness()
