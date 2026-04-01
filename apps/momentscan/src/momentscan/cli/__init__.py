@@ -117,7 +117,8 @@ def _run_scan(args):
             pose_model=args.pose_model,
         )
 
-    results = app.scan(args.path, fps=args.fps)
+    ingest_member = getattr(args, "ingest", None)
+    results = app.scan(args.path, fps=args.fps, ingest=ingest_member)
     selected = app.select_frames(results, top_k=args.top_k)
 
     # 결과 출력
@@ -128,6 +129,8 @@ def _run_scan(args):
     print(f"\n{'='*50}")
     print(f"Video: {_P(args.path).name}")
     print(f"Frames: {total} | SHOOT: {shoot} | Gate rejected: {gated}")
+    if ingest_member:
+        print(f"Ingested SHOOT frames into '{ingest_member}'")
     print(f"{'='*50}")
 
     if selected:
@@ -136,20 +139,6 @@ def _run_scan(args):
             print(f"  #{r.frame_idx:4d}  {r.expression:8s} ({r.expression_conf:.0%})  {r.pose:6s} ({r.pose_conf:.0%})")
     else:
         print("\nNo frames selected.")
-
-    # Ingest
-    ingest_member = getattr(args, "ingest", None)
-    if ingest_member:
-        shoot_frames = [r for r in results if r.is_shoot]
-        try:
-            from personmemory import PersonMemory
-            mem = PersonMemory(ingest_member)
-            stats = mem.ingest(workflow_id=_P(args.path).stem, frames=shoot_frames)
-            p = mem.profile()
-            print(f"\nIngested into '{ingest_member}': {stats['new_nodes']} new, {stats['updated_nodes']} updated nodes")
-            print(f"  Total: {p.n_nodes} nodes, {p.n_total_frames} frames, {p.n_visits} visits")
-        except ImportError:
-            print("\npersonmemory not installed — skipping ingest")
 
     # Report
     report_path = getattr(args, "report", None)

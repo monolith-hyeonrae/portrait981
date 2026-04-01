@@ -137,52 +137,73 @@ class Momentscan(vp.App):
             self.initialize()
         self._results = []
 
-    def scan(self, video, *, fps=None, **kwargs):
+    def scan(self, video, *, fps=None, ingest=None, **kwargs):
         """단일 비디오 분석. initialize() 후 반복 호출 가능.
 
         warm executor를 재사용하여 모델 재로딩 없이 실행.
-        initialize() 전이면 cold path (vp.App.run)로 fallback.
 
         Args:
             video: 비디오 파일 경로.
             fps: 분석 FPS. None이면 클래스 기본값(2).
+            ingest: member_id를 지정하면 SHOOT 프레임을 personmemory에 저장.
 
         Returns:
             list[FrameResult]
         """
         if not self._initialized:
             # cold path: 최초 호출 시 vp.App.run()이 전체 lifecycle 수행
-            return self.run(video, fps=fps or self.fps, **kwargs)
+            results = self.run(video, fps=fps or self.fps, **kwargs)
+        else:
+            # warm path: executor 재사용
+            from visualpath.runner import _open_video_source
+            from visualpath.backends.simple import SimpleBackend
 
-        # warm path: executor 재사용
-        from visualpath.runner import _open_video_source
-        from visualpath.backends.simple import SimpleBackend
-
-        eff_fps = fps or self.fps
-        self.setup()
-        try:
-            frames, cleanup_fn = _open_video_source(video, eff_fps)
+            eff_fps = fps or self.fps
+            self.setup()
             try:
-                backend = SimpleBackend()
-                backend.execute(frames, self._warm_graph,
-                               on_frame=self.on_frame,
-                               executor=self._warm_executor)
-            finally:
-                if cleanup_fn:
-                    try:
-                        cleanup_fn()
-                    except Exception:
-                        pass
+                frames, cleanup_fn = _open_video_source(video, eff_fps)
+                try:
+                    backend = SimpleBackend()
+                    backend.execute(frames, self._warm_graph,
+                                   on_frame=self.on_frame,
+                                   executor=self._warm_executor)
+                finally:
+                    if cleanup_fn:
+                        try:
+                            cleanup_fn()
+                        except Exception:
+                            pass
 
-            from visualpath.runner import ProcessResult
-            result = ProcessResult(
-                triggers=[], frame_count=len(self._results),
-                duration_sec=len(self._results) / eff_fps if self._results else 0.0,
-                actual_backend="simple",
-            )
-            return self.after_run(result)
-        finally:
-            self.teardown()
+                from visualpath.runner import ProcessResult
+                result = ProcessResult(
+                    triggers=[], frame_count=len(self._results),
+                    duration_sec=len(self._results) / (fps or self.fps) if self._results else 0.0,
+                    actual_backend="simple",
+                )
+                results = self.after_run(result)
+            finally:
+                self.teardown()
+
+        if ingest and results:
+            self._ingest(ingest, video, results)
+
+        return results
+
+    def _ingest(self, member_id, video, results):
+        """SHOOT 프레임을 personmemory에 저장."""
+        from pathlib import Path
+        shoot_frames = [r for r in results if r.is_shoot]
+        if not shoot_frames:
+            return
+        try:
+            from personmemory import PersonMemory
+            mem = PersonMemory(member_id)
+            stats = mem.ingest(workflow_id=Path(video).stem, frames=shoot_frames)
+            logger.info("Ingested %d shoot frames into '%s': %d new, %d updated",
+                       len(shoot_frames), member_id,
+                       stats.get("new_nodes", 0), stats.get("updated_nodes", 0))
+        except ImportError:
+            logger.warning("personmemory not installed — skipping ingest")
 
     def shutdown(self):
         """리소스 해제 — executor cleanup + 모델 release."""
