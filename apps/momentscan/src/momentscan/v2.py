@@ -234,6 +234,39 @@ class MomentscanV2(vp.App):
                 buckets[key] = r
         return sorted(buckets.values(), key=lambda r: -self._qez_score(r))[:top_k]
 
+    def run_single_image(self, image: np.ndarray) -> FrameResult:
+        """단일 이미지 → FlowGraph 경로로 65D signal 추출.
+
+        비디오 파이프라인과 동일한 analyzer + bind_observations 경로를 사용.
+        SignalExtractor를 대체하는 정상 경로.
+
+        Args:
+            image: BGR 이미지 (np.ndarray).
+
+        Returns:
+            FrameResult with 65D signals + judgment.
+        """
+        from visualbase.core.frame import Frame
+        from visualpath.runner import get_backend, resolve_modules as _resolve_modules
+
+        self.setup()
+        try:
+            resolved = self.configure_modules(list(self.modules))
+            graph = self.configure_graph(resolved)
+
+            h, w = image.shape[:2]
+            frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
+
+            engine = get_backend(self.backend)
+            engine.execute(iter([frame]), graph, on_frame=self.on_frame)
+
+            if self._results:
+                return self._results[0]
+            return FrameResult(frame_idx=0, timestamp_ms=0.0, image=image,
+                               signals={}, judgment=JudgmentResult())
+        finally:
+            self.teardown()
+
 
 def _extract_face_embedding(observations: list) -> np.ndarray | None:
     for obs in observations:
