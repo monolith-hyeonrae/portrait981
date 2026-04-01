@@ -1,7 +1,7 @@
 """Integration tests — real personmemory I/O, mocked scan/generate.
 
 Tests the full portrait981 orchestration with:
-- ms.run(): mocked (no GPU needed)
+- Momentscan.scan(): mocked (no GPU needed)
 - personmemory: real file I/O (tmp_path isolation via PORTRAIT981_HOME)
 - PortraitGenerator: mocked (no ComfyUI needed)
 """
@@ -9,9 +9,8 @@ Tests the full portrait981 orchestration with:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,45 +18,7 @@ import pytest
 from portrait981.pipeline import Portrait981Pipeline
 from portrait981.types import JobSpec, JobStatus, PipelineConfig, StepEvent
 
-
-# -- Fake scan result that mimics what ms.run() actually returns --
-
-@dataclass
-class FakeSelectedFrame:
-    frame_idx: int
-    timestamp_ms: float
-    pose_name: str
-    pivot_name: str
-    quality_score: float
-    cell_score: float
-    cell_key: str
-
-
-@dataclass
-class FakePersonCollection:
-    person_id: int = 0
-    _frames: List[FakeSelectedFrame] = field(default_factory=list)
-    grid: Dict = field(default_factory=dict)
-
-    def all_frames(self):
-        return self._frames
-
-
-@dataclass
-class FakeCollectionResult:
-    frame_count: int = 100
-    persons: Dict[int, FakePersonCollection] = field(default_factory=dict)
-
-
-@dataclass
-class FakeScanResult:
-    highlights: List[Any] = field(default_factory=list)
-    collection: Any = None
-    bank: Any = None
-    frame_count: int = 100
-    duration_sec: float = 10.0
-    actual_backend: str = "simple"
-    stats: Dict[str, Any] = field(default_factory=dict)
+from conftest import FakeFrameResult
 
 
 @pytest.fixture
@@ -93,7 +54,7 @@ class TestScanThenGenerate:
     """Full pipeline with real personmemory I/O."""
 
     def test_scan_seeds_bank_then_generate_uses_it(self, bank_home):
-        """ms.run saves to bank → pipeline lookup finds refs → generate called."""
+        """scan saves to bank → pipeline lookup finds refs → generate called."""
         member_id = "integ_test_1"
 
         # Prepare: seed the bank as if scan+ingest had completed
@@ -134,12 +95,6 @@ class TestScanThenGenerate:
         ]
         _seed_bank(bank_home, member_id, entries)
 
-        # Mock ms.run (scan step) — returns a result but bank is pre-seeded
-        fake_scan = FakeScanResult(
-            highlights=[{"window_id": 0}],
-            frame_count=150,
-        )
-
         # Mock PortraitGenerator — capture what refs were passed
         captured_request = {}
 
@@ -150,9 +105,12 @@ class TestScanThenGenerate:
 
         events: List[StepEvent] = []
 
-        with patch("portrait981.pipeline.ms") as mock_ms, \
+        with patch("portrait981.pipeline.Momentscan") as MockScanner, \
              patch("portrait981.pipeline.PortraitGenerator") as mock_gen_cls:
-            mock_ms.run.return_value = fake_scan
+            scanner = MockScanner.return_value
+            scanner.scan.return_value = [FakeFrameResult() for _ in range(150)]
+            scanner.initialize.return_value = None
+            scanner.shutdown.return_value = None
             mock_gen_cls.return_value.generate.side_effect = capture_generate
 
             pipeline = Portrait981Pipeline(
@@ -176,7 +134,7 @@ class TestScanThenGenerate:
         assert result.error is None
 
         # Verify scan was called
-        mock_ms.run.assert_called_once()
+        scanner.scan.assert_called_once()
 
         # Verify lookup found the right ref (frontal + smile only)
         assert result.ref_count == 1
@@ -205,9 +163,12 @@ class TestScanThenGenerate:
         ]
         _seed_bank(bank_home, member_id, entries)
 
-        with patch("portrait981.pipeline.ms") as mock_ms, \
+        with patch("portrait981.pipeline.Momentscan") as MockScanner, \
              patch("portrait981.pipeline.PortraitGenerator") as mock_gen_cls:
-            mock_ms.run.return_value = FakeScanResult()
+            scanner = MockScanner.return_value
+            scanner.scan.return_value = [FakeFrameResult() for _ in range(100)]
+            scanner.initialize.return_value = None
+            scanner.shutdown.return_value = None
             mock_gen_cls.return_value.generate.return_value = MagicMock(
                 success=True, output_paths=[], error=None,
             )
@@ -230,9 +191,12 @@ class TestScanThenGenerate:
         member_id = "integ_empty"
 
         events: List[StepEvent] = []
-        with patch("portrait981.pipeline.ms") as mock_ms, \
+        with patch("portrait981.pipeline.Momentscan") as MockScanner, \
              patch("portrait981.pipeline.PortraitGenerator") as mock_gen_cls:
-            mock_ms.run.return_value = FakeScanResult()
+            scanner = MockScanner.return_value
+            scanner.scan.return_value = [FakeFrameResult() for _ in range(100)]
+            scanner.initialize.return_value = None
+            scanner.shutdown.return_value = None
 
             pipeline = Portrait981Pipeline(on_step=events.append)
             try:
@@ -270,9 +234,12 @@ class TestPartialFailureAndRetry:
 
         # Run 1: scan ok, generate fails
         events_1: List[StepEvent] = []
-        with patch("portrait981.pipeline.ms") as mock_ms, \
+        with patch("portrait981.pipeline.Momentscan") as MockScanner, \
              patch("portrait981.pipeline.PortraitGenerator") as mock_gen_cls:
-            mock_ms.run.return_value = FakeScanResult(frame_count=50)
+            scanner = MockScanner.return_value
+            scanner.scan.return_value = [FakeFrameResult() for _ in range(50)]
+            scanner.initialize.return_value = None
+            scanner.shutdown.return_value = None
             mock_gen_cls.return_value.generate.side_effect = ConnectionError(
                 "Connection refused: ComfyUI not running"
             )
@@ -288,7 +255,6 @@ class TestPartialFailureAndRetry:
 
         assert r1.status == JobStatus.PARTIAL
         assert r1.scan_result is not None
-        assert r1.scan_result.frame_count == 50
         assert "Connection refused" in r1.error
         assert r1.ref_count == 1
 
@@ -299,8 +265,11 @@ class TestPartialFailureAndRetry:
 
         # Run 2: generate_only retry — ComfyUI now available
         events_2: List[StepEvent] = []
-        with patch("portrait981.pipeline.ms") as mock_ms, \
+        with patch("portrait981.pipeline.Momentscan") as MockScanner, \
              patch("portrait981.pipeline.PortraitGenerator") as mock_gen_cls:
+            scanner = MockScanner.return_value
+            scanner.initialize.return_value = None
+            scanner.shutdown.return_value = None
             mock_gen_cls.return_value.generate.return_value = MagicMock(
                 success=True,
                 output_paths=["/out/portrait.png"],
@@ -319,7 +288,7 @@ class TestPartialFailureAndRetry:
         assert r2.status == JobStatus.DONE
         assert r2.error is None
         assert r2.ref_count == 1
-        mock_ms.run.assert_not_called()  # scan skipped
+        scanner.scan.assert_not_called()  # scan skipped
 
         # Verify events show scan skipped + generate ok
         steps_2 = [(e.step, e.status) for e in events_2]
@@ -375,9 +344,12 @@ class TestBatchWithBank:
             ]
             _seed_bank(bank_home, mid, entries)
 
-        with patch("portrait981.pipeline.ms") as mock_ms, \
+        with patch("portrait981.pipeline.Momentscan") as MockScanner, \
              patch("portrait981.pipeline.PortraitGenerator") as mock_gen_cls:
-            mock_ms.run.return_value = FakeScanResult()
+            scanner = MockScanner.return_value
+            scanner.scan.return_value = [FakeFrameResult() for _ in range(100)]
+            scanner.initialize.return_value = None
+            scanner.shutdown.return_value = None
             mock_gen_cls.return_value.generate.return_value = MagicMock(
                 success=True, output_paths=[], error=None,
             )

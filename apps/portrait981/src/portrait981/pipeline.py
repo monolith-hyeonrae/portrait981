@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
-import tempfile
 import threading
 import time
 from collections import defaultdict
@@ -12,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import List, Optional
 
-import momentscan as ms
+from momentscan.app import Momentscan
 from personmemory.ingest import lookup_frames
 from reportrait.generator import PortraitGenerator
 from reportrait.types import GenerationConfig, GenerationRequest
@@ -54,8 +52,16 @@ class Portrait981Pipeline:
         self._member_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
         self._node_pool = NodePool(self._config.comfy_urls)
         self._gen_executor: Optional[ThreadPoolExecutor] = None
+        self._scanner: Optional[Momentscan] = None
         self._shutdown = False
         self._interrupted = False
+
+    def _get_scanner(self) -> Momentscan:
+        """Lazy-init warm Momentscan instance (모델 1회 로딩)."""
+        if self._scanner is None:
+            self._scanner = Momentscan()
+            self._scanner.initialize()
+        return self._scanner
 
     def _get_gen_executor(self) -> ThreadPoolExecutor:
         """Lazy-init thread pool for generate steps."""
@@ -159,8 +165,11 @@ class Portrait981Pipeline:
         return handle
 
     def shutdown(self, wait: bool = True) -> None:
-        """Shutdown the pipeline executor."""
+        """Shutdown the pipeline executor and release scanner models."""
         self._shutdown = True
+        if self._scanner is not None:
+            self._scanner.shutdown()
+            self._scanner = None
         if self._gen_executor is not None:
             self._gen_executor.shutdown(wait=wait)
 
@@ -378,44 +387,21 @@ class Portrait981Pipeline:
         self._emit(handle, "scan", "started")
         scan_start = time.monotonic()
 
-        scan_output_dir = handle.job.output_dir
-        if scan_output_dir is None:
-            scan_output_dir = tempfile.mkdtemp(prefix="p981_scan_")
-
-        # Per-frame progress callback → emits "progress" events
-        frame_counter = [0]
-
-        def _on_frame(frame, results):
-            frame_counter[0] += 1
-            elapsed = time.monotonic() - scan_start
-            self._emit(
-                handle, "scan", "progress",
-                detail=f"frame {frame.frame_id}",
-                elapsed_sec=elapsed,
-                frame_id=frame.frame_id,
-            )
-            # Propagate interrupt into momentscan
-            return not self._interrupted
-
         with self._member_locks[handle.job.member_id]:
-            scan_result = ms.run(
+            scanner = self._get_scanner()
+            scan_result = scanner.scan(
                 handle.job.video_path,
-                member_id=handle.job.member_id or None,
-                output_dir=scan_output_dir,
-                collection_path=handle.job.collection_path,
                 fps=self._config.scan_fps,
-                backend=self._config.scan_backend,
-                on_frame=_on_frame,
             )
 
         timing.scan_sec = time.monotonic() - scan_start
         handle.status = JobStatus.INGESTED
 
-        highlights = getattr(scan_result, "highlights", [])
-        frame_count = getattr(scan_result, "frame_count", 0)
+        frame_count = len(scan_result) if isinstance(scan_result, list) else getattr(scan_result, "frame_count", 0)
+        shoot_count = sum(1 for r in scan_result if getattr(r, "is_shoot", False)) if isinstance(scan_result, list) else 0
         self._emit(
             handle, "scan", "completed",
-            detail=f"{frame_count} frames, {len(highlights)} highlights",
+            detail=f"{frame_count} frames, {shoot_count} shoot",
             elapsed_sec=timing.scan_sec,
         )
         return scan_result

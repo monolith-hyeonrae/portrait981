@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,14 +12,7 @@ import pytest
 from portrait981.pipeline import Portrait981Pipeline
 from portrait981.types import JobResult, JobSpec, JobStatus, PipelineConfig, StepEvent
 
-
-@dataclass
-class _FakeScanResult:
-    highlights: List[Any] = field(default_factory=lambda: [{"window_id": 0}])
-    frame_count: int = 100
-    duration_sec: float = 10.0
-    actual_backend: str = "simple"
-    stats: Dict[str, Any] = field(default_factory=dict)
+from conftest import FakeFrameResult
 
 
 class TestRunOneFull:
@@ -34,7 +26,7 @@ class TestRunOneFull:
             pipeline.shutdown()
 
         assert result.status == JobStatus.DONE
-        mock_ms_run.run.assert_called_once()
+        mock_ms_run.scan.assert_called_once()
         mock_lookup.assert_called_once()
         mock_generator.generate.assert_called_once()
         assert result.scan_result is not None
@@ -53,14 +45,14 @@ class TestRunOneFull:
             pipeline.shutdown()
 
         assert result.status == JobStatus.DONE
-        mock_ms_run.run.assert_called_once()
+        mock_ms_run.scan.assert_called_once()
         mock_lookup.assert_not_called()
         mock_generator.generate.assert_not_called()
         assert result.scan_result is not None
         assert result.generation_result is None
 
     def test_generate_only(self, mock_ms_run, mock_lookup, mock_generator):
-        """generate_only=True -> ms.run 미호출."""
+        """generate_only=True -> scanner.scan 미호출."""
         job = JobSpec(member_id="test_1", generate_only=True)
         pipeline = Portrait981Pipeline()
         try:
@@ -69,7 +61,7 @@ class TestRunOneFull:
             pipeline.shutdown()
 
         assert result.status == JobStatus.DONE
-        mock_ms_run.run.assert_not_called()
+        mock_ms_run.scan.assert_not_called()
         mock_lookup.assert_called_once()
         mock_generator.generate.assert_called_once()
 
@@ -87,9 +79,12 @@ class TestRunOneFull:
         mock_generator.generate.assert_not_called()
 
     def test_scan_fails(self, mock_lookup, mock_generator):
-        """ms.run 예외 -> FAILED."""
-        with patch("portrait981.pipeline.ms") as m:
-            m.run.side_effect = RuntimeError("GPU OOM")
+        """scanner.scan 예외 -> FAILED."""
+        with patch("portrait981.pipeline.Momentscan") as cls:
+            instance = cls.return_value
+            instance.initialize.return_value = None
+            instance.shutdown.return_value = None
+            instance.scan.side_effect = RuntimeError("GPU OOM")
             job = JobSpec(video_path="v.mp4", member_id="test_1")
             pipeline = Portrait981Pipeline()
             try:
@@ -189,7 +184,7 @@ class TestStepEvents:
 
         scan_done = [e for e in events if e.step == "scan" and e.status == "completed"][0]
         assert "100 frames" in scan_done.detail
-        assert "1 highlights" in scan_done.detail
+        assert "shoot" in scan_done.detail
         assert scan_done.elapsed_sec > 0
 
     def test_lookup_completed_has_ref_count(self, mock_ms_run, mock_lookup, mock_generator):
@@ -259,8 +254,11 @@ class TestStepEvents:
     def test_scan_failed_event(self, mock_lookup, mock_generator):
         """scan 예외 -> scan failed 이벤트."""
         events: List[StepEvent] = []
-        with patch("portrait981.pipeline.ms") as m:
-            m.run.side_effect = RuntimeError("GPU OOM")
+        with patch("portrait981.pipeline.Momentscan") as cls:
+            instance = cls.return_value
+            instance.initialize.return_value = None
+            instance.shutdown.return_value = None
+            instance.scan.side_effect = RuntimeError("GPU OOM")
             pipeline = Portrait981Pipeline(on_step=events.append)
             try:
                 pipeline.run_one(JobSpec(video_path="v.mp4", member_id="t1"))
@@ -333,13 +331,16 @@ class TestConcurrency:
         call_order = []
 
         def slow_scan(*args, **kwargs):
-            call_order.append(("start", kwargs.get("member_id")))
+            call_order.append(("start", None))
             time.sleep(0.05)
-            call_order.append(("end", kwargs.get("member_id")))
-            return _FakeScanResult()
+            call_order.append(("end", None))
+            return [FakeFrameResult() for _ in range(100)]
 
-        with patch("portrait981.pipeline.ms") as m:
-            m.run.side_effect = slow_scan
+        with patch("portrait981.pipeline.Momentscan") as cls:
+            instance = cls.return_value
+            instance.initialize.return_value = None
+            instance.shutdown.return_value = None
+            instance.scan.side_effect = slow_scan
             config = PipelineConfig(max_scan_workers=2)
             pipeline = Portrait981Pipeline(config)
             try:
@@ -362,13 +363,16 @@ class TestConcurrency:
         call_order = []
 
         def tracked_scan(*args, **kwargs):
-            call_order.append(("start", kwargs.get("member_id")))
+            call_order.append(("start", None))
             time.sleep(0.02)
-            call_order.append(("end", kwargs.get("member_id")))
-            return _FakeScanResult()
+            call_order.append(("end", None))
+            return [FakeFrameResult() for _ in range(100)]
 
-        with patch("portrait981.pipeline.ms") as m:
-            m.run.side_effect = tracked_scan
+        with patch("portrait981.pipeline.Momentscan") as cls:
+            instance = cls.return_value
+            instance.initialize.return_value = None
+            instance.shutdown.return_value = None
+            instance.scan.side_effect = tracked_scan
             pipeline = Portrait981Pipeline()
             try:
                 jobs = [
@@ -429,15 +433,16 @@ class TestShutdown:
 
 class TestPassedArguments:
     def test_scan_args_forwarded(self, mock_lookup, mock_generator):
-        """ms.run()에 올바른 인자 전달."""
-        with patch("portrait981.pipeline.ms") as m:
-            m.run.return_value = _FakeScanResult()
-            config = PipelineConfig(scan_fps=5, scan_backend="worker")
+        """scanner.scan()에 올바른 인자 전달."""
+        with patch("portrait981.pipeline.Momentscan") as cls:
+            instance = cls.return_value
+            instance.initialize.return_value = None
+            instance.shutdown.return_value = None
+            instance.scan.return_value = [FakeFrameResult() for _ in range(100)]
+            config = PipelineConfig(scan_fps=5)
             job = JobSpec(
                 video_path="video.mp4",
                 member_id="person_1",
-                collection_path="/cat/v1",
-                output_dir="/out",
             )
             pipeline = Portrait981Pipeline(config)
             try:
@@ -445,15 +450,10 @@ class TestPassedArguments:
             finally:
                 pipeline.shutdown()
 
-            m.run.assert_called_once()
-            call_kwargs = m.run.call_args
+            instance.scan.assert_called_once()
+            call_kwargs = instance.scan.call_args
             assert call_kwargs[0] == ("video.mp4",)
-            assert call_kwargs[1]["member_id"] == "person_1"
-            assert call_kwargs[1]["output_dir"] == "/out"
-            assert call_kwargs[1]["collection_path"] == "/cat/v1"
             assert call_kwargs[1]["fps"] == 5
-            assert call_kwargs[1]["backend"] == "worker"
-            assert callable(call_kwargs[1]["on_frame"])
 
     def test_lookup_args_forwarded(self, mock_ms_run, mock_generator):
         """lookup_frames에 올바른 인자 전달."""

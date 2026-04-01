@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,6 +22,14 @@ class FakeScanResult:
 
 
 @dataclass
+class FakeFrameResult:
+    """Minimal FrameResult-like for pipeline tests."""
+    is_shoot: bool = True
+    frame_idx: int = 0
+    face_detected: bool = True
+
+
+@dataclass
 class FakeGenerationResult:
     success: bool = True
     output_paths: List[str] = field(default_factory=lambda: ["/out/portrait.png"])
@@ -32,10 +40,13 @@ class FakeGenerationResult:
 
 @pytest.fixture
 def mock_ms_run():
-    """Mock momentscan.run() to return a fake result."""
-    with patch("portrait981.pipeline.ms") as m:
-        m.run.return_value = FakeScanResult()
-        yield m
+    """Mock Momentscan scanner to return fake frame results."""
+    with patch("portrait981.pipeline.Momentscan") as cls:
+        instance = cls.return_value
+        instance.scan.return_value = [FakeFrameResult() for _ in range(100)]
+        instance.initialize.return_value = None
+        instance.shutdown.return_value = None
+        yield instance
 
 
 @pytest.fixture
