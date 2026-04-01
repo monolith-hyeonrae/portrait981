@@ -103,7 +103,8 @@ class Momentscan(vp.App):
     def initialize(self):
         """모델 로딩 — 1회. 배치에서 재사용.
 
-        judge 모델 + analyzer 모듈을 캐싱하여 scan() 반복 호출 시 재사용.
+        judge 모델 + analyzer 모듈 + warm executor를 캐싱.
+        scan() 반복 호출 시 모델 재로딩 없이 실행.
         """
         if self._initialized:
             return
@@ -115,13 +116,18 @@ class Momentscan(vp.App):
         )
         # analyzer 모듈 캐싱 (entry_point 탐색 + 인스턴스화 1회)
         self._resolved_modules = self.configure_modules(list(self.modules))
+        # warm executor: graph build + module initialize (모델 로딩) 1회
+        self._warm_graph = self.configure_graph(self._resolved_modules)
+        from visualpath.backends.simple.executor import GraphExecutor
+        self._warm_executor = GraphExecutor(self._warm_graph, keep_warm=True)
+        self._warm_executor.initialize()
         self._initialized = True
-        logger.info("Momentscan initialized (%d analyzers, judge ready)",
+        logger.info("Momentscan initialized (%d analyzers, warm executor ready)",
                     len(self._resolved_modules))
 
     def configure_modules(self, modules):
         """Hook: 캐싱된 모듈 반환 (initialize 이후)."""
-        if self._initialized and hasattr(self, '_resolved_modules'):
+        if self._initialized and hasattr(self, '_resolved_modules') and self._resolved_modules:
             return self._resolved_modules
         return super().configure_modules(modules)
 
@@ -134,6 +140,9 @@ class Momentscan(vp.App):
     def scan(self, video, *, fps=None, **kwargs):
         """단일 비디오 분석. initialize() 후 반복 호출 가능.
 
+        warm executor를 재사용하여 모델 재로딩 없이 실행.
+        initialize() 전이면 cold path (vp.App.run)로 fallback.
+
         Args:
             video: 비디오 파일 경로.
             fps: 분석 FPS. None이면 클래스 기본값(2).
@@ -141,10 +150,46 @@ class Momentscan(vp.App):
         Returns:
             list[FrameResult]
         """
-        return self.run(video, fps=fps or self.fps, **kwargs)
+        if not self._initialized:
+            # cold path: 최초 호출 시 vp.App.run()이 전체 lifecycle 수행
+            return self.run(video, fps=fps or self.fps, **kwargs)
+
+        # warm path: executor 재사용
+        from visualpath.runner import _open_video_source
+        from visualpath.backends.simple import SimpleBackend
+
+        eff_fps = fps or self.fps
+        self.setup()
+        try:
+            frames, cleanup_fn = _open_video_source(video, eff_fps)
+            try:
+                backend = SimpleBackend()
+                backend.execute(frames, self._warm_graph,
+                               on_frame=self.on_frame,
+                               executor=self._warm_executor)
+            finally:
+                if cleanup_fn:
+                    try:
+                        cleanup_fn()
+                    except Exception:
+                        pass
+
+            from visualpath.runner import ProcessResult
+            result = ProcessResult(
+                triggers=[], frame_count=len(self._results),
+                duration_sec=len(self._results) / eff_fps if self._results else 0.0,
+                actual_backend="simple",
+            )
+            return self.after_run(result)
+        finally:
+            self.teardown()
 
     def shutdown(self):
-        """리소스 해제."""
+        """리소스 해제 — executor cleanup + 모델 release."""
+        if hasattr(self, '_warm_executor') and self._warm_executor is not None:
+            self._warm_executor.cleanup()
+            self._warm_executor = None
+        self._warm_graph = None
         self.judge = None
         self._resolved_modules = None
         self._initialized = False
