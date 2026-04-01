@@ -13,6 +13,8 @@ from typing import Optional, Union
 
 import numpy as np
 
+from momentscan.app import Momentscan
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_FPS = 2
@@ -32,7 +34,6 @@ def run(
     Returns:
         list[FrameResult]
     """
-    from momentscan.app import Momentscan
     app = Momentscan(
         quality_model=quality_model,
         expression_model=expression_model,
@@ -58,7 +59,6 @@ def extract_signals(
     Returns:
         FrameResult with signals, judgment, face_detected, etc.
     """
-    from momentscan.app import Momentscan
     app = Momentscan(
         quality_model=quality_model,
         expression_model=expression_model,
