@@ -81,7 +81,6 @@ portrait981/                    ← repo root
 │   └── portrait981-docs/       # 문서 사이트 (mkdocs, readthedocs 테마)
 ├── data/
 │   ├── datasets/portrait-v1/   # 통합 데이터셋 (images/ + labels.csv)
-│   └── catalogs/portrait-v1/   # CatalogStrategy 산출물 (_profile.json)
 ├── models/                     # 학습 산출물 (XGBoost .pkl/.json)
 ├── scripts/                    # Day 0 분석, 비교, Video-LLM 테스트
 ├── pyproject.toml              # workspace root
