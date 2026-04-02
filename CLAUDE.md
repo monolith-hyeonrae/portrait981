@@ -39,7 +39,7 @@ visualbase (미디어 I/O + IPC 인프라)
           → vpx-hand-gesture     (MediaPipe Hands)
       → visualbind (observer 출력 결합 — 65D signal, VisualBind 4단 judge, XGBoost/Heuristic 전략)
       → momentscan (분석/수집 앱)
-          → momentscan-plugins (8개 내부 analyzer 플러그인)
+          → momentscan-plugins (3개 내부 analyzer 플러그인)
       → personmemory (저장/관리)
       → reportrait (AI 초상화 생성, ComfyUI 브릿지)
       → annotator (라벨링/리뷰/병합 도구)
@@ -70,15 +70,10 @@ portrait981/                    ← repo root
 │           └── hand-gesture/   # MediaPipe Hands
 ├── apps/
 │   ├── momentscan/             # 얼굴/장면 분석 (app/ + cli/)
-│   ├── momentscan-plugins/     # momentscan 내부 analyzer 플러그인 (8개)
-│   │   ├── face-classify/      # 역할 분류
+│   ├── momentscan-plugins/     # momentscan 내부 analyzer 플러그인 (3개)
 │   │   ├── face-quality/       # 얼굴 품질 (blur/exposure + seg)
-│   │   ├── face-baseline/      # Welford online stats
-│   │   ├── face-gate/          # per-face quality gate
 │   │   ├── face-lighting/      # 얼굴 조명 분석 (DPR + 9-sector skin)
-│   │   ├── frame-quality/      # 프레임 전체 blur/brightness
-│   │   ├── frame-scoring/      # 프레임 스코어링
-│   │   └── portrait-score/     # CLIP 4축 aesthetic scoring
+│   │   └── frame-quality/      # 프레임 전체 blur/brightness
 │   ├── annotator/              # 라벨링/리뷰/병합 도구 (CLI: annotator)
 │   ├── personmemory/           # Identity memory bank + 프레임 저장
 │   ├── reportrait/             # AI 초상화 생성 (ComfyUI 브릿지)
@@ -114,14 +109,9 @@ portrait981/                    ← repo root
 | vpx-viz | `libs/vpx/viz/` | 시각화 도구 |
 | visualbind | `libs/visualbind/` | Observer 출력 결합 (65D signal → 4단 judge: gate→quality→expression→pose) |
 | momentscan | `apps/momentscan/` | 얼굴/장면 분석 (app/ + cli/, initialize/scan/shutdown lifecycle) |
-| momentscan-face-classify | `apps/momentscan-plugins/face-classify/` | 역할 분류 |
 | momentscan-face-quality | `apps/momentscan-plugins/face-quality/` | 얼굴 품질 (blur/exposure + seg) |
-| momentscan-face-baseline | `apps/momentscan-plugins/face-baseline/` | Welford online stats |
-| momentscan-face-gate | `apps/momentscan-plugins/face-gate/` | per-face quality gate |
 | momentscan-face-lighting | `apps/momentscan-plugins/face-lighting/` | 얼굴 조명 분석 (DPR SH + 9-sector skin) |
 | momentscan-frame-quality | `apps/momentscan-plugins/frame-quality/` | 프레임 전체 blur/brightness |
-| momentscan-frame-scoring | `apps/momentscan-plugins/frame-scoring/` | 프레임 스코어링 |
-| momentscan-portrait-score | `apps/momentscan-plugins/portrait-score/` | CLIP 4축 aesthetic scoring |
 | personmemory | `apps/personmemory/` | Identity memory bank + 프레임 저장 |
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 | portrait981 | `apps/portrait981/` | 통합 오케스트레이터 (E2E 파이프라인) |
@@ -136,9 +126,9 @@ portrait981/                    ← repo root
 **`vpx` namespace** (7개 analyzer + sdk + runner + viz 패키지):
 - 각 `libs/vpx/*/src/vpx/__init__.py`에 `pkgutil.extend_path` 사용
 
-**`momentscan` namespace** (core + 8개 내부 analyzer 플러그인):
+**`momentscan` namespace** (core + 3개 내부 analyzer 플러그인):
 - `apps/momentscan/`: core 패키지
-- `apps/momentscan-plugins/*/`: 8개 analyzer 플러그인 (face-classify, face-quality, face-baseline, face-gate, face-lighting, frame-quality, frame-scoring, portrait-score)
+- `apps/momentscan-plugins/*/`: 3개 analyzer 플러그인 (face-quality, face-lighting, frame-quality)
 - 각 플러그인의 `src/momentscan/__init__.py`에 `pkgutil.extend_path` 사용
 
 ## Import 경로
