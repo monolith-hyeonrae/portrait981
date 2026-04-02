@@ -1,9 +1,12 @@
 """Base source abstract class."""
 
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from visualbase.core.frame import Frame
+
+if TYPE_CHECKING:
+    from visualbase.sources.profile import SourceProfile
 
 
 class BaseSource(ABC):
@@ -12,6 +15,12 @@ class BaseSource(ABC):
     All video sources must implement this interface to be compatible
     with VisualBase.
     """
+
+    @property
+    def profile(self) -> "SourceProfile":
+        """Source media characteristics. Override for accurate metadata."""
+        from visualbase.sources.profile import SourceProfile
+        return SourceProfile.unknown(uri=str(getattr(self, '_path', '')))
 
     @abstractmethod
     def open(self) -> None:

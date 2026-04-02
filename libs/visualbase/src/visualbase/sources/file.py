@@ -31,6 +31,15 @@ class FileSource(BaseSource):
         self._height: int = 0
         self._frame_count: int = 0
         self._duration_ns: int = 0
+        self._profile = None
+
+    @property
+    def profile(self):
+        """Source media characteristics (probed on first access)."""
+        if self._profile is None:
+            from visualbase.sources.profile import SourceProfile
+            self._profile = SourceProfile.from_file(self._path)
+        return self._profile
 
     def open(self) -> None:
         """Open the video file."""

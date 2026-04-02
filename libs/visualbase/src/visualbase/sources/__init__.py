@@ -1,8 +1,9 @@
 from visualbase.sources.base import BaseSource
 from visualbase.sources.file import FileSource
 from visualbase.sources.image import ImageSource
+from visualbase.sources.profile import SourceProfile
 
-__all__ = ["BaseSource", "FileSource", "ImageSource", "open_video"]
+__all__ = ["BaseSource", "FileSource", "ImageSource", "SourceProfile", "open_video"]
 
 
 def open_video(path, *, fps=None):
