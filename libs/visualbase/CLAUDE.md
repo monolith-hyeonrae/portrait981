@@ -1,15 +1,17 @@
 # VisualBase - Claude Session Context
 
-> 최종 업데이트: 2026-02-12
-> 상태: **Phase 9 완료** (182 tests)
+> 최종 업데이트: 2026-04-02
+> 상태: **182 tests**
 
 ## 프로젝트 역할
 
 **범용 미디어 I/O + 프로세스 인프라 미들웨어** (재사용 가능):
-- 카메라/파일/RTSP 소스에서 프레임 스트리밍
+- 카메라/파일/RTSP/이미지 소스에서 프레임 스트리밍
 - Ring Buffer로 메모리 효율적 버퍼링
 - FFmpeg 기반 클립 추출
-- IPC (FIFO, UDS, ZMQ PUB/SUB, ZMQ RPC) 통신 — 모든 프로세스 간 통신의 단일 소스
+- ROI (Region of Interest): 파생 미디어 소스 관리 + 좌표계 태깅
+- SourceProfile: 미디어 소스 특성 보존 (codec, bit_depth, color_space)
+- IPC (FIFO, UDS, ZMQ PUB/SUB, ZMQ RPC) 통신
 
 ## 아키텍처 위치
 
@@ -27,18 +29,22 @@
 
 | 모듈 | 제공 | 사용처 |
 |------|------|--------|
-| `Frame` | 비디오 프레임 + 타임스탬프 | visualpath, momentscan |
-| `RingBuffer` | 메모리 효율적 버퍼링 | 클립 추출 |
-| `Clipper` | 프레임 범위 추출 | momentscan Action |
-| `Trigger` | 이벤트 신호 타입 | visualpath Fusion |
-| `IPC` | 프로세스 간 통신 | 분산 처리 |
+| `Frame` | 비디오 프레임 + crop/resize/from_image 유틸 | 모든 analyzer |
+| `ROISpec` / `ROICrop` | 공식 ROI 정의 + 좌표 매핑 | face.detect → 하위 analyzer |
+| `Coord` / `Coord3D` | 좌표계 태깅 (Space.PIXEL/NORM, roi명) | 좌표 혼란 방지 |
+| `SourceProfile` | 미디어 소스 특성 (codec, bit_depth, color_space) | Trigger 클립 추출 |
+| `FileSource` / `ImageSource` | 비디오/이미지 소스 | visualpath, momentscan |
+| `open_video(path, fps=)` | 비디오 → Frame iterator + cleanup | momentscan warm path |
+| `RingBuffer` | 메모리 효율적 버퍼링 | 실시간 클립 추출 |
+| `Trigger` / `Clipper` | 이벤트 → 원본 클립 추출 | 향후 Trigger Flow |
+| `IPC` | 프로세스 간 통신 | Worker 격리 (visualpath-isolation) |
 
 ## 디렉토리 구조
 
 ```
 visualbase/
-├── sources/       # FileSource, CameraSource, RTSPSource
-├── core/          # Frame, RingBuffer, Sampler
+├── sources/       # FileSource, ImageSource, CameraSource, RTSPSource, SourceProfile, open_video
+├── core/          # Frame, RingBuffer, ROISpec, ROICrop, Coord, Space
 ├── packaging/     # Trigger, Clipper
 ├── ipc/           # FIFO, UDS, ZMQ PUB/SUB, ZMQ RPC
 │   ├── interfaces.py   # ABCs: VideoReader/Writer, MessageSender/Receiver, RPCServer/Client
