@@ -1,6 +1,6 @@
 """Face quality analyzer — face crop blur and exposure assessment.
 
-FaceQualityAnalyzer: depends on face.detect, optional_depends on face.parse.
+FaceQualityAnalyzer: depends on face.detect and face.parse.
 Computes quality metrics from a tight face crop using a 3-level mask fallback:
   1. face.parse (BiSeNet) — pixel-precise face skin mask
   2. Landmark ellipse (5-point) — geometric approximation
@@ -379,12 +379,10 @@ class FaceQualityAnalyzer(Module):
     Uses a 3-level mask fallback (face.parse → landmark ellipse → center patch)
     to measure quality on face-only pixels, excluding background/hair/clothing.
 
-    depends: ["face.detect"]
-    optional_depends: ["face.parse"]
+    depends: ["face.detect", "face.parse"]
     """
 
-    depends = ["face.detect"]
-    optional_depends = ["face.parse"]
+    depends = ["face.detect", "face.parse"]
 
     def __init__(
         self,

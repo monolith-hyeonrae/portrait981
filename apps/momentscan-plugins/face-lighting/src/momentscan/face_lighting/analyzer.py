@@ -74,7 +74,7 @@ class FaceLightingAnalyzer(Module):
     """
 
     name = "face.lighting"
-    depends = ("face.detect", "face.parse")
+    depends = ["face.detect", "face.parse"]
 
     def initialize(self):
         self._dpr = None

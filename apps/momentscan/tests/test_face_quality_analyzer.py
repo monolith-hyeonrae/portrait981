@@ -291,7 +291,7 @@ class TestFaceQualityAnalyzer:
         analyzer = FaceQualityAnalyzer()
         assert analyzer.name == "face.quality"
         assert "face.detect" in analyzer.depends
-        assert "face.parse" in analyzer.optional_depends
+        assert "face.parse" in analyzer.depends
 
     def test_process_basic(self):
         """Basic process without face.parse (center_patch fallback)."""
