@@ -286,6 +286,9 @@ class FaceDetectionAnalyzer(Module):
             "tracking_active": len(self._prev_faces),
         }
 
+        # Generate ROI crops for main face (largest)
+        roi_crops = self._generate_roi_crops(image, detected_faces, frame.frame_id)
+
         return Observation(
             source=self.name,
             frame_id=frame.frame_id,
@@ -295,10 +298,36 @@ class FaceDetectionAnalyzer(Module):
                 faces=face_observations,
                 detected_faces=detected_faces,
                 image_size=(w, h),
+                roi_crops=roi_crops,
             ),
             metadata={"_metrics": _metrics},
             timing=timing,
         )
+
+    def _generate_roi_crops(self, image, detected_faces, frame_id):
+        """Generate standard ROI crops for the main (largest) face."""
+        if not detected_faces:
+            return {}
+        try:
+            from visualbase.core.roi import ROICrop
+            from vpx.sdk.roi_specs import ROI_REGISTRY
+        except ImportError:
+            return {}
+
+        # Main face = largest bbox area
+        main_face = max(detected_faces, key=lambda f: f.bbox[2] * f.bbox[3])
+        x, y, bw, bh = main_face.bbox
+
+        # Convert (x, y, w, h) → (x1, y1, x2, y2) for ROICrop.from_bbox
+        bbox_xyxy = (x, y, x + bw, y + bh)
+
+        crops = {}
+        for name, spec in ROI_REGISTRY.items():
+            try:
+                crops[name] = ROICrop.from_bbox(spec, image, bbox_xyxy, frame_id)
+            except Exception:
+                pass
+        return crops
 
     def process_batch(
         self,
