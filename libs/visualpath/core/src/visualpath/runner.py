@@ -125,7 +125,8 @@ def resolve_modules(
 def _open_video_source(video: Union[str, Path], fps: int):
     """Open a video source, returning (frames_iterator, cleanup_fn).
 
-    Tries visualbase first, falls back to OpenCV.
+    Delegates to visualbase.open_video() which handles FPS skipping
+    and source lifecycle.
 
     Args:
         video: Path to video file.
@@ -134,19 +135,10 @@ def _open_video_source(video: Union[str, Path], fps: int):
     Returns:
         Tuple of (frames_iterator, optional_cleanup_function).
     """
-    vb = None
     try:
-        from visualbase import VideoBase
-        vb = VideoBase()
-        source = vb.open(str(video))
-        frames = source.stream(fps=fps)
-        return frames, lambda: vb.disconnect()
+        from visualbase.sources import open_video
+        return open_video(video, fps=fps)
     except Exception:
-        if vb is not None:
-            try:
-                vb.disconnect()
-            except Exception:
-                pass
         # Fallback to OpenCV
         return _opencv_frames(str(video), fps), None
 

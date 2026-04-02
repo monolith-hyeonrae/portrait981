@@ -6,8 +6,10 @@ from visualbase.packaging.trigger import Trigger, TriggerType
 from visualbase.packaging.clipper import ClipResult
 from visualbase.sources.base import BaseSource
 from visualbase.sources.file import FileSource
+from visualbase.sources.image import ImageSource
 from visualbase.sources.camera import CameraSource
 from visualbase.sources.rtsp import RTSPSource
+from visualbase.sources import open_video
 from visualbase.tools.viewer import FrameViewer, play
 
 # IPC modules for A-B*-C architecture
@@ -41,8 +43,10 @@ __all__ = [
     # Sources
     "BaseSource",
     "FileSource",
+    "ImageSource",
     "CameraSource",
     "RTSPSource",
+    "open_video",
     # Tools
     "FrameViewer",
     "play",

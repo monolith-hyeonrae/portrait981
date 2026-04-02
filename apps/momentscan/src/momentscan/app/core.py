@@ -363,16 +363,15 @@ class Momentscan(vp.App):
         Returns:
             FrameResult with 65D signals + judgment.
         """
-        from visualbase.core.frame import Frame
-        from visualpath.runner import get_backend, resolve_modules as _resolve_modules
+        from visualbase import Frame
+        from visualpath.runner import get_backend
 
         self.setup()
         try:
             resolved = self.configure_modules(list(self.modules))
             graph = self.configure_graph(resolved)
 
-            h, w = image.shape[:2]
-            frame = Frame.from_array(image, frame_id=0, t_src_ns=0)
+            frame = Frame.from_image(image)
 
             engine = get_backend(self.backend)
             engine.execute(iter([frame]), graph, on_frame=self.on_frame)
