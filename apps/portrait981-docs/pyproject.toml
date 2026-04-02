@@ -8,6 +8,8 @@ dependencies = []
 [project.optional-dependencies]
 serve = [
     "mkdocs>=1.6",
+    "mkdocs-material>=9.0",
+    "pymdown-extensions>=10.0",
 ]
 
 [build-system]

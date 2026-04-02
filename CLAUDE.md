@@ -125,7 +125,7 @@ portrait981/                    ← repo root
 | personmemory | `apps/personmemory/` | Identity memory bank + 프레임 저장 |
 | reportrait | `apps/reportrait/` | AI 초상화 생성 (ComfyUI) |
 | portrait981 | `apps/portrait981/` | 통합 오케스트레이터 (E2E 파이프라인) |
-| portrait981-serve | `apps/portrait981-serve/` | 서빙 레이어 (REST API + S3 + 노드풀) |
+| portrait981-serve | `apps/portrait981-serve/` | 서빙 레이어 (FastAPI + S3 + ComfyUI 노드풀, warm scanner) |
 | portrait981-docs | `apps/portrait981-docs/` | 문서 사이트 (mkdocs, 아키텍처/연구/앱 설계/비즈니스) |
 | annotator | `apps/annotator/` | 라벨링/리뷰/병합 도구 (CLI: `annotator label/review/merge`) |
 
