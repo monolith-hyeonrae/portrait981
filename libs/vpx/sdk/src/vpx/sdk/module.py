@@ -1,30 +1,27 @@
 """Module base class for vpx analyzers.
 
-Extends visualpath's Module with a backwards-compatible analyze() alias.
+Extends visualpath's Module with ROI requirements and analyze() alias.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from visualpath.core.module import Module as VisualPathModule
 
 
 class Module(VisualPathModule):
-    """Module with backwards-compatible analyze() alias.
+    """Base class for vpx analyzer modules.
 
-    This class extends visualpath's Module to provide the legacy `analyze()`
-    method as an alias for `process()`.
+    Adds:
+    - roi_requires: declare which ROI crops this analyzer needs
+    - analyze(): backwards-compatible alias for process()
     """
 
+    # ROI requirements: list of ROI names this analyzer needs (e.g. ["face", "portrait"])
+    # ROIs are created by upstream modules (e.g. face.detect) and routed via deps.
+    roi_requires: List[str] = []
+
     def analyze(self, frame: "Frame", deps=None) -> Optional["Observation"]:
-        """Backwards-compatible alias for process().
-
-        Args:
-            frame: Input frame to analyze.
-            deps: Optional dependency observations.
-
-        Returns:
-            Observation from processing.
-        """
+        """Backwards-compatible alias for process()."""
         return self.process(frame, deps)
 
 
