@@ -155,13 +155,13 @@ class Momentscan(vp.App):
             results = self.run(video, fps=fps or self.fps, **kwargs)
         else:
             # warm path: executor 재사용
-            from visualpath.runner import _open_video_source
+            from visualbase.sources import open_video
             from visualpath.backends.simple import SimpleBackend
 
             eff_fps = fps or self.fps
             self.setup()
             try:
-                frames, cleanup_fn = _open_video_source(video, eff_fps)
+                frames, cleanup_fn = open_video(video, fps=eff_fps)
                 try:
                     backend = SimpleBackend()
                     backend.execute(frames, self._warm_graph,
