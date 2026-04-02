@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 
 from portrait981 import JobSpec, PipelineConfig, Portrait981Pipeline
 from portrait981.types import JobStatus
+from personmemory import PersonMemory
 
 from portrait981_serve.config import ServeConfig
 from portrait981_serve.s3 import S3Client
@@ -45,29 +46,35 @@ def init_routes(config: ServeConfig) -> None:
             api_key=config.comfy_api_key,
             scan_fps=config.scan_fps,
             scan_backend=config.scan_backend,
-            default_collection_path=config.collection_path,
         ),
     )
 
 
 def _resolve_workflow(override: Optional[str]) -> str:
     """Event override > server default."""
-    if override:
-        return override
-    return _config.default_workflow
+    return override or _config.default_workflow
 
 
 def _resolve_prompt(override: Optional[str]) -> str:
-    if override:
-        return override
-    return _config.default_prompt
+    return override or _config.default_prompt
+
+
+def _extract_scan_counts(scan_result) -> tuple[int, int]:
+    """Extract frame_count and shoot_count from scan result (v2: list[FrameResult])."""
+    if isinstance(scan_result, list):
+        frame_count = len(scan_result)
+        shoot_count = sum(1 for r in scan_result if getattr(r, "is_shoot", False))
+    else:
+        frame_count = getattr(scan_result, "frame_count", 0)
+        shoot_count = 0
+    return frame_count, shoot_count
 
 
 # -- POST /portrait/scan --
 
 @router.post("/scan", response_model=ScanResponse)
 def scan(req: ScanRequest):
-    """Scan a video and ingest into bank. No generation."""
+    """Scan a video and optionally ingest SHOOT frames into personmemory."""
     local_path: Optional[Path] = None
     try:
         local_path = _s3.download(req.video_uri)
@@ -75,19 +82,18 @@ def scan(req: ScanRequest):
         result = _pipeline.run_one(JobSpec(
             video_path=str(local_path),
             member_id=str(req.member_id),
-            collection_path=_config.collection_path,
             scan_only=True,
+            ingest=req.ingest,
         ))
 
-        frame_count = getattr(result.scan_result, "frame_count", 0)
-        highlights = getattr(result.scan_result, "highlights", [])
+        frame_count, shoot_count = _extract_scan_counts(result.scan_result)
 
         return ScanResponse(
             status=result.status.value,
             member_id=req.member_id,
             workflow_id=req.workflow_id,
             frame_count=frame_count,
-            highlight_count=len(highlights),
+            shoot_count=shoot_count,
             timing_sec=result.timing.total_sec,
         )
     except Exception as e:
@@ -102,7 +108,7 @@ def scan(req: ScanRequest):
 
 @router.post("/generate", response_model=GenerateResponse)
 def generate(req: GenerateRequest):
-    """Generate portraits from existing bank data."""
+    """Generate portraits from existing personmemory data."""
     result = _pipeline.run_one(JobSpec(
         member_id=str(req.member_id),
         workflow=_resolve_workflow(req.generate.workflow),
@@ -135,7 +141,7 @@ def generate(req: GenerateRequest):
 
 @router.post("/test", response_model=TestResponse)
 def test_pipeline(req: TestRequest):
-    """Pipeline verification — does NOT persist to bank."""
+    """Pipeline verification — does NOT persist to personmemory."""
     local_path: Optional[Path] = None
     try:
         scan_only = req.generate is None
@@ -161,11 +167,10 @@ def test_pipeline(req: TestRequest):
 
         scan_info = None
         if result.scan_result:
+            frame_count, shoot_count = _extract_scan_counts(result.scan_result)
             scan_info = {
-                "frame_count": getattr(result.scan_result, "frame_count", 0),
-                "highlight_count": len(
-                    getattr(result.scan_result, "highlights", [])
-                ),
+                "frame_count": frame_count,
+                "shoot_count": shoot_count,
             }
 
         gen_info = None
@@ -196,15 +201,14 @@ def test_pipeline(req: TestRequest):
 
 @router.get("/status/{member_id}", response_model=StatusResponse)
 def status(member_id: int):
-    """Query bank status for a member."""
+    """Query personmemory status for a member."""
     try:
-        from momentbank.ingest import lookup_frames
-
-        frames = lookup_frames(str(member_id))
+        mem = PersonMemory(str(member_id))
+        profile = mem.profile()
         return StatusResponse(
             member_id=member_id,
-            frame_count=len(frames),
-            frames=frames,
+            frame_count=profile.n_total_frames,
+            frames=[],
         )
     except Exception as e:
         logger.exception("Status lookup failed for member_id=%s", member_id)

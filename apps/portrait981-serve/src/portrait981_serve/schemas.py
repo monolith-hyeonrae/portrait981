@@ -23,6 +23,7 @@ class ScanRequest(BaseModel):
     member_id: int
     workflow_id: int
     video_uri: str
+    ingest: bool = True
 
 
 class ScanResponse(BaseModel):
@@ -30,7 +31,7 @@ class ScanResponse(BaseModel):
     member_id: int
     workflow_id: int
     frame_count: int = 0
-    highlight_count: int = 0
+    shoot_count: int = 0
     timing_sec: float = 0.0
 
 

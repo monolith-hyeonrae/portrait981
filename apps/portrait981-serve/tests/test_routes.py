@@ -25,11 +25,17 @@ def config():
     )
 
 
-def _make_scan_result(frame_count=100, highlight_count=3):
+def _make_frame_result(is_shoot=True):
     r = MagicMock()
-    r.frame_count = frame_count
-    r.highlights = [MagicMock()] * highlight_count
+    r.is_shoot = is_shoot
     return r
+
+
+def _make_scan_result(frame_count=100, shoot_count=3):
+    """Return list[FrameResult]-like for v2 pipeline."""
+    results = [_make_frame_result(is_shoot=True) for _ in range(shoot_count)]
+    results += [_make_frame_result(is_shoot=False) for _ in range(frame_count - shoot_count)]
+    return results
 
 
 def _make_gen_result(success=True, output_paths=None):
@@ -64,7 +70,7 @@ class TestScanEndpoint:
         assert data["status"] == "done"
         assert data["member_id"] == 1423
         assert data["frame_count"] == 200
-        assert data["highlight_count"] == 5
+        assert data["shoot_count"] == 5
 
 
 class TestGenerateEndpoint:
@@ -140,14 +146,13 @@ class TestTestEndpoint:
 
 
 class TestStatusEndpoint:
-    @patch("momentbank.ingest.lookup_frames")
+    @patch("portrait981_serve.routes.PersonMemory")
     @patch("portrait981_serve.routes.Portrait981Pipeline")
     @patch("portrait981_serve.s3.boto3")
-    def test_status(self, mock_boto3, mock_cls, mock_lookup, config):
-        mock_lookup.return_value = [
-            {"path": "/frames/f1.jpg", "pose": "frontal"},
-            {"path": "/frames/f2.jpg", "pose": "left30"},
-        ]
+    def test_status(self, mock_boto3, mock_cls, mock_mem_cls, config):
+        mock_profile = MagicMock()
+        mock_profile.n_total_frames = 12
+        mock_mem_cls.return_value.profile.return_value = mock_profile
 
         app = create_app(config)
         client = TestClient(app)
@@ -156,7 +161,7 @@ class TestStatusEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["member_id"] == 1423
-        assert data["frame_count"] == 2
+        assert data["frame_count"] == 12
 
 
 class TestHealthEndpoint:
