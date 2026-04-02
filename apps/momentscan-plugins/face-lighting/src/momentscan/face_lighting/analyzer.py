@@ -75,6 +75,7 @@ class FaceLightingAnalyzer(Module):
 
     name = "face.lighting"
     depends = ["face.detect", "face.parse"]
+    roi_requires = ["face", "portrait"]
 
     def initialize(self):
         self._dpr = None
@@ -117,20 +118,30 @@ class FaceLightingAnalyzer(Module):
             return _obs()
 
         h, w = image.shape[:2]
-        bx, by, bw, bh = bbox
-        if all(0 <= v <= 1.1 for v in bbox):
-            px1, py1 = int(bx * w), int(by * h)
-            px2, py2 = int((bx + bw) * w), int((by + bh) * h)
+
+        # ROI-based path: use pre-computed crops from face.detect
+        roi_crops = getattr(det_obs.data, "roi_crops", {})
+        portrait_roi = roi_crops.get("portrait")
+        face_roi = roi_crops.get("face")
+
+        # Face crop for pixel analysis
+        if face_roi is not None:
+            face_crop = face_roi.image
+            px1, py1, px2, py2 = face_roi.crop_box
         else:
-            px1, py1 = int(bx), int(by)
-            px2, py2 = int(bx + bw), int(by + bh)
+            bx, by, bw, bh = bbox
+            if all(0 <= v <= 1.1 for v in bbox):
+                px1, py1 = int(bx * w), int(by * h)
+                px2, py2 = int((bx + bw) * w), int((by + bh) * h)
+            else:
+                px1, py1 = int(bx), int(by)
+                px2, py2 = int(bx + bw), int(by + bh)
+            px1, py1 = max(0, px1), max(0, py1)
+            px2, py2 = min(w, px2), min(h, py2)
+            if px2 <= px1 or py2 <= py1:
+                return _obs()
+            face_crop = image[py1:py2, px1:px2]
 
-        px1, py1 = max(0, px1), max(0, py1)
-        px2, py2 = min(w, px2), min(h, py2)
-        if px2 <= px1 or py2 <= py1:
-            return _obs()
-
-        face_crop = image[py1:py2, px1:px2]
         gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY).astype(np.float32)
         face_mask = self._get_face_mask(deps, gray.shape, px1, py1, px2, py2, w, h)
 
@@ -142,7 +153,6 @@ class FaceLightingAnalyzer(Module):
         if len(valid_pixels) < 10:
             return _obs()
 
-        # seg_map 먼저 추출
         seg_map = self._get_seg_map(deps, gray.shape, px1, py1, px2, py2, w, h)
 
         # ── 기본 좌우/상하 분석 (skin only) ──
@@ -151,24 +161,23 @@ class FaceLightingAnalyzer(Module):
         # ── 9분면 분석 + Rembrandt (skin pixel만 사용) ──
         self._compute_sectors(gray, face_mask, seg_map, data)
 
-        # ── Method C: DPR SH (preferred) or Method B: geometric SH (fallback) ──
-        #
-        # ── Method C: DPR SH (이미지 좌표계, 반전 불필요) ──
-        # DPR은 portrait 크기 입력을 기대 → crop_box (확장된 portrait 영역) 사용
-        # face bbox만 쓰면 배경이 없어서 좋지만 너무 타이트 → DPR 성능 저하
-        # crop_box는 BiSeNet이 사용하는 확장 영역 (expand=1.3, 1:1 비율)
+        # ── DPR SH (이미지 좌표계, 반전 불필요) ──
+        # portrait ROI가 있으면 그 이미지를 직접 사용, 없으면 crop_box 역계산
         if self._dpr is not None:
             try:
-                _, crop_box = self._get_parse_result(deps)
-                if crop_box is not None:
-                    cb_x, cb_y, cb_w, cb_h = crop_box
-                    cb_x1 = max(0, cb_x)
-                    cb_y1 = max(0, cb_y)
-                    cb_x2 = min(w, cb_x + cb_w)
-                    cb_y2 = min(h, cb_y + cb_h)
-                    portrait_crop = image[cb_y1:cb_y2, cb_x1:cb_x2]
+                if portrait_roi is not None:
+                    portrait_crop = portrait_roi.image
                 else:
-                    portrait_crop = face_crop
+                    _, crop_box = self._get_parse_result(deps)
+                    if crop_box is not None:
+                        cb_x, cb_y, cb_w, cb_h = crop_box
+                        cb_x1 = max(0, cb_x)
+                        cb_y1 = max(0, cb_y)
+                        cb_x2 = min(w, cb_x + cb_w)
+                        cb_y2 = min(h, cb_y + cb_h)
+                        portrait_crop = image[cb_y1:cb_y2, cb_x1:cb_x2]
+                    else:
+                        portrait_crop = face_crop
 
                 desc = self._dpr.estimate_lighting_descriptor(portrait_crop)
                 data.sh_dir_x = desc["sh_dir_x"]
